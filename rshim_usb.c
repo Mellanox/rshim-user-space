@@ -822,6 +822,7 @@ static int rshim_hotplug_callback(struct libusb_context *ctx,
   default:
     break;
   }
+  return (0);	/* keep filter registered */
 }
 #endif
 
