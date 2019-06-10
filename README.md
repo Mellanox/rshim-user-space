@@ -14,35 +14,39 @@ internal rshim registers.
 *) Usage
 
 ./rshim [options]
-  -a                     advanced options
-  -b <usb|pcie|pcie_lf>  driver name
-  -k                     skip sw_reset
-  -l <0~4>               debug level
+
+    -a                     advanced options
+  
+    -b <usb|pcie|pcie_lf>  driver name
+
+    -k                     skip sw_reset
+  
+    -l <0~4>               debug level
 
 *) Device Files
 
-  Each rshim target will create a directory /dev/rshim<N>/ with the
-  following files. '<N>' is the device id, which could be 0, 1, etc.
+  Each rshim target will create a directory /dev/rshim\<N\>/ with the
+  following files. \<N\> is the device id, which could be 0, 1, etc.
 
-  - /dev/rshim<N>/boot
+  - /dev/rshim\<N\>/boot
   
   Boot device file used to send boot stream to the ARM side, for example,
   
     cat install.bfb > /dev/rshim<N>/boot
 
-  - /dev/rshim<N>/console
+  - /dev/rshim\<N\>/console
   
   Console device, which can be used by console tools to connect to the ARM side,
   such as
   
     screen /dev/rshim<N>/console
 
-  - /dev/rshim<N>/rshim
+  - /dev/rshim\<N\>/rshim
   
   Device file used to access rshim register space. When reading / writing to
   this file, encode the offset as "((rshim_channel << 16) | register_offset)".
 
-  - /dev/rshim<N>/misc:
+  - /dev/rshim\<N\>/misc:
   
   Key/Value pairs used to read/write misc information. For example,
 
@@ -88,12 +92,12 @@ internal rshim registers.
   Below is an example to change the MAC address from 00:1a:ca:ff:ff:01 to
   00:1a:ca:ff:ff:10.
 
-  echo 1 > /sys/module/rshim/parameters/rshim_adv_cfg
+  Turning on the 'rshim_adv_cfg' flag.
   
-  cat /dev/rshim<N>/misc
+  cat /dev/rshim\<N\>/misc
   
     ...
     PEER_MAC  00:1a:ca:ff:ff:01   # This is the current configured MAC address
     ...
     
-  echo "PEER_MAC 00:1a:ca:ff:ff:10" > /dev/rshim<N>/misc
+  echo "PEER_MAC 00:1a:ca:ff:ff:10" > /dev/rshim\<N\>/misc
