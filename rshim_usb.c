@@ -97,7 +97,7 @@ static int rshim_usb_read_rshim(struct rshim_backend *bd, int chan, int addr,
    * the USB stack doesn't use so that we can identify short/long
    * reads.
    */
-  return rc >= 0 ? (rc > sizeof(dev->ctrl_data) ? -EBADE : -EBADR) : rc;
+  return rc >= 0 ? (rc > sizeof(dev->ctrl_data) ? -EINVAL : -ENXIO) : rc;
 }
 
 static int rshim_usb_write_rshim(struct rshim_backend *bd, int chan, int addr,
@@ -128,7 +128,7 @@ static int rshim_usb_write_rshim(struct rshim_backend *bd, int chan, int addr,
    * the USB stack doesn't use so that we can identify short/long
    * writes.
    */
-  return rc >= 0 ? (rc > sizeof(dev->ctrl_data) ? -EBADE : -EBADR) : rc;
+  return rc >= 0 ? (rc > sizeof(dev->ctrl_data) ? -EINVAL : -ENXIO) : rc;
 }
 
 /* Boot routines */
