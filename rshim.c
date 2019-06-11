@@ -2453,7 +2453,7 @@ static void rshim_main(int argc, char *argv[])
   system("modprobe cuse");
 
   /* Create the epoll fd */
-  epoll_fd = epoll_create1(0);
+  epoll_fd = epoll_create1(EPOLL_CLOEXEC);
   if (epoll_fd == -1) {
     RSHIM_ERR("epoll_create1 failed: %m\n");
     exit(-1);
@@ -2486,7 +2486,7 @@ static void rshim_main(int argc, char *argv[])
   ts.it_value.tv_nsec = ts.it_interval.tv_nsec;
   timerfd_settime(timer_fd, 0, &ts, NULL);
   event.data.fd = timer_fd;
-  event.events = EPOLLIN | EPOLLET;
+  event.events = EPOLLIN | EPOLLOUT;
   rc = epoll_ctl(epoll_fd, EPOLL_CTL_ADD, timer_fd, &event);
   if (rc == -1)
   {
