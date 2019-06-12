@@ -6,6 +6,7 @@
 
 #include <libusb-1.0/libusb.h>
 #include <string.h>
+#include <poll.h>
 #include <sys/epoll.h>
 
 #include "rshim.h"
@@ -839,7 +840,24 @@ static int rshim_usb_add_poll(int epoll_fd, libusb_context *ctx)
 
   while(usb_pollfd[i]) {
     event.data.fd = usb_pollfd[i]->fd;
-    event.events = usb_pollfd[i]->events;
+    event.events = 0;
+
+#define	RSHIM_CONVERT(flag) do { \
+  if (usb_pollfd[i]->events & flag) \
+    event.events |= E##flag; \
+} while(0)
+
+  RSHIM_CONVERT(POLLIN);
+  RSHIM_CONVERT(POLLOUT);
+  RSHIM_CONVERT(POLLRDNORM);
+  RSHIM_CONVERT(POLLRDBAND);
+  RSHIM_CONVERT(POLLWRNORM);
+  RSHIM_CONVERT(POLLWRBAND);
+  RSHIM_CONVERT(POLLWRBAND);
+  RSHIM_CONVERT(POLLERR);
+  RSHIM_CONVERT(POLLHUP);
+
+#undef RSHIM_CONVERT
 
     rc = epoll_ctl(epoll_fd, EPOLL_CTL_ADD, usb_pollfd[i]->fd, &event);
     if (rc == -1) {
