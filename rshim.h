@@ -432,11 +432,31 @@ void rshim_usb_poll(void *ctx);
 void rshim_usb_exit(void);
 
 /* PCIe backend APIs. */
+#ifdef HAVE_RSHIM_PCIE
 int rshim_pcie_init(void);
 void rshim_pcie_exit(void);
+#else
+static inline int rshim_pcie_init(void)
+{
+  return -1;
+}
+static void rshim_pcie_exit(void)
+{
+}
+#endif
 
 /* PCIe livefish backend APIs. */
+#ifdef HAVE_RSHIM_PCIE_LF
 int rshim_pcie_lf_init(void);
 void rshim_pcie_lf_exit(void);
+#else
+static inline int rshim_pcie_lf_init(void)
+{
+  return -1;
+}
+static inline void rshim_pcie_lf_exit(void)
+{
+}
+#endif
 
 #endif /* _RSHIM_H */
