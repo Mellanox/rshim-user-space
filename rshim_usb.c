@@ -8,6 +8,7 @@
 #include <string.h>
 #include <poll.h>
 #include <sys/epoll.h>
+#include <pthread.h>
 
 #include "rshim.h"
 
