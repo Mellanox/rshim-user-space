@@ -1,0 +1,28 @@
+# SPDX-License-Identifier: (BSD-3-Clause OR GPL-2.0)
+#
+# Copyright 2019 Mellanox Technologies. All Rights Reserved.
+#
+
+TARGET = bfrshim
+
+.PHONY: $(TARGET) clean
+
+all: $(TARGET)
+
+CC = cc
+INC = -I/usr/local/include/libepoll-shim
+CDEF = -D_FILE_OFFSET_BITS=64 -DRSHIM_LOG_ENABLE=1
+CDEF += -DHAVE_RSHIM_CUSE
+CFLAGS = $(INC) $(CDEF) -Wno-pointer-sign -g
+LIBS = -L/usr/local/lib -lusb -lcuse -lpthread -lepoll-shim
+
+OBJS := $(patsubst %.c,%.o,$(wildcard rshim.c rshim_usb.c))
+
+$(TARGET): $(OBJS)
+	$(CC) $^ -o $@ $(LIBS)
+
+%.o: %.c
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+clean:
+	$(RM) $(TARGET) *.o
