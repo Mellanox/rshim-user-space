@@ -3136,7 +3136,11 @@ void rshim_deregister(struct rshim_backend *bd)
 static void rshim_main(int argc, char *argv[])
 {
   int i, fd, num, rc, epoll_fd, timer_fd;
+#ifdef __FreeBSD__
+  const int MAXEVENTS = 16;
+#else
   const int MAXEVENTS = 64;
+#endif
   struct epoll_event events[MAXEVENTS];
   struct epoll_event event;
   struct rshim_backend *bd;
