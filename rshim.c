@@ -6,7 +6,7 @@
 
 #include <fuse/cuse_lowlevel.h>
 #include <fuse/fuse_opt.h>
-#include <libusb-1.0/libusb.h>
+#include <libusb.h>
 #include <pthread.h>
 #include <signal.h>
 #include <stdio.h>
