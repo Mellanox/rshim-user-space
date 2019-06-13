@@ -2308,9 +2308,10 @@ static void rshim_timer_run(void)
         rshim_timer_func(bd);
 
       /* Push out remaining data if not sent out in the epoll loop. */
-      if (bd->net_fd >= 0)
+      if (bd->net_fd >= 0) {
         rshim_net_tx(bd);
         rshim_net_rx(bd);
+      }
     }
   }
 }
