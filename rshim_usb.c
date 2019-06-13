@@ -279,7 +279,7 @@ static void rshim_usb_fifo_read(struct rshim_usb *dev, char *buffer,
                                    (unsigned char *)dev->intr_buf,
                                    sizeof(*dev->intr_buf),
                                    rshim_usb_fifo_read_callback,
-                                   dev, -1/*6*/);
+                                   dev, 0);
 
     dev->bd.spin_flags |= RSH_SFLG_READING;
     dev->read_urb_is_intr = 1;
