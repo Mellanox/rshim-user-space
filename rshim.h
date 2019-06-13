@@ -288,8 +288,10 @@ struct rshim_backend {
   /* Number of open console files. */
   long console_opens;
 
+#ifdef HAVE_RSHIM_FUSE
   /* Rx poll handle. */
   void *rx_poll_handle[TMFIFO_MAX_CHAN];
+#endif
 
   /*
    * Our index in rshim_devs, which is also the high bits of our

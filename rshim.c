@@ -4,8 +4,6 @@
  *
  */
 
-#include <fuse/cuse_lowlevel.h>
-#include <fuse/fuse_opt.h>
 #include <libusb.h>
 #include <pthread.h>
 #include <signal.h>
@@ -17,7 +15,24 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 
+#ifdef __FreeBSD__
+#include <termios.h>
+#include <unistd.h>
+#include <netinet/in.h>
+#include <sys/timerfd.h>
+#include <sys/stat.h>
+#include <sys/filio.h>
+#endif
+
 #include "rshim.h"
+
+#ifdef HAVE_RSHIM_FUSE
+#include <fuse/cuse_lowlevel.h>
+#include <fuse/fuse_opt.h>
+#endif
+#ifdef HAVE_RSHIM_CUSE
+#include <cuse.h>
+#endif
 
 /* Maximum number of devices supported. */
 #define RSHIM_MAX_DEV 64
@@ -477,9 +492,19 @@ static int wait_for_boot_done(struct rshim_backend *bd)
   return 0;
 }
 
+#ifdef HAVE_RSHIM_FUSE
 static void rshim_boot_open(fuse_req_t req, struct fuse_file_info *fi)
+#endif
+#ifdef HAVE_RSHIM_CUSE
+static int rshim_boot_open(struct cuse_dev *cdev, int fflags)
+#endif
 {
+#ifdef HAVE_RSHIM_FUSE
   struct rshim_backend *bd = fuse_req_userdata(req);
+#endif
+#ifdef HAVE_RSHIM_CUSE
+  struct rshim_backend *bd = cuse_dev_get_priv0(cdev);
+#endif
   int i, rc;
 
   pthread_mutex_lock(&bd->mutex);
@@ -487,14 +512,24 @@ static void rshim_boot_open(fuse_req_t req, struct fuse_file_info *fi)
   if (bd->is_boot_open) {
     RSHIM_INFO("can't boot, boot file already open\n");
     pthread_mutex_unlock(&bd->mutex);
+#ifdef HAVE_RSHIM_FUSE
     fuse_reply_err(req, -EBUSY);
     return;
+#endif
+#ifdef HAVE_RSHIM_CUSE
+    return CUSE_ERR_BUSY;
+#endif
   }
 
   if (!bd->has_rshim) {
     pthread_mutex_unlock(&bd->mutex);
+#ifdef HAVE_RSHIM_FUSE
     fuse_reply_err(req, -NODEV);
     return;
+#endif
+#ifdef HAVE_RSHIM_CUSE
+    return CUSE_ERR_INVALID;
+#endif
   }
 
   RSHIM_INFO("begin booting\n");
@@ -526,14 +561,25 @@ static void rshim_boot_open(fuse_req_t req, struct fuse_file_info *fi)
     RSHIM_ERR("boot_open: error %d writing boot control\n", rc);
     bd->is_booting = 0;
     pthread_mutex_unlock(&bd->mutex);
+#ifdef HAVE_RSHIM_FUSE
     fuse_reply_err(req, rc);
     return;
+#endif
+#ifdef HAVE_RSHIM_CUSE
+    return CUSE_ERR_OTHER;
+#endif
   }
 
   if (rshim_sw_reset_skip) {
     bd->is_boot_open = 1;
     pthread_mutex_unlock(&bd->mutex);
+#ifdef HAVE_RSHIM_FUSE
     fuse_reply_err(req, 0);
+    return;
+#endif
+#ifdef HAVE_RSHIM_CUSE
+    return CUSE_ERR_NONE;
+#endif
   }
 
   bd->is_boot_open = 1;
@@ -573,8 +619,13 @@ static void rshim_boot_open(fuse_req_t req, struct fuse_file_info *fi)
     pthread_mutex_unlock(&bd->mutex);
     bd->is_boot_open = 0;
 
+#ifdef HAVE_RSHIM_FUSE
     fuse_reply_err(req, rc);
     return;
+#endif
+#ifdef HAVE_RSHIM_CUSE
+    return CUSE_ERR_OTHER;
+#endif
   }
 
   if (rc)
@@ -585,13 +636,29 @@ static void rshim_boot_open(fuse_req_t req, struct fuse_file_info *fi)
   if (!bd->has_reprobe)
     sleep(10);
 
+#ifdef HAVE_RSHIM_FUSE
   fuse_reply_open(req, fi);
+#endif
+#ifdef HAVE_RSHIM_CUSE
+  return CUSE_ERR_NONE;
+#endif
 }
 
+#ifdef HAVE_RSHIM_FUSE
 static void rshim_boot_write(fuse_req_t req, const char *user_buffer,
                              size_t count, off_t off, struct fuse_file_info *fi)
+#endif
+#ifdef HAVE_RSHIM_CUSE
+static int rshim_boot_write(struct cuse_dev *cdev, int fflags,
+			    const void *user_buffer, int count)
+#endif
 {
+#ifdef HAVE_RSHIM_FUSE
   struct rshim_backend *bd = fuse_req_userdata(req);
+#endif
+#ifdef HAVE_RSHIM_CUSE
+  struct rshim_backend *bd = cuse_dev_get_priv0(cdev);
+#endif
   size_t bytes_written = 0, bytes_left;
   int retval = 0, whichbuf = 0;
 
@@ -604,23 +671,38 @@ static void rshim_boot_write(fuse_req_t req, const char *user_buffer,
    */
   bytes_left = count & (-((size_t)8));
   if (!bytes_left) {
+#ifdef HAVE_RSHIM_FUSE
     fuse_reply_write(req, 0);
     return;
+#endif
+#ifdef HAVE_RSHIM_CUSE
+    return 0;
+#endif
   }
 
   pthread_mutex_lock(&bd->mutex);
   if (bd->is_in_boot_write) {
     pthread_mutex_unlock(&bd->mutex);
+#ifdef HAVE_RSHIM_FUSE
     fuse_reply_err(req, -EBUSY);
     return;
+#endif
+#ifdef HAVE_RSHIM_CUSE
+    return CUSE_ERR_BUSY;
+#endif
   }
 
   retval = wait_for_boot_done(bd);
   if (retval) {
     RSHIM_ERR("boot_write: wait for boot failed, err %d\n", retval);
     pthread_mutex_unlock(&bd->mutex);
+#ifdef HAVE_RSHIM_FUSE
     fuse_reply_err(req, retval);
     return;
+#endif
+#ifdef HAVE_RSHIM_CUSE
+    return CUSE_ERR_OTHER;
+#endif
   }
 
   /*
@@ -635,7 +717,14 @@ static void rshim_boot_write(fuse_req_t req, const char *user_buffer,
     char *buf = bd->boot_buf[whichbuf];
 
     whichbuf ^= 1;
+#ifdef HAVE_RSHIM_FUSE
     memcpy(buf, user_buffer, buf_bytes);
+#endif
+#ifdef HAVE_RSHIM_CUSE
+   retval = cuse_copy_in(user_buffer, buf, buf_bytes);
+   if (retval < 0)
+	break;
+#endif
 
     retval = bd->write(bd, RSH_DEV_TYPE_BOOT, buf, buf_bytes);
     if (retval > 0) {
@@ -660,19 +749,42 @@ static void rshim_boot_write(fuse_req_t req, const char *user_buffer,
    * the BOOT fifo and hopefully it could still boot the chip.
    */
   if (count % 8 != 0) {
+#ifdef HAVE_RSHIM_FUSE
     fuse_reply_err(req, -EINVAL);
     return;
+#endif
+#ifdef HAVE_RSHIM_CUSE
+    return CUSE_ERR_INVALID;
+#endif
   }
 
-  if (bytes_written >= 0)
+#ifdef HAVE_RSHIM_FUSE
+  if (bytes_written > 0 || count == 0)
     fuse_reply_write(req, bytes_written);
   else
     fuse_reply_err(req, retval);
+#endif
+#ifdef HAVE_RSHIM_CUSE
+  if (bytes_written > 0 || count == 0)
+    return bytes_written;
+  else
+    return CUSE_ERR_OTHER;
+#endif
 }
 
+#ifdef HAVE_RSHIM_FUSE
 static void rshim_boot_release(fuse_req_t req, struct fuse_file_info *fi)
+#endif
+#ifdef HAVE_RSHIM_CUSE
+static int rshim_boot_release(struct cuse_dev *cdev, int fflags)
+#endif
 {
+#ifdef HAVE_RSHIM_FUSE
   struct rshim_backend *bd = fuse_req_userdata(req);
+#endif
+#ifdef HAVE_RSHIM_CUSE
+  struct rshim_backend *bd = cuse_dev_get_priv0(cdev);
+#endif
   int retval;
 
   /* Restore the boot mode register. */
@@ -687,14 +799,28 @@ static void rshim_boot_release(fuse_req_t req, struct fuse_file_info *fi)
   rshim_work_signal(bd);
   pthread_mutex_unlock(&bd->mutex);
 
+#ifdef HAVE_RSHIM_FUSE
   fuse_reply_err(req, 0);
+#endif
+#ifdef HAVE_RSHIM_CUSE
+  return 0;
+#endif
 }
 
+#ifdef HAVE_RSHIM_FUSE
 static const struct cuse_lowlevel_ops rshim_boot_fops = {
     .open = rshim_boot_open,
     .write = rshim_boot_write,
     .release = rshim_boot_release,
 };
+#endif
+#ifdef HAVE_RSHIM_CUSE
+static const struct cuse_methods rshim_boot_fops = {
+    .cm_open = rshim_boot_open,
+    .cm_write = rshim_boot_write,
+    .cm_close = rshim_boot_release,
+};
+#endif
 
 /* FIFO common routines */
 
@@ -856,8 +982,13 @@ static void rshim_fifo_input_notify(struct rshim_backend *bd)
 
   RSHIM_DBG("rshim_fifo_input: woke up readable chan %d\n", chan);
 
+#ifdef HAVE_RSHIM_FUSE
   if (bd->rx_poll_handle[chan])
     fuse_lowlevel_notify_poll(bd->rx_poll_handle[chan]);
+#endif
+#ifdef HAVE_RSHIM_CUSE
+  cuse_poll_wakeup();
+#endif
 
   pthread_cond_broadcast(&bd->read_fifo[chan].operable);
 }
@@ -1056,6 +1187,12 @@ ssize_t rshim_fifo_read(struct rshim_backend *bd, char *buffer,
           pthread_mutex_unlock(&bd->mutex);
           return -EINTR;
         }
+#ifdef HAVE_RSHIM_CUSE
+	if (cuse_got_peer_signal() == 0) {
+          pthread_mutex_unlock(&bd->mutex);
+          return -EINTR;
+	}
+#endif
       }
 
       /*
@@ -1098,6 +1235,39 @@ ssize_t rshim_fifo_read(struct rshim_backend *bd, char *buffer,
   RSHIM_DBG("fifo_read: returning %zd\n", rd_cnt);
   return rd_cnt;
 }
+
+#ifdef HAVE_RSHIM_CUSE
+static int rshim_fifo_read_wrapper(struct rshim_backend *bd, char *peer_ptr,
+				    int size, int chan, bool nonblock)
+{
+  char buf[4096];
+  int len = 0;
+  int rc;
+  int err;
+
+  while (size > 0) {
+    rc = sizeof(buf);
+    if (rc > size)
+	rc = size;
+    rc = rshim_fifo_read(bd, buf, rc, chan, nonblock);
+    if (rc < 0) {
+      if (rc == -EAGAIN)
+	return CUSE_ERR_WOULDBLOCK;
+      else if (rc == -EINTR)
+	return CUSE_ERR_SIGNAL;
+      else
+	return CUSE_ERR_OTHER;
+    }
+    err = cuse_copy_out(buf, peer_ptr, rc);
+    if (err != CUSE_ERR_NONE)
+      return err;
+    size -= rc;
+    peer_ptr = (char *)peer_ptr + rc;
+    len += rc;
+  }
+  return len;
+}
+#endif
 
 static void rshim_fifo_output(struct rshim_backend *bd)
 {
@@ -1328,6 +1498,12 @@ ssize_t rshim_fifo_write(struct rshim_backend *bd, const char *buffer,
           pthread_mutex_unlock(&bd->mutex);
           return wr_cnt ? wr_cnt : -EAGAIN;
         }
+#ifdef HAVE_RSHIM_CUSE
+	if (cuse_got_peer_signal() == 0) {
+          pthread_mutex_unlock(&bd->mutex);
+          return -EINTR;
+	}
+#endif
       }
 
       /*
@@ -1371,6 +1547,37 @@ ssize_t rshim_fifo_write(struct rshim_backend *bd, const char *buffer,
   RSHIM_DBG("fifo_write: returning %zd\n", wr_cnt);
   return wr_cnt;
 }
+
+#ifdef HAVE_RSHIM_CUSE
+static int rshim_fifo_write_wrapper(struct rshim_backend *bd, const char *peer_ptr,
+				    int size, int chan, bool nonblock)
+{
+  char buf[4096];
+  int len = 0;
+  int rc;
+  int err;
+
+  while (size > 0) {
+    rc = sizeof(buf);
+    if (rc > size)
+	rc = size;
+    err = cuse_copy_in(peer_ptr, buf, rc);
+    if (err != CUSE_ERR_NONE)
+      return err;
+    rc = rshim_fifo_write(bd, buf, rc, chan, nonblock);
+    if (rc < 0) {
+      if (rc == -EAGAIN)
+	return CUSE_ERR_WOULDBLOCK;
+      else
+	return CUSE_ERR_OTHER;
+    }
+    size -= rc;
+    peer_ptr = (char *)peer_ptr + rc;
+    len += rc;
+  }
+  return len;
+}
+#endif
 
 static void rshim_work_handler(struct rshim_backend *bd)
 {
@@ -1483,17 +1690,30 @@ static int rshim_fifo_fsync(struct rshim_backend *bd, int chan)
    * device, we first wait until the channel is empty, then we wait
    * until there is no outstanding write urb.
    */
-  while (!write_empty(bd, chan))
+  while (!write_empty(bd, chan)) {
     if (pthread_cond_wait(&bd->write_fifo[chan].operable, &bd->mutex)) {
       pthread_mutex_unlock(&bd->mutex);
       return -EINTR;
     }
+#ifdef HAVE_RSHIM_CUSE
+	if (cuse_got_peer_signal() == 0) {
+          pthread_mutex_unlock(&bd->mutex);
+          return -EINTR;
+	}
+#endif
+  }
 
   while (bd->spin_flags & RSH_SFLG_WRITING) {
     if (pthread_cond_wait(&bd->fifo_write_complete_cond, &bd->mutex)) {
       pthread_mutex_unlock(&bd->mutex);
       return -EINTR;
     }
+#ifdef HAVE_RSHIM_CUSE
+    if (cuse_got_peer_signal() == 0) {
+      pthread_mutex_unlock(&bd->mutex);
+      return -EINTR;
+    }
+#endif
   }
 
   pthread_mutex_unlock(&bd->mutex);
@@ -1501,10 +1721,20 @@ static int rshim_fifo_fsync(struct rshim_backend *bd, int chan)
   return 0;
 }
 
+#ifdef HAVE_RSHIM_FUSE
 static void rshim_fifo_poll(fuse_req_t req, struct fuse_file_info *fi,
                             struct fuse_pollhandle *ph, int chan)
+#endif
+#ifdef HAVE_RSHIM_CUSE
+static int rshim_fifo_poll(struct cuse_dev *cdev, int fflags, int events, int chan)
+#endif
 {
+#ifdef HAVE_RSHIM_FUSE
   struct rshim_backend *bd = fuse_req_userdata(req);
+#endif
+#ifdef HAVE_RSHIM_CUSE
+  struct rshim_backend *bd = cuse_dev_get_priv0(cdev);
+#endif
   unsigned revents = 0;
 
   pthread_mutex_lock(&bd->mutex);
@@ -1512,10 +1742,21 @@ static void rshim_fifo_poll(fuse_req_t req, struct fuse_file_info *fi,
   pthread_mutex_lock(&bd->ringlock);
 
   if (!read_empty(bd, chan))
+#ifdef HAVE_RSHIM_FUSE
     revents |= POLLIN | POLLRDNORM;
+#endif
+#ifdef HAVE_RSHIM_CUSE
+    revents |= CUSE_POLL_READ;
+#endif
 
   if (!write_full(bd, chan))
+#ifdef HAVE_RSHIM_FUSE
     revents |= POLLOUT | POLLWRNORM;
+#endif
+#ifdef HAVE_RSHIM_CUSE
+    revents |= CUSE_POLL_WRITE;
+#endif
+
 
   /*
    * We don't report POLLERR on the console so that it doesn't get
@@ -1526,12 +1767,18 @@ static void rshim_fifo_poll(fuse_req_t req, struct fuse_file_info *fi,
    * get an error.
    */
   if (bd->tmfifo_error && chan != TMFIFO_CONS_CHAN)
+#ifdef HAVE_RSHIM_FUSE
     revents |= POLLERR;
+#endif
+#ifdef HAVE_RSHIM_CUSE
+    revents |= CUSE_POLL_ERROR;
+#endif
 
   pthread_mutex_unlock(&bd->ringlock);
 
   pthread_mutex_unlock(&bd->mutex);
 
+#ifdef HAVE_RSHIM_FUSE
   if (ph) {
     if (!bd->rx_poll_handle[TMFIFO_CONS_CHAN])
       bd->rx_poll_handle[TMFIFO_CONS_CHAN] = ph;
@@ -1539,12 +1786,27 @@ static void rshim_fifo_poll(fuse_req_t req, struct fuse_file_info *fi,
       fuse_pollhandle_destroy(ph);
   }
   fuse_reply_poll(req, revents);
+#endif
+#ifdef HAVE_RSHIM_CUSE
+  return revents;
+#endif
 }
 
+#ifdef HAVE_RSHIM_FUSE
 static void rshim_fifo_release(fuse_req_t req, struct fuse_file_info *fi,
                                int chan)
+#endif
+#ifdef HAVE_RSHIM_CUSE
+static int rshim_fifo_release(struct cuse_dev *cdev, int fflags, int chan)
+#endif
 {
+#ifdef HAVE_RSHIM_FUSE
   struct rshim_backend *bd = fuse_req_userdata(req);
+#endif
+#ifdef HAVE_RSHIM_CUSE
+  struct rshim_backend *bd = cuse_dev_get_priv0(cdev);
+#endif
+  int i;
 
   pthread_mutex_lock(&bd->mutex);
 
@@ -1556,8 +1818,13 @@ static void rshim_fifo_release(fuse_req_t req, struct fuse_file_info *fi,
     bd->console_opens--;
     if (bd->console_opens) {
         pthread_mutex_unlock(&bd->mutex);
+#ifdef HAVE_RSHIM_FUSE
         fuse_reply_err(req, 0);
         return;
+#endif
+#ifdef HAVE_RSHIM_CUSE
+	return CUSE_ERR_NONE;
+#endif
     }
 
     /*
@@ -1600,12 +1867,18 @@ static void rshim_fifo_release(fuse_req_t req, struct fuse_file_info *fi,
 
   pthread_mutex_unlock(&bd->mutex);
 
+#ifdef HAVE_RSHIM_FUSE
   fuse_reply_err(req, 0);
+#endif
+#ifdef HAVE_RSHIM_CUSE
+  return CUSE_ERR_NONE;
+#endif
 }
 
 #if TBD
 /* TMFIFO file operations routines */
 
+#ifdef HAVE_RSHIM_FUSE
 static void rshim_tmfifo_read(fuse_req_t req, fuse_ino_t ino, size_t size,
                               off_t off, struct fuse_file_info *fi)
 {
@@ -1616,7 +1889,18 @@ static void rshim_tmfifo_read(fuse_req_t req, fuse_ino_t ino, size_t size,
   return rshim_fifo_read(bd, buf, sizeof(buf), TMFIFO_NET_CHAN,
                          fi->f_flags & O_NONBLOCK);
 }
+#endif
 
+#ifdef HAVE_RSHIM_CUSE
+static int rshim_tmfifo_read(struct cuse_dev *cdev, int fflags, void *peer_ptr, int size)
+{
+  struct rshim_backend *bd = cuse_dev_get_priv0(cdev);
+  return rshim_fifo_read_wrapper(bd, peer_ptr, size, TMFIFO_NET_CHAN,
+				 fflags & CUSE_FFLAG_NONBLOCK);
+}
+#endif
+
+#ifdef HAVE_RSHIM_FUSE
 static void rshim_tmfifo_write(fuse_req_t req, const char *buf, size_t size,
                                off_t off, struct fuse_file_info *fi)
 {
@@ -1625,37 +1909,68 @@ static void rshim_tmfifo_write(fuse_req_t req, const char *buf, size_t size,
 
   rc = rshim_fifo_write(bd, buf, count, TMFIFO_NET_CHAN,
                         file->f_flags & O_NONBLOCK);
+  return rc;
 }
+#endif
+#ifdef HAVE_RSHIM_CUSE
+static int rshim_tmfifo_write(struct cuse_dev *cdev, int fflags, const void *peer_ptr, int size)
+{
+  struct rshim_backend *bd = cuse_dev_get_priv0(cdev);
 
+  return rshim_fifo_write_wrapper(bd, peer_ptr, size, TMFIFO_NET_CHAN,
+				  fflags & CUSE_FFLAG_NONBLOCK);
+}
+#endif
+
+#ifdef HAVE_RSHIM_FUSE
 static void rshim_tmfifo_fsync(fuse_req_t req, int datasync,
                                struct fuse_file_info *fi)
 {
   rshim_fifo_fsync(req, datasync, fi, TMFIFO_NET_CHAN);
 }
+#endif
 
+#ifdef HAVE_RSHIM_FUSE
 static void rshim_tmfifo_poll(fuse_req_t req, struct fuse_file_info *fi,
                               struct fuse_pollhandle *ph, int chan)
 {
   rshim_fifo_poll(req, fi, ph, , TMFIFO_NET_CHAN);
 }
+#endif
+#ifdef HAVE_RSHIM_CUSE
+static int rshim_tmfifo_poll(struct cuse_dev *cdev, int fflags, int events)
+{
+  return rshim_fifo_poll(cdev, fflag, events, TMFIFO_NET_CHAN);
+}
+#endif
 
+#ifdef HAVE_RSHIM_FUSE
 static void rshim_tmfifo_release(fuse_req_t req, struct fuse_file_info *fi)
 {
   rshim_fifo_release(req, fi, TMFIFO_NET_CHAN);
 }
-
-static const struct file_operations rshim_tmfifo_fops = {
-    .owner = THIS_MODULE,
-    .read = rshim_tmfifo_read,
-    .write = rshim_tmfifo_write,
-    .fsync = rshim_tmfifo_fsync,
-    .poll = rshim_tmfifo_poll,
-    .release = rshim_tmfifo_release,
-};
-
-static int rshim_tmfifo_open(struct file *file)
+#endif
+#ifdef HAVE_RSHIM_CUSE
+static int rshim_tmfifo_release(struct cuse_dev *cdev, int fflags)
 {
+  return rshim_fifo_relase(cdev, fflags, fi, TMFIFO_NET_CHAN);
+}
+#endif
+
+#ifdef HAVE_RSHIM_FUSE
+static int rshim_tmfifo_open(struct file *file)
+#endif
+#ifdef HAVE_RSHIM_CUSE
+static int rshim_tmfifo_open(struct cuse_dev *cdev, int fflags)
+#endif
+{
+#ifdef HAVE_RSHIM_FUSE
   struct rshim_backend *bd = file->private_data;
+#endif
+#ifdef HAVE_RSHIM_CUSE
+  struct rshim_backend *bd = cuse_dev_get_priv0(cdev);
+#endif
+
 
   file->f_op = &rshim_tmfifo_fops;
 
@@ -1664,7 +1979,12 @@ static int rshim_tmfifo_open(struct file *file)
   if (bd->is_tm_open) {
     RSHIM_DBG("tmfifo_open: file already open\n");
     pthread_mutex_unlock(&bd->mutex);
+#ifdef HAVE_RSHIM_FUSE
     return -EBUSY;
+#endif
+#ifdef HAVE_RSHIM_CUSE
+    return CUSE_ERR_BUSY;
+#endif
   }
 
   bd->is_tm_open = 1;
@@ -1676,22 +1996,63 @@ static int rshim_tmfifo_open(struct file *file)
 
   pthread_mutex_unlock(&bd->mutex);
 
+#ifdef HAVE_RSHIM_FUSE
   return 0;
+#endif
+#ifdef HAVE_RSHIM_CUSE
+  return CUSE_ERR_NONE;
+#endif
 }
+
+#ifdef HAVE_RSHIM_FUSE
+static const struct file_operations rshim_tmfifo_fops = {
+    .owner = THIS_MODULE,
+    .read = rshim_tmfifo_read,
+    .write = rshim_tmfifo_write,
+    .fsync = rshim_tmfifo_fsync,
+    .poll = rshim_tmfifo_poll,
+    .release = rshim_tmfifo_release,
+};
+#endif
+#ifdef HAVE_RSHIM_CUSE
+static const struct cuse_methods rshim_tmfifo_fops = {
+    .cm_open = rshim_tmfifo_open,
+    .cm_read = rshim_tmfifo_read,
+    .cm_write = rshim_tmfifo_write,
+    .cm_poll = rshim_tmfifo_poll,
+    .cm_close = rshim_tmfifo_release,
+};
+#endif
+
 #endif
 
 /* Console operations */
 
+#ifdef HAVE_RSHIM_FUSE
 static void rshim_console_open(fuse_req_t req, struct fuse_file_info *fi)
+#endif
+#ifdef HAVE_RSHIM_CUSE
+static int rshim_console_open(struct cuse_dev *cdev, int fflags)
+#endif
 {
+#ifdef HAVE_RSHIM_FUSE
   struct rshim_backend *bd = fuse_req_userdata(req);
+#endif
+#ifdef HAVE_RSHIM_CUSE
+  struct rshim_backend *bd = cuse_dev_get_priv0(cdev);
+#endif
 
   pthread_mutex_lock(&bd->mutex);
 
   if (bd->is_cons_open) {
     pthread_mutex_unlock(&bd->mutex);
+#ifdef HAVE_RSHIM_FUSE
     fuse_reply_err(req, -EBUSY);
     return;
+#endif
+#ifdef HAVE_RSHIM_CUSE
+    return CUSE_ERR_BUSY;
+#endif
   }
 
   bd->is_cons_open = 1;
@@ -1710,9 +2071,15 @@ static void rshim_console_open(fuse_req_t req, struct fuse_file_info *fi)
   bd->console_opens++;
   pthread_mutex_unlock(&bd->mutex);
 
+#ifdef HAVE_RSHIM_FUSE
   fuse_reply_open(req, fi);
+#endif
+#ifdef HAVE_RSHIM_CUSE
+  return CUSE_ERR_NONE;
+#endif
 }
 
+#ifdef HAVE_RSHIM_FUSE
 static void rshim_console_read(fuse_req_t req, size_t size, off_t off,
                                struct fuse_file_info *fi)
 {
@@ -1735,7 +2102,17 @@ static void rshim_console_read(fuse_req_t req, size_t size, off_t off,
   else
     fuse_reply_buf(req, buf, rc);
 }
+#endif
+#ifdef HAVE_RSHIM_CUSE
+static int rshim_console_read(struct cuse_dev *cdev, int fflags, void *peer_ptr, int size)
+{
+  struct rshim_backend *bd = cuse_dev_get_priv0(cdev);
+  return rshim_fifo_read_wrapper(bd, peer_ptr, size, TMFIFO_CONS_CHAN,
+				 fflags & CUSE_FFLAG_NONBLOCK);
+}
+#endif
 
+#ifdef HAVE_RSHIM_FUSE
 static void rshim_console_write(fuse_req_t req, const char *buf, size_t size,
                                 off_t off, struct fuse_file_info *fi)
 {
@@ -1754,7 +2131,19 @@ static void rshim_console_write(fuse_req_t req, const char *buf, size_t size,
   else
     fuse_reply_err(req, rc);
 }
+#endif
+#ifdef HAVE_RSHIM_CUSE
+static int rshim_console_write(struct cuse_dev *cdev, int fflags,
+			       const void *peer_ptr, int size)
+{
+  struct rshim_backend *bd = cuse_dev_get_priv0(cdev);
 
+  return rshim_fifo_write_wrapper(bd, peer_ptr, size, TMFIFO_CONS_CHAN,
+				  fflags & CUSE_FFLAG_NONBLOCK);
+}
+#endif
+
+#ifdef HAVE_RSHIM_FUSE
 static void rshim_console_fsync(fuse_req_t req, int datasync,
                                 struct fuse_file_info *fi)
 {
@@ -1765,7 +2154,9 @@ static void rshim_console_fsync(fuse_req_t req, int datasync,
 
   fuse_reply_err(req, rc);
 }
+#endif
 
+#ifdef HAVE_RSHIM_FUSE
 static void rshim_console_ioctl(fuse_req_t req, int cmd, void *arg,
                                 struct fuse_file_info *fi,
                                 unsigned flags, const void *in_buf,
@@ -1806,18 +2197,77 @@ static void rshim_console_ioctl(fuse_req_t req, int cmd, void *arg,
 
   pthread_mutex_unlock(&bd->mutex);
 }
+#endif
+#ifdef HAVE_RSHIM_CUSE
+static int rshim_console_ioctl(struct cuse_dev *cdev, int fflags, unsigned long cmd,
+			       void *peer_data)
+{
+  struct rshim_backend *bd = cuse_dev_get_priv0(cdev);
+  int retval = CUSE_ERR_INVALID;
+  int value;
 
+  pthread_mutex_lock(&bd->mutex);
+
+  switch (cmd) {
+  case TIOCGETA:
+    retval = cuse_copy_out(&bd->cons_termios, peer_data, sizeof(struct termios));
+    break;
+
+  case TIOCSETA:
+  case TIOCSETAW:
+  case TIOCSETAF:
+    retval = cuse_copy_in(peer_data, &bd->cons_termios, sizeof(struct termios));
+    break;
+
+  case TIOCEXCL:
+  case TIOCNXCL:
+  case FIONBIO:
+  case FIOASYNC:
+    retval = 0;
+    break;
+  case FIONREAD:
+    pthread_mutex_lock(&bd->ringlock);
+    value = read_empty(bd, TMFIFO_CONS_CHAN) ? 0 : 1;
+    pthread_mutex_unlock(&bd->ringlock);
+    retval = cuse_copy_out(&value, peer_data, sizeof(value));
+    break;
+  default:
+    break;
+  }
+
+  pthread_mutex_unlock(&bd->mutex);
+  return retval;
+}
+#endif
+
+#ifdef HAVE_RSHIM_FUSE
 static void rshim_console_poll(fuse_req_t req, struct fuse_file_info *fi,
                                struct fuse_pollhandle *ph)
 {
   rshim_fifo_poll(req, fi, ph, TMFIFO_CONS_CHAN);
 }
+#endif
+#ifdef HAVE_RSHIM_CUSE
+static int rshim_console_poll(struct cuse_dev *cdev, int fflags, int events)
+{
+  return rshim_fifo_poll(cdev, fflags, events, TMFIFO_CONS_CHAN);
+}
+#endif
 
+#ifdef HAVE_RSHIM_FUSE
 static void rshim_console_release(fuse_req_t req, struct fuse_file_info *fi)
 {
   rshim_fifo_release(req, fi, TMFIFO_CONS_CHAN);
 }
+#endif
+#ifdef HAVE_RSHIM_CUSE
+static int rshim_console_release(struct cuse_dev *cdev, int fflags)
+{
+  return rshim_fifo_release(cdev, fflags, TMFIFO_CONS_CHAN);
+}
+#endif
 
+#ifdef HAVE_RSHIM_FUSE
 static const struct cuse_lowlevel_ops rshim_console_fops = {
   .open = rshim_console_open,
   .read = rshim_console_read,
@@ -1827,14 +2277,35 @@ static const struct cuse_lowlevel_ops rshim_console_fops = {
   .poll = rshim_console_poll,
   .release = rshim_console_release,
 };
+#endif
+
+#ifdef HAVE_RSHIM_CUSE
+static const struct cuse_methods rshim_console_fops = {
+    .cm_open = rshim_console_open,
+    .cm_read = rshim_console_read,
+    .cm_write = rshim_console_write,
+    .cm_ioctl = rshim_console_ioctl,
+    .cm_poll = rshim_console_poll,
+    .cm_close = rshim_console_release,
+};
+#endif
 
 /* Rshim file operations routines */
 
+#ifdef HAVE_RSHIM_FUSE
 static void rshim_rshim_open(fuse_req_t req, struct fuse_file_info *fi)
 {
     fuse_reply_open(req, fi);
 }
+#endif
+#ifdef HAVE_RSHIM_CUSE
+static int rshim_rshim_open(struct cuse_dev *cdev, int fflags)
+{
+  return CUSE_ERR_NONE;
+}
+#endif
 
+#ifdef HAVE_RSHIM_FUSE
 static void rshim_rshim_read(fuse_req_t req, size_t size, off_t off,
                              struct fuse_file_info *fi)
 {
@@ -1859,7 +2330,34 @@ static void rshim_rshim_read(fuse_req_t req, size_t size, off_t off,
   else
     fuse_reply_err(req, rc);
 }
+#endif
+#ifdef HAVE_RSHIM_CUSE
+static int rshim_rshim_read(struct cuse_dev *cdev, int fflags,
+			    void *user_buffer, int count)
+{
+  struct rshim_backend *bd = cuse_dev_get_priv0(cdev);
+  uint64_t data;
+  off_t off = 0;
+  int rc;
 
+  /* rshim registers are all 8-byte aligned. */
+  if (count != (int)sizeof(data))
+    return CUSE_ERR_INVALID;
+
+  pthread_mutex_lock(&bd->mutex);
+  rc = bd->read_rshim(bd,
+                      (off >> 16) & 0xF, /* channel # */
+                      off & 0xFFFF,  /* addr */
+                      &data);
+  pthread_mutex_unlock(&bd->mutex);
+  if (rc)
+    return CUSE_ERR_INVALID;
+
+  return cuse_copy_out(&data, user_buffer, sizeof(data));
+}
+#endif
+
+#ifdef HAVE_RSHIM_FUSE
 static void rshim_rshim_write(fuse_req_t req, const char *buf, size_t size,
                               off_t off, struct fuse_file_info *fi)
 {
@@ -1888,61 +2386,145 @@ static void rshim_rshim_write(fuse_req_t req, const char *buf, size_t size,
   else
     fuse_reply_err(req, rc);
 }
+#endif
+#ifdef HAVE_RSHIM_CUSE
+static int rshim_rshim_write(struct cuse_dev *cdev, int fflags,
+			     const void *user_buffer, int count)
+{
+  struct rshim_backend *bd = cuse_dev_get_priv0(cdev);
+  uint64_t data;
+  off_t off = 0;
+  int rc;
 
+  /* rshim registers are all 8-byte aligned. */
+  if (count != (int)sizeof(data))
+    return CUSE_ERR_INVALID;
+
+  rc = cuse_copy_in(user_buffer, &data, sizeof(data));
+  if (rc)
+    return rc;
+
+  pthread_mutex_lock(&bd->mutex);
+  rc = bd->write_rshim(bd,
+                       (off >> 16) & 0xF, /* channel # */
+                       off & 0xFFFF, /* addr */
+                       data);
+  pthread_mutex_unlock(&bd->mutex);
+  if (rc)
+    return CUSE_ERR_INVALID;
+  else
+    return CUSE_ERR_NONE;
+}
+#endif
+
+#ifdef HAVE_RSHIM_FUSE
 static void rshim_rshim_release(fuse_req_t req, struct fuse_file_info *fi)
 {
   fuse_reply_err(req, 0);
 }
+#endif
+#ifdef HAVE_RSHIM_CUSE
+static int rshim_rshim_release(struct cuse_dev *cdev, int fflags)
+{
+  return CUSE_ERR_NONE;
+}
+#endif
 
+#ifdef HAVE_RSHIM_FUSE
 static const struct cuse_lowlevel_ops rshim_rshim_fops = {
     .read = rshim_rshim_read,
     .write = rshim_rshim_write,
     .release = rshim_rshim_release,
 };
+#endif
+#ifdef HAVE_RSHIM_CUSE
+static const struct cuse_methods rshim_rshim_fops = {
+    .cm_read = rshim_rshim_read,
+    .cm_write = rshim_rshim_write,
+    .cm_close = rshim_rshim_release,
+};
+#endif
 
 /* Misc file operations routines */
 
+struct rshim_misc {
+	char buffer[4069];
+	off_t len;
+	off_t offset;
+	int ready;
+};
+
+#ifdef HAVE_RSHIM_FUSE
 static void rshim_misc_open(fuse_req_t req, struct fuse_file_info *fi)
 {
   struct rshim_backend *bd = fuse_req_userdata(req);
 
   if (bd) {
-    int *id = calloc(1, sizeof(*id));
-    fi->fh = (uint64_t)id;
+    struct rshim_misc *ptr = calloc(1, sizeof(*ptr));
+    fi->fh = (uintptr_t)ptr;
     fuse_reply_open(req, fi);
   }
   else
     fuse_reply_err(req, ENODEV);
 }
+#endif
+#ifdef HAVE_RSHIM_CUSE
+static int rshim_misc_open(struct cuse_dev *cdev, int fflags)
+{
+  struct rshim_backend *bd = cuse_dev_get_priv0(cdev);
+  struct rshim_misc *ptr = calloc(1, sizeof(*ptr));
 
+  if (ptr == NULL)
+    return CUSE_ERR_NO_MEMORY;
+  cuse_dev_set_per_file_handle(cdev, ptr);
+  return CUSE_ERR_NONE;
+}
+#endif
+
+#ifdef HAVE_RSHIM_FUSE
 static void rshim_misc_read(fuse_req_t req, size_t size, off_t off,
                             struct fuse_file_info *fi)
+#endif
+#ifdef HAVE_RSHIM_CUSE
+static int rshim_misc_read(struct cuse_dev *cdev, int fflags, void *peer_ptr, int size)
+#endif
 {
+#ifdef HAVE_RSHIM_FUSE
   struct rshim_backend *bd = fuse_req_userdata(req);
+  struct rshim_misc *rm = (void *)(uintptr_t)fi->fh;
+#endif
+#ifdef HAVE_RSHIM_CUSE
+  struct rshim_backend *bd = cuse_dev_get_priv0(cdev);
+  struct rshim_misc *rm = cuse_dev_get_per_file_handle(cdev);
+  off_t off;
+#endif
   uint8_t *mac = bd->peer_mac;
-  int rc, len = 4096, seg;
+  int rc, len = sizeof(rm->buffer), seg;
   struct timespec ts;
   struct timeval tp;
   uint64_t value;
-  char *buf, *p;
+  char *p;
 
-  if ((*(int*)fi->fh)++) {
-    fuse_reply_buf(req, NULL, 0);
-    return;
-  }
+  pthread_mutex_lock(&bd->mutex);
+  if (rm->ready)
+	goto ready;
+  rm->ready = 1;
 
   /* Boot mode. */
-  pthread_mutex_lock(&bd->mutex);
   rc = bd->read_rshim(bd, RSHIM_CHANNEL, RSH_BOOT_CONTROL, &value);
-  pthread_mutex_unlock(&bd->mutex);
   if (rc) {
+    pthread_mutex_unlock(&bd->mutex);
     RSHIM_ERR("couldn't read rshim register\n");
+#ifdef HAVE_RSHIM_FUSE
     fuse_reply_err(req, rc);
     return;
+#endif
+#ifdef HAVE_RSHIM_CUSE
+    return CUSE_ERR_INVALID;
+#endif
   }
 
-  buf = malloc(len);
-  p = buf;
+  p = rm->buffer;
   
   seg = snprintf(p, len, "BOOT_MODE %lld\n", (long long)(value & RSH_BOOT_CONTROL__BOOT_MODE_MASK));
   p += seg;
@@ -1965,7 +2547,6 @@ static void rshim_misc_read(fuse_req_t req, size_t size, off_t off,
      * Display the target-side information. Send a request and wait for
      * some time for the response.
      */
-    pthread_mutex_lock(&bd->mutex);
     bd->peer_ctrl_req = 1;
     bd->peer_ctrl_resp = 0;
     memset(mac, 0, 6);
@@ -1974,8 +2555,7 @@ static void rshim_misc_read(fuse_req_t req, size_t size, off_t off,
 
     ts.tv_sec  = tp.tv_sec + 1;
     ts.tv_nsec = tp.tv_usec * 1000;
-    pthread_cond_timedwait(&bd->ctrl_wait_cond, &bd->mutex, &ts);
-    pthread_mutex_unlock(&bd->mutex);
+    pthread_cond_timedwait(&bd->ctrl_wait_cond, &bd->mutex, &ts);   
     seg = snprintf(p, len, "PEER_MAC  %02x:%02x:%02x:%02x:%02x:%02x\n",
                    mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
     p += seg;
@@ -1984,52 +2564,79 @@ static void rshim_misc_read(fuse_req_t req, size_t size, off_t off,
     p += seg;
     len -= seg;
   }
+  rm->len = p - rm->buffer;
 
-  len = p - buf;
-  if (off > p - buf)
-    off = p - buf;
-  if (off + size > p - buf)
-    size = p - buf - off;
-
-  fuse_reply_buf(req, buf + off, size);
-  free(buf);
+ready:
+#ifdef HAVE_RSHIM_FUSE
+  if (size > (int)(rm->len - off))
+    size = rm->len - off;
+  pthread_mutex_unlock(&bd->mutex);
+  fuse_reply_buf(req, rm->buffer + off, size);
+  return;
+#endif
+#ifdef HAVE_RSHIM_CUSE
+  if (size > (int)(rm->len - rm->offset))
+    size = rm->len - rm->offset;
+  off = rm->offset;
+  rm->offset += size;
+  pthread_mutex_unlock(&bd->mutex);
+  rc = cuse_copy_out(rm->buffer + off, peer_ptr, size);
+  if (rc != CUSE_ERR_NONE)
+    return rc;
+  else
+    return size;
+#endif
 }
 
+#ifdef HAVE_RSHIM_FUSE
 static void rshim_misc_write(fuse_req_t req, const char *buf, size_t size,
                              off_t off, struct fuse_file_info *fi)
+#endif
+#ifdef HAVE_RSHIM_CUSE
+static int rshim_misc_write(struct cuse_dev *cdev, int fflags,
+			    const void *user_buffer, int size)
+#endif
 {
+#ifdef HAVE_RSHIM_FUSE
   struct rshim_backend *bd = fuse_req_userdata(req);
-  int i, rc = 0, value = 0, mac[6];
   const char *p = buf;
+#endif
+#ifdef HAVE_RSHIM_CUSE
+  struct rshim_backend *bd = cuse_dev_get_priv0(cdev);
+  char buf[4096];
+  const char *p = buf;
+#endif
+  int i, rc = 0, value = 0, mac[6];
   char key[32];
 
-  if (off) {
-    fuse_reply_err(req, -EINVAL);
-    return;
-  }
+#ifdef HAVE_RSHIM_FUSE
+  if (off)
+    goto invalid;
+#endif
+#ifdef HAVE_RSHIM_CUSE
+  if (size > sizeof(buf))
+    size = sizeof(buf);
+  rc = cuse_copy_in(user_buffer, buf, size);
+  if (rc != CUSE_ERR_NONE)
+    return rc;
+#endif
 
-  if (sscanf(buf, "%s", key) != 1) {
-    fuse_reply_err(req, -EINVAL);
-    return;
-  }
+  if (sscanf(buf, "%s", key) != 1)
+    goto invalid;
+
   p += strlen(key);
 
   if (strcmp(key, "BOOT_MODE") == 0) {
-    if (sscanf(p, "%x", &value) != 1) {
-      fuse_reply_err(req, -EINVAL);
-      return;
-    }
+    if (sscanf(p, "%x", &value) != 1)
+      goto invalid;
 
     pthread_mutex_lock(&bd->mutex);
     rc = bd->write_rshim(bd, RSHIM_CHANNEL, RSH_BOOT_CONTROL,
                          value & RSH_BOOT_CONTROL__BOOT_MODE_MASK);
     pthread_mutex_unlock(&bd->mutex);
-    fuse_reply_write(req, size);
   } else if (strcmp(key, "SW_RESET") == 0) {
-    if (sscanf(p, "%x", &value) != 1) {
-      fuse_reply_err(req, -EINVAL);
-      return;
-    }
+    if (sscanf(p, "%x", &value) != 1)
+      goto invalid;
 
     if (value) {
       if (!bd->has_reprobe) {
@@ -2058,14 +2665,10 @@ static void rshim_misc_write(fuse_req_t req, const char *buf, size_t size,
         pthread_mutex_unlock(&bd->mutex);
       }
     }
-
-    fuse_reply_write(req, size);
   } else if (strcmp(key, "PEER_MAC") == 0) {
     if (sscanf(p, "%x:%x:%x:%x:%x:%x",
-               &mac[0], &mac[1], &mac[2], &mac[3], &mac[4], &mac[5]) != 6) {
-      fuse_reply_err(req, -EINVAL);
-      return;
-    }
+               &mac[0], &mac[1], &mac[2], &mac[3], &mac[4], &mac[5]) != 6)
+      goto invalid;
     pthread_mutex_lock(&bd->mutex);
     for (i = 0; i < 6; i++)
       bd->peer_mac[i] = mac[i];
@@ -2073,39 +2676,89 @@ static void rshim_misc_write(fuse_req_t req, const char *buf, size_t size,
     bd->has_cons_work = 1;
     rshim_work_signal(bd);
     pthread_mutex_unlock(&bd->mutex);
-    fuse_reply_write(req, size);
   } else if (strcmp(key, "PXE_ID") == 0) {
-    if (sscanf(p, "%x", &value) != 1) {
-      fuse_reply_err(req, -EINVAL);
-      return;
-    }
+    if (sscanf(p, "%x", &value) != 1)
+      goto invalid;
     pthread_mutex_lock(&bd->mutex);
     bd->pxe_client_id = ntohl(value);
     bd->peer_pxe_id_set = 1;
     bd->has_cons_work = 1;
     rshim_work_signal(bd);
     pthread_mutex_unlock(&bd->mutex);
-    fuse_reply_write(req, size);
   } else {
+invalid:
+#ifdef HAVE_RSHIM_FUSE
     fuse_reply_err(req, -EINVAL);
+    return;
+#endif
+#ifdef HAVE_RSHIM_CUSE
+    return CUSE_ERR_INVALID;
+#endif
   }
+#ifdef HAVE_RSHIM_FUSE
+  fuse_reply_write(req, size);
+#endif
+#ifdef HAVE_RSHIM_CUSE
+  return size;
+#endif
 }
 
+#ifdef HAVE_RSHIM_FUSE
 static void rshim_misc_release(fuse_req_t req, struct fuse_file_info *fi)
 {
-  free((void*)fi->fh);
+  free((void *)(uintptr_t)fi->fh);
   fuse_reply_err(req, 0);
 }
+#endif
+#ifdef HAVE_RSHIM_CUSE
+static int rshim_misc_release(struct cuse_dev *cdev, int fflags)
+{
+  struct rshim_misc *rm = cuse_dev_get_per_file_handle(cdev);
+  free(rm);
+  return CUSE_ERR_NONE;
+}
+#endif
 
+#ifdef HAVE_RSHIM_FUSE
 static const struct cuse_lowlevel_ops rshim_misc_fops = {
     .open = rshim_misc_open,
     .read = rshim_misc_read,
     .write = rshim_misc_write,
     .release = rshim_misc_release,
 };
+#endif
+#ifdef HAVE_RSHIM_CUSE
+static const struct cuse_methods rshim_misc_fops = {
+    .cm_open = rshim_misc_open,
+    .cm_read = rshim_misc_read,
+    .cm_write = rshim_misc_write,
+    .cm_close = rshim_misc_release,
+};
+#endif
+
+#ifdef HAVE_RSHIM_CUSE
+static void
+cuse_hup(int sig)
+{
+  struct rshim_backend *bd;
+  int index;
+  int i;
+
+  for (index = 0; index != RSHIM_MAX_DEV; index++) {
+    bd = rshim_devs[index];
+    if (bd == NULL)
+      continue;
+    for (i = 0; i < TMFIFO_MAX_CHAN; i++) {
+      pthread_cond_broadcast(&bd->read_fifo[i].operable);
+      pthread_cond_broadcast(&bd->write_fifo[i].operable);
+    }
+  }
+}
+#endif
 
 static void *cuse_worker(void *arg)
 {
+#ifdef HAVE_RSHIM_FUSE
   struct fuse_session *se = arg;
   int rc;
 
@@ -2113,6 +2766,14 @@ static void *cuse_worker(void *arg)
   cuse_lowlevel_teardown(se);
 
   return (void *)(unsigned long)rc;
+#endif
+#ifdef HAVE_RSHIM_CUSE
+  signal(SIGHUP, &cuse_hup);
+
+  while (cuse_wait_and_process() == CUSE_ERR_NONE)
+	;
+  return NULL;
+#endif
 }
 
 static int rshim_fs_init(struct rshim_backend *bd)
@@ -2120,10 +2781,16 @@ static int rshim_fs_init(struct rshim_backend *bd)
   char buf[128], *name;
   pthread_t thread;
   const char *bufp = buf;
+#ifdef HAVE_RSHIM_FUSE
   struct cuse_info ci = { .dev_info_argc = 1,
                           .dev_info_argv = &bufp,
                           .flags = CUSE_UNRESTRICTED_IOCTL };
-  const struct cuse_lowlevel_ops *ops[RSH_DEV_TYPES] = {
+  const struct cuse_lowlevel_ops *ops[RSH_DEV_TYPES] =
+#endif
+#ifdef HAVE_RSHIM_CUSE
+  const struct cuse_methods *ops[RSH_DEV_TYPES] =
+#endif
+  {
                           [RSH_DEV_TYPE_BOOT] = &rshim_boot_fops,
                           [RSH_DEV_TYPE_TMFIFO] = &rshim_console_fops,
                           [RSH_DEV_TYPE_RSHIM] = &rshim_rshim_fops,
@@ -2132,7 +2799,13 @@ static int rshim_fs_init(struct rshim_backend *bd)
   char *argv[] = {"./bfrshim", "-f"};
   int i, rc;
 
+#ifdef HAVE_RSHIM_CUSE
+  if (cuse_init() != CUSE_ERR_NONE)
+    return -1;
+#endif
+
   for (i = 0; i < RSH_DEV_TYPES; i++) {
+#ifdef HAVE_RSHIM_FUSE
     name = rshim_dev_minor_names[i];
     snprintf(buf, sizeof(buf), "DEVNAME=rshim%d/%s", bd->dev_index, name);
     if (!ops[i])
@@ -2148,6 +2821,25 @@ static int rshim_fs_init(struct rshim_backend *bd)
       RSHIM_ERR("Failed to create cuse thread %m");
       return rc;
     }
+#endif
+#ifdef HAVE_RSHIM_CUSE
+    name = rshim_dev_minor_names[i];
+    snprintf(buf, sizeof(buf), "rshim%d/%s", bd->dev_index, name);
+    if (!ops[i])
+      continue;
+    bd->fuse_session[i] =
+        cuse_dev_create(ops[i], bd, NULL, 0 /* UID_ROOT */, 0 /* GID_WHEEL */, 0600,
+			"rshim%d/%s", bd->dev_index, name);
+    if (!bd->fuse_session[i]) {
+      RSHIM_ERR("Failed to setup CUSE %s", name);
+      return -1;
+    }
+    rc = pthread_create(&bd->thread[i], NULL, cuse_worker, bd->fuse_session[i]);
+    if (rc) {
+      RSHIM_ERR("Failed to create cuse thread %m");
+      return rc;
+    }
+#endif
   }
 
   return 0;
@@ -2159,7 +2851,12 @@ static int rshim_fs_del(struct rshim_backend *bd)
 
   for (i = 0; i < RSH_DEV_TYPES; i++) {
     if (bd->fuse_session[i]) {
+#ifdef HAVE_RSHIM_FUSE
       fuse_session_exit(bd->fuse_session[i]);
+#endif
+#ifdef HAVE_RSHIM_CUSE
+      cuse_dev_destroy(bd->fuse_session[i]);
+#endif
       pthread_kill(bd->thread[i], SIGINT);
       pthread_join(bd->thread[i], NULL);
     }
@@ -2197,7 +2894,6 @@ int rshim_notify(struct rshim_backend *bd, int event, int code)
           RSHIM_ERR("Failed to init networking\n");
           break;
         }
-
         pthread_mutex_lock(&bd->ringlock);
         rshim_fifo_input(bd);
         pthread_mutex_unlock(&bd->ringlock);
@@ -2452,7 +3148,14 @@ static void rshim_main(int argc, char *argv[])
   memset(&event, 0, sizeof(event));
   memset(events, 0, sizeof(events));
 
+#ifdef __linux__
   system("modprobe cuse");
+#endif
+
+#ifdef __FreeBSD__
+  if (feature_present("cuse") == 0)
+    system("kldload cuse");
+#endif
 
   /* Create the epoll fd */
   epoll_fd = epoll_create1(EPOLL_CLOEXEC);
@@ -2633,6 +3336,9 @@ int main(int argc, char *argv[])
       return -1;
     }
     signal(SIGCHLD, SIG_IGN);
+#ifdef HAVE_RSHIM_CUSE
+    signal(SIGHUP, &cuse_hup);
+#endif
     chdir("/");
     close(STDIN_FILENO);
     close(STDOUT_FILENO);
