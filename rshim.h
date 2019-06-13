@@ -7,7 +7,11 @@
 #ifndef _RSHIM_H
 #define _RSHIM_H
 
+#ifdef __linux__
 #include <endian.h>
+#else
+#include <sys/endian.h>
+#endif
 #include <errno.h>
 #include <fcntl.h>
 #ifdef __linux__
