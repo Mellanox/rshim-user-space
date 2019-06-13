@@ -1945,7 +1945,7 @@ static void rshim_misc_read(fuse_req_t req, size_t size, off_t off,
   buf = malloc(len);
   p = buf;
   
-  seg = snprintf(p, len, "BOOT_MODE %lld\n", value & RSH_BOOT_CONTROL__BOOT_MODE_MASK);
+  seg = snprintf(p, len, "BOOT_MODE %lld\n", (long long)(value & RSH_BOOT_CONTROL__BOOT_MODE_MASK));
   p += seg;
   len -= seg;
 
