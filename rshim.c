@@ -150,7 +150,6 @@ static struct termios init_console_termios = {
   .c_oflag = OPOST | ONLCR,
   .c_cflag = B115200 | HUPCL | CLOCAL | CREAD | CS8,
   .c_lflag = ISIG | ICANON | ECHOE | ECHOK | ECHOCTL | ECHOKE | IEXTEN,
-  .c_line = 0,
   .c_cc = INIT_C_CC,
 };
 
