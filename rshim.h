@@ -404,10 +404,27 @@ void rshim_fifo_free(struct rshim_backend *bd);
 int rshim_cons_early_enable(struct rshim_backend *bd);
 
 /* Network APIs. */
+#ifdef HAVE_RSHIM_NET
 int rshim_net_init(struct rshim_backend *bd);
 int rshim_net_del(struct rshim_backend *bd);
 void rshim_net_rx(struct rshim_backend *bd);
 void rshim_net_tx(struct rshim_backend *bd);
+#else
+static inline int rshim_net_init(struct rshim_backend *bd)
+{
+  return 0;
+}
+static inline int rshim_net_del(struct rshim_backend *bd)
+{
+  return 0;
+}
+static inline void rshim_net_rx(struct rshim_backend *bd)
+{
+}
+static inline void rshim_net_tx(struct rshim_backend *bd)
+{
+}
+#endif
 
 /* USB backend APIs. */
 void* rshim_usb_init(int epoll_fd);

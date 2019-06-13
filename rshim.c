@@ -2405,6 +2405,8 @@ int rshim_register(struct rshim_backend *bd)
     }
 
     bd->net_fd = -1;
+    bd->net_notify_fd[0] = -1;
+    bd->net_notify_fd[1] = -1;
     bd->registered = 1;
 
     /* Start the keepalive timer. */
