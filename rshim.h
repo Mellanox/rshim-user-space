@@ -10,7 +10,12 @@
 #include <endian.h>
 #include <errno.h>
 #include <fcntl.h>
+#ifdef __linux__
 #include <linux/virtio_ids.h>
+#else
+#define	VIRTIO_ID_NET 1
+#define	VIRTIO_ID_CONSOLE 3
+#endif
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
