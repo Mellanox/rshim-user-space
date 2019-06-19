@@ -7,10 +7,19 @@
 #ifndef _RSHIM_H
 #define _RSHIM_H
 
+#ifdef __linux__
 #include <endian.h>
+#else
+#include <sys/endian.h>
+#endif
 #include <errno.h>
 #include <fcntl.h>
+#ifdef __linux__
 #include <linux/virtio_ids.h>
+#else
+#define	VIRTIO_ID_NET 1
+#define	VIRTIO_ID_CONSOLE 3
+#endif
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -279,8 +288,10 @@ struct rshim_backend {
   /* Number of open console files. */
   long console_opens;
 
+#ifdef HAVE_RSHIM_FUSE
   /* Rx poll handle. */
   void *rx_poll_handle[TMFIFO_MAX_CHAN];
+#endif
 
   /*
    * Our index in rshim_devs, which is also the high bits of our
@@ -395,10 +406,27 @@ void rshim_fifo_free(struct rshim_backend *bd);
 int rshim_cons_early_enable(struct rshim_backend *bd);
 
 /* Network APIs. */
+#ifdef HAVE_RSHIM_NET
 int rshim_net_init(struct rshim_backend *bd);
 int rshim_net_del(struct rshim_backend *bd);
 void rshim_net_rx(struct rshim_backend *bd);
 void rshim_net_tx(struct rshim_backend *bd);
+#else
+static inline int rshim_net_init(struct rshim_backend *bd)
+{
+  return 0;
+}
+static inline int rshim_net_del(struct rshim_backend *bd)
+{
+  return 0;
+}
+static inline void rshim_net_rx(struct rshim_backend *bd)
+{
+}
+static inline void rshim_net_tx(struct rshim_backend *bd)
+{
+}
+#endif
 
 /* USB backend APIs. */
 void* rshim_usb_init(int epoll_fd);
@@ -406,11 +434,31 @@ void rshim_usb_poll(void *ctx);
 void rshim_usb_exit(void);
 
 /* PCIe backend APIs. */
+#ifdef HAVE_RSHIM_PCIE
 int rshim_pcie_init(void);
 void rshim_pcie_exit(void);
+#else
+static inline int rshim_pcie_init(void)
+{
+  return -1;
+}
+static void rshim_pcie_exit(void)
+{
+}
+#endif
 
 /* PCIe livefish backend APIs. */
+#ifdef HAVE_RSHIM_PCIE_LF
 int rshim_pcie_lf_init(void);
 void rshim_pcie_lf_exit(void);
+#else
+static inline int rshim_pcie_lf_init(void)
+{
+  return -1;
+}
+static inline void rshim_pcie_lf_exit(void)
+{
+}
+#endif
 
 #endif /* _RSHIM_H */

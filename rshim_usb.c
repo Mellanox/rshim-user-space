@@ -4,10 +4,11 @@
  *
  */
 
-#include <libusb-1.0/libusb.h>
+#include <libusb.h>
 #include <string.h>
 #include <poll.h>
 #include <sys/epoll.h>
+#include <pthread.h>
 
 #include "rshim.h"
 
@@ -278,7 +279,7 @@ static void rshim_usb_fifo_read(struct rshim_usb *dev, char *buffer,
                                    (unsigned char *)dev->intr_buf,
                                    sizeof(*dev->intr_buf),
                                    rshim_usb_fifo_read_callback,
-                                   dev, -1/*6*/);
+                                   dev, 0);
 
     dev->bd.spin_flags |= RSH_SFLG_READING;
     dev->read_urb_is_intr = 1;
@@ -849,11 +850,13 @@ static int rshim_usb_add_poll(int epoll_fd, libusb_context *ctx)
 
   RSHIM_CONVERT(POLLIN);
   RSHIM_CONVERT(POLLOUT);
+#ifdef __linux__
   RSHIM_CONVERT(POLLRDNORM);
   RSHIM_CONVERT(POLLRDBAND);
   RSHIM_CONVERT(POLLWRNORM);
   RSHIM_CONVERT(POLLWRBAND);
   RSHIM_CONVERT(POLLWRBAND);
+#endif
   RSHIM_CONVERT(POLLERR);
   RSHIM_CONVERT(POLLHUP);
 
