@@ -11,6 +11,8 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 
+#include <pthread.h>
+
 #include "rshim.h"
 
 /* Our Vendor/Device IDs. */
