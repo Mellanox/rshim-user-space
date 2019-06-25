@@ -10,13 +10,15 @@ TARGET = bfrshim
 all: $(TARGET)
 
 CC = cc
-INC = -I/usr/local/include/libepoll-shim
+INC = -I/usr/local/include -I/usr/local/include/libepoll-shim
 CDEF = -D_FILE_OFFSET_BITS=64 -DRSHIM_LOG_ENABLE=1
 CDEF += -DHAVE_RSHIM_CUSE
+CDEF += -DHAVE_RSHIM_PCIE
+CDEF += -DHAVE_RSHIM_PCIE_LF
 CFLAGS = $(INC) $(CDEF) -Wno-pointer-sign -g
-LIBS = -L/usr/local/lib -lusb -lcuse -lpthread -lepoll-shim
+LIBS = -L/usr/local/lib -lusb -lpci -lcuse -lpthread -lepoll-shim
 
-OBJS := $(patsubst %.c,%.o,$(wildcard rshim.c rshim_usb.c))
+OBJS := $(patsubst %.c,%.o,$(wildcard rshim.c rshim_pcie.c rshim_pcie_lf.c rshim_usb.c))
 
 $(TARGET): $(OBJS)
 	$(CC) $^ -o $@ $(LIBS)

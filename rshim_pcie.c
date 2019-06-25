@@ -11,6 +11,14 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 
+#include <pthread.h>
+
+#ifdef __FreeBSD__
+#include <sys/pciio.h>
+#include <sys/ioctl.h>
+#include <vm/vm.h>
+#endif
+
 #include "rshim.h"
 
 /* Our Vendor/Device IDs. */
@@ -24,18 +32,17 @@
 #define PCI_RSHIM_WINDOW_SIZE       0x100000
 
 #if 1
-#define build_mmio_read(name, size, type, reg, barrier) \
-static inline type name(const volatile void *addr) \
-{ type ret; __asm__ volatile("mov" size " %1,%0":reg (ret) \
-:"m" (*(volatile type *)addr) barrier); return ret; }
+static inline uint64_t
+readq(const volatile void *addr)
+{
+  return *(const volatile uint64_t *)addr;
+}
 
-#define build_mmio_write(name, size, type, reg, barrier) \
-static inline void name(type val, volatile void *addr) \
-{ asm volatile("mov" size " %0,%1": :reg (val), \
-"m" (*(volatile type *)addr) barrier); }
-
-build_mmio_read(readq, "q", uint64_t, "=r", :"memory")
-build_mmio_write(writeq, "q", uint64_t, "r", :"memory")
+static inline void
+writeq(uint64_t value, volatile void *addr)
+{
+  *(volatile uint64_t *)addr = value;
+}
 #endif
 
 struct rshim_pcie {
@@ -49,6 +56,9 @@ struct rshim_pcie {
 
   /* Keep track of number of 8-byte word writes */
   u8 write_count;
+
+  /* File handle for PCI BAR */
+  int pci_fd;
 };
 
 #ifndef __LP64__
@@ -221,11 +231,13 @@ static void rshim_pcie_delete(struct rshim_backend *bd)
 static int rshim_pcie_probe(struct pci_dev *pci_dev)
 {
   const int max_name_len = 64;
-  int fd, ret, allocfail = 0;
+  int ret, allocfail = 0;
   struct rshim_backend *bd;
   struct rshim_pcie *dev;
   char *pcie_dev_name;
+#ifdef __linux__
   pciaddr_t bar0;
+#endif
 
   pcie_dev_name = malloc(max_name_len);
   snprintf(pcie_dev_name, max_name_len, "pcie-lf-%d-%d-%d-%d",
@@ -290,6 +302,7 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
   /* Initialize object */
   dev->pci_dev = pci_dev;
 
+#ifdef __linux__
   if (!pci_dev->size[0]) {
     RSHIM_ERR("BAR[0] unassigned, run 'lspci -v'.");
     ret = -ENOMEM;
@@ -297,16 +310,49 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
   }
 
   /* Map in the RShim registers. */
-  fd = open("/dev/mem", O_RDWR | O_SYNC);
+  dev->pci_fd = open("/dev/mem", O_RDWR | O_SYNC);
   bar0 = (pci_dev->base_addr[0] & PCI_BASE_ADDRESS_MEM_MASK) &
          ~(getpagesize() - 1);
   dev->rshim_regs = mmap(NULL, PCI_RSHIM_WINDOW_SIZE, PROT_READ | PROT_WRITE,
-                         MAP_SHARED, fd, bar0 + PCI_RSHIM_WINDOW_OFFSET);
+                         MAP_SHARED, dev->pci_fd, bar0 + PCI_RSHIM_WINDOW_OFFSET);
   if (dev->rshim_regs == MAP_FAILED) {
     RSHIM_ERR("Failed to map RShim registers\n");
     ret = -ENOMEM;
     goto rshim_map_failed;
   }
+#elif defined(__FreeBSD__)
+  struct pci_bar_mmap pbm = {
+    .pbm_sel.pc_func = pci_dev->func,
+    .pbm_sel.pc_dev = pci_dev->dev,
+    .pbm_sel.pc_bus = pci_dev->bus,
+    .pbm_sel.pc_domain = pci_dev->domain_16,
+    .pbm_reg = 0x10,
+    .pbm_flags = PCIIO_BAR_MMAP_RW,
+    .pbm_memattr = VM_MEMATTR_UNCACHEABLE,
+  };
+
+  dev->pci_fd = open("/dev/pci", O_RDWR, 0);
+  if (dev->pci_fd < 0) {
+    RSHIM_ERR("Failed to open /dev/pci\n");
+    ret = -ENOMEM;
+    goto rshim_map_failed;
+  }
+
+  if (ioctl(dev->pci_fd, PCIOCBARMMAP, &pbm) < 0) {
+    RSHIM_ERR("PCIOCBARMMAP IOCTL failed\n");
+    ret = -ENOMEM;
+    goto rshim_map_failed;
+  }
+  dev->rshim_regs = (void *)((uintptr_t)pbm.pbm_map_base +
+      (uintptr_t)pbm.pbm_bar_off + PCI_RSHIM_WINDOW_OFFSET);
+  if (pbm.pbm_bar_length < PCI_RSHIM_WINDOW_SIZE) {
+    RSHIM_ERR("BAR length is too small\n");
+    ret = -ENOMEM;
+    goto rshim_map_failed;
+  }
+#else
+#error "Platform not supported"
+#endif
 
   /*
    * Register rshim here since it needs to detect whether other backend
