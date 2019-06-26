@@ -893,7 +893,8 @@ void* rshim_usb_init(int epoll_fd)
   rc = libusb_hotplug_register_callback(ctx,
                                         LIBUSB_HOTPLUG_EVENT_DEVICE_ARRIVED |
                                         LIBUSB_HOTPLUG_EVENT_DEVICE_LEFT,
-                                        0, USB_TILERA_VENDOR_ID,
+                                        LIBUSB_HOTPLUG_ENUMERATE,
+                                        USB_TILERA_VENDOR_ID,
                                         USB_BLUEFIELD_PRODUCT_ID,
                                         LIBUSB_HOTPLUG_MATCH_ANY,
                                         rshim_hotplug_callback, NULL,
@@ -902,8 +903,7 @@ void* rshim_usb_init(int epoll_fd)
     RSHIM_ERR("Failed to register hotplug callback\n");
     return NULL;
   }
-#endif
-
+#else
   rc = libusb_get_device_list(ctx, &devs);
   if (rc < 0) {
     perror("USB Get Device Error\n");
@@ -921,6 +921,7 @@ void* rshim_usb_init(int epoll_fd)
         desc.idProduct == USB_BLUEFIELD_PRODUCT_ID)
       rshim_usb_probe(ctx, dev);
   }
+#endif
 
   rc = rshim_usb_add_poll(epoll_fd, ctx);
   if (rc)
