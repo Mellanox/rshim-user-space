@@ -887,7 +887,8 @@ void* rshim_usb_init(int epoll_fd)
     return NULL;
   }
 
-  libusb_set_debug(ctx, LIBUSB_LOG_LEVEL_INFO);
+  if (rshim_log_level > 1)
+    libusb_set_debug(ctx, LIBUSB_LOG_LEVEL_INFO);
 
 #if LIBUSB_API_VERSION >= 0x01000102
   rc = libusb_hotplug_register_callback(ctx,
