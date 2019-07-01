@@ -1579,10 +1579,19 @@ static int rshim_fifo_write_wrapper(struct rshim_backend *bd, const char *peer_p
       return err;
     rc = rshim_fifo_write(bd, buf, rc, chan, nonblock);
     if (rc < 0) {
-      if (rc == -EAGAIN)
-	return CUSE_ERR_WOULDBLOCK;
-      else
+      if (rc == -EAGAIN) {
+	if (len != 0)
+	  return len;
+	else
+	  return CUSE_ERR_WOULDBLOCK;
+      } else if (rc == -EINTR) {
+	if (len != 0)
+	  return len;
+	else
+	  return CUSE_ERR_SIGNAL;
+      } else {
 	return CUSE_ERR_OTHER;
+      }
     }
     size -= rc;
     peer_ptr = (char *)peer_ptr + rc;
