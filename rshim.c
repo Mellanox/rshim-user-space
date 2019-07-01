@@ -1242,28 +1242,41 @@ static int rshim_fifo_read_wrapper(struct rshim_backend *bd, char *peer_ptr,
 {
   char buf[4096];
   int len = 0;
-  int rc;
+  int delta;
   int err;
+  int rc;
 
   while (size > 0) {
-    rc = sizeof(buf);
-    if (rc > size)
-	rc = size;
-    rc = rshim_fifo_read(bd, buf, rc, chan, nonblock);
-    if (rc < 0) {
-      if (rc == -EAGAIN)
-	return CUSE_ERR_WOULDBLOCK;
-      else if (rc == -EINTR)
-	return CUSE_ERR_SIGNAL;
-      else
+    delta = sizeof(buf);
+    if (delta > size)
+	delta = size;
+    err = rshim_fifo_read(bd, buf, delta, chan, nonblock);
+    if (err < 0) {
+      if (err == -EAGAIN) {
+	if (len != 0)
+	  return len;
+	else
+	  return CUSE_ERR_WOULDBLOCK;
+      } else if (err == -EINTR) {
+	if (len != 0)
+	  return len;
+	else
+	  return CUSE_ERR_SIGNAL;
+      } else {
 	return CUSE_ERR_OTHER;
+      }
     }
-    err = cuse_copy_out(buf, peer_ptr, rc);
-    if (err != CUSE_ERR_NONE)
-      return err;
-    size -= rc;
-    peer_ptr = (char *)peer_ptr + rc;
-    len += rc;
+    rc = cuse_copy_out(buf, peer_ptr, err);
+    if (rc != CUSE_ERR_NONE)
+      return rc;
+
+    size -= err;
+    peer_ptr = (char *)peer_ptr + err;
+    len += err;
+
+    /* return on short read */
+    if (err != delta)
+      break;
   }
   return len;
 }
