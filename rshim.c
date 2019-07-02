@@ -2317,161 +2317,6 @@ static const struct cuse_methods rshim_console_fops = {
 };
 #endif
 
-/* Rshim file operations routines */
-
-#ifdef HAVE_RSHIM_FUSE
-static void rshim_rshim_open(fuse_req_t req, struct fuse_file_info *fi)
-{
-  fuse_reply_open(req, fi);
-}
-#endif
-#ifdef HAVE_RSHIM_CUSE
-static int rshim_rshim_open(struct cuse_dev *cdev, int fflags)
-{
-  return CUSE_ERR_NONE;
-}
-#endif
-
-#ifdef HAVE_RSHIM_FUSE
-static void rshim_rshim_read(fuse_req_t req, size_t size, off_t off,
-                             struct fuse_file_info *fi)
-{
-  struct rshim_backend *bd = fuse_req_userdata(req);
-  uint64_t data;
-  int rc = 0;
-
-  /* rshim registers are all 8-byte aligned. */
-  if (size != 8 || (off & 7) != 0) {
-    fuse_reply_err(req, -EINVAL);
-    return;
-  }
-
-  pthread_mutex_lock(&bd->mutex);
-  rc = bd->read_rshim(bd,
-                      (off >> 16) & 0xF, /* channel # */
-                      off & 0xFFFF,  /* addr */
-                      &data);
-  pthread_mutex_unlock(&bd->mutex);
-  if (!rc)
-    fuse_reply_buf(req, (void *)&data, size);
-  else
-    fuse_reply_err(req, rc);
-}
-#endif
-#ifdef HAVE_RSHIM_CUSE
-static int rshim_rshim_read(struct cuse_dev *cdev, int fflags,
-			    void *user_buffer, int count)
-{
-  struct rshim_backend *bd = cuse_dev_get_priv0(cdev);
-  uint64_t data;
-  off_t off = 0;
-  int rc;
-
-  /* rshim registers are all 8-byte aligned. */
-  if (count != (int)sizeof(data))
-    return CUSE_ERR_INVALID;
-
-  pthread_mutex_lock(&bd->mutex);
-  rc = bd->read_rshim(bd,
-                      (off >> 16) & 0xF, /* channel # */
-                      off & 0xFFFF,  /* addr */
-                      &data);
-  pthread_mutex_unlock(&bd->mutex);
-  if (rc)
-    return CUSE_ERR_INVALID;
-
-  return cuse_copy_out(&data, user_buffer, sizeof(data));
-}
-#endif
-
-#ifdef HAVE_RSHIM_FUSE
-static void rshim_rshim_write(fuse_req_t req, const char *buf, size_t size,
-                              off_t off, struct fuse_file_info *fi)
-{
-  struct rshim_backend *bd = fuse_req_userdata(req);
-  uint64_t data;
-  int rc;
-
-  /* rshim registers are all 8-byte aligned. */
-  if (size != 8 || (off & 7) != 0) {
-    fuse_reply_err(req, -EINVAL);
-    return;
-  }
-
-  /* Copy the data from userspace */
-  memcpy(&data, buf, size);
-
-  pthread_mutex_lock(&bd->mutex);
-  rc = bd->write_rshim(bd,
-                       (off >> 16) & 0xF, /* channel # */
-                       off & 0xFFFF, /* addr */
-                       data);
-  pthread_mutex_unlock(&bd->mutex);
-
-  if (!rc)
-    fuse_reply_write(req, size);
-  else
-    fuse_reply_err(req, rc);
-}
-#endif
-#ifdef HAVE_RSHIM_CUSE
-static int rshim_rshim_write(struct cuse_dev *cdev, int fflags,
-			     const void *user_buffer, int count)
-{
-  struct rshim_backend *bd = cuse_dev_get_priv0(cdev);
-  uint64_t data;
-  off_t off = 0;
-  int rc;
-
-  /* rshim registers are all 8-byte aligned. */
-  if (count != (int)sizeof(data))
-    return CUSE_ERR_INVALID;
-
-  rc = cuse_copy_in(user_buffer, &data, sizeof(data));
-  if (rc)
-    return rc;
-
-  pthread_mutex_lock(&bd->mutex);
-  rc = bd->write_rshim(bd,
-                       (off >> 16) & 0xF, /* channel # */
-                       off & 0xFFFF, /* addr */
-                       data);
-  pthread_mutex_unlock(&bd->mutex);
-  if (rc)
-    return CUSE_ERR_INVALID;
-  else
-    return CUSE_ERR_NONE;
-}
-#endif
-
-#ifdef HAVE_RSHIM_FUSE
-static void rshim_rshim_release(fuse_req_t req, struct fuse_file_info *fi)
-{
-  fuse_reply_err(req, 0);
-}
-#endif
-#ifdef HAVE_RSHIM_CUSE
-static int rshim_rshim_release(struct cuse_dev *cdev, int fflags)
-{
-  return CUSE_ERR_NONE;
-}
-#endif
-
-#ifdef HAVE_RSHIM_FUSE
-static const struct cuse_lowlevel_ops rshim_rshim_fops = {
-  .read = rshim_rshim_read,
-  .write = rshim_rshim_write,
-  .release = rshim_rshim_release,
-};
-#endif
-#ifdef HAVE_RSHIM_CUSE
-static const struct cuse_methods rshim_rshim_fops = {
-  .cm_read = rshim_rshim_read,
-  .cm_write = rshim_rshim_write,
-  .cm_close = rshim_rshim_release,
-};
-#endif
-
 /* Misc file operations routines */
 
 struct rshim_misc {
@@ -2765,6 +2610,143 @@ static const struct cuse_methods rshim_misc_fops = {
 };
 #endif
 
+/* Rshim file operations routines */
+
+/* ioctl message header. */
+typedef struct {
+  uint32_t addr;
+  uint64_t data;
+} __attribute__((packed)) rshim_ioctl_msg;
+
+enum {
+  RSHIM_IOC_READ = _IOWR('R', 0, rshim_ioctl_msg),
+  RSHIM_IOC_WRITE = _IOWR('R', 1, rshim_ioctl_msg),
+};
+
+#ifdef HAVE_RSHIM_FUSE
+static void rshim_rshim_ioctl(fuse_req_t req, int cmd, void *arg,
+                              struct fuse_file_info *fi,
+                              unsigned flags, const void *in_buf,
+                              size_t in_bufsz, size_t out_bufsz)
+{
+  struct rshim_backend *bd = fuse_req_userdata(req);
+  rshim_ioctl_msg msg;
+  struct iovec iov;
+  int rc = 0;
+
+  switch (cmd) {
+  case RSHIM_IOC_READ:
+  case RSHIM_IOC_WRITE:
+    iov.iov_base = arg;
+    iov.iov_len = sizeof(msg);
+
+    if (!in_bufsz) {
+      fuse_reply_ioctl_retry(req, &iov, 1, NULL, 0);
+      return;
+    }
+
+    if (in_bufsz != sizeof(msg)) {
+      fuse_reply_err(req, EINVAL);
+      return;
+    }
+
+    memcpy(&msg, in_buf, sizeof(msg));
+
+    if (cmd == RSHIM_IOC_WRITE) {
+      pthread_mutex_lock(&bd->mutex);
+      rc = bd->write_rshim(bd,
+                           (msg.addr >> 16) & 0xF, /* channel # */
+                           msg.addr & 0xFFFF, /* addr */
+                           msg.data);
+      pthread_mutex_unlock(&bd->mutex);
+    } else {
+      if (!out_bufsz) {
+        fuse_reply_ioctl_retry(req, &iov, 1, &iov, 1);
+        return;
+      }
+
+      pthread_mutex_lock(&bd->mutex);
+      rc = bd->read_rshim(bd,
+                           (msg.addr >> 16) & 0xF, /* channel # */
+                           msg.addr & 0xFFFF, /* addr */
+                           &msg.data);
+      pthread_mutex_unlock(&bd->mutex);
+    }
+
+    if (!rc)
+      fuse_reply_ioctl(req, 0, &msg, sizeof(msg));
+    else
+      fuse_reply_err(req, rc);
+    break;
+
+  default:
+    fuse_reply_err(req, ENOSYS);
+    break;
+  }
+}
+#endif
+#ifdef HAVE_RSHIM_CUSE
+static int rshim_rshim_ioctl(struct cuse_dev *cdev, int fflags,
+                             unsigned long cmd, void *peer_data)
+{
+  struct rshim_backend *bd = cuse_dev_get_priv0(cdev);
+  int rc, retval = CUSE_ERR_INVALID;
+  rshim_ioctl_msg msg;
+  uint64_t data;
+
+  pthread_mutex_lock(&bd->mutex);
+
+  switch (cmd) {
+  case RSHIM_IOC_READ:
+    retval = cuse_copy_in(peer_data, &msg, sizeof(msg));
+    if (retval == CUSE_ERR_NONE) {
+      data = msg.data;
+      rc = bd->read_rshim(bd,
+                           (msg.addr >> 16) & 0xF, /* channel # */
+                           msg.addr & 0xFFFF, /* addr */
+                           &data);
+      if (!rc)
+        retval = cuse_copy_out(&msg, peer_data, sizeof(msg));
+      else
+        retval = CUSE_ERR_INVALID;
+    }
+    break;
+
+  case RSHIM_IOC_WRITE:
+    retval = cuse_copy_in(peer_data, &msg, sizeof(msg));
+
+    rc = bd->write_rshim(bd,
+                         (msg.addr >> 16) & 0xF, /* channel # */
+                         msg.addr & 0xFFFF, /* addr */
+                         msg.data);
+    if (rc)
+      retval = CUSE_ERR_INVALID;
+    break;
+
+  default:
+    break;
+  }
+
+  pthread_mutex_unlock(&bd->mutex);
+  return retval;
+}
+#endif
+
+#ifdef HAVE_RSHIM_FUSE
+static const struct cuse_lowlevel_ops rshim_rshim_fops = {
+  .open = rshim_misc_open,
+  .ioctl = rshim_rshim_ioctl,
+  .release = rshim_misc_release,
+};
+#endif
+#ifdef HAVE_RSHIM_CUSE
+static const struct cuse_methods rshim_rshim_fops = {
+  .cm_open = rshim_misc_open,
+  .cm_ioctl = rshim_rshim_ioctl,
+  .cm_close = rshim_misc_release,
+};
+#endif
+
 #ifdef HAVE_RSHIM_CUSE
 static void
 cuse_hup(int sig)
@@ -2811,9 +2793,9 @@ static int rshim_fs_init(struct rshim_backend *bd)
   pthread_t thread;
   const char *bufp = buf;
 #ifdef HAVE_RSHIM_FUSE
-  struct cuse_info ci = { .dev_info_argc = 1,
-                          .dev_info_argv = &bufp,
-                          .flags = CUSE_UNRESTRICTED_IOCTL };
+  struct cuse_info ci = {.dev_info_argc = 1,
+                         .dev_info_argv = &bufp,
+                         .flags = CUSE_UNRESTRICTED_IOCTL};
   const struct cuse_lowlevel_ops *ops[RSH_DEV_TYPES] =
 #endif
 #ifdef HAVE_RSHIM_CUSE
