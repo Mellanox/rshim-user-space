@@ -56,11 +56,9 @@ static void rshim_usb_delete(struct rshim_backend *bd)
 {
   struct rshim_usb *dev = container_of(bd, struct rshim_usb, bd);
 
+  printf("rshim_usb_delete\n");
+
   rshim_deregister(bd);
-
-  if (dev->handle)
-    libusb_close(dev->handle);
-
   free(dev);
 }
 
@@ -212,7 +210,7 @@ static void rshim_usb_fifo_read_callback(struct libusb_transfer *urb)
       dev->read_or_intr_retries++;
       rc = libusb_submit_transfer(urb);
       if (rc) {
-        RSHIM_ERR("fifo_read_callback: resubmitted urb but got error %d\n", rc);
+        RSHIM_DBG("fifo_read_callback: resubmitted urb but got error %d\n", rc);
         /*
          * In this case, we won't try again; signal the
          * error to upper layers.
@@ -391,7 +389,7 @@ static int rshim_usb_fifo_write(struct rshim_usb *dev, const char *buffer,
   rc = libusb_submit_transfer(dev->write_urb);
   if (rc) {
     bd->spin_flags &= ~RSH_SFLG_WRITING;
-    RSHIM_ERR("usb_fifo_write: failed submitting write urb, error %d\n", rc);
+    RSHIM_DBG("usb_fifo_write: failed submitting write urb, error %d\n", rc);
     return -1;
   }
 
@@ -531,20 +529,18 @@ static int rshim_usb_probe(libusb_context *ctx, libusb_device *usb_dev)
   /* Find the backend. */
   bd = rshim_find_by_name(usb_dev_name);
   if (bd) {
-    RSHIM_DBG("Found usb backend\n");
+    RSHIM_INFO("Found usb backend\n");
     dev = container_of(bd, struct rshim_usb, bd);
     free(usb_dev_name);
     usb_dev_name = NULL;
   } else {
-    RSHIM_DBG("Create new usb backend\n");
+    RSHIM_INFO("Create new USB backend\n");
     dev = calloc(1, sizeof(*dev));
     if (dev == NULL) {
       RSHIM_ERR("couldn't get memory for new device");
       rshim_unlock();
       goto error;
     }
-
-    dev->handle = handle;
 
     bd = &dev->bd;
     bd->dev_name = usb_dev_name;
@@ -560,24 +556,14 @@ static int rshim_usb_probe(libusb_context *ctx, libusb_device *usb_dev)
     pthread_mutex_init(&bd->mutex, NULL);
   }
 
-  /*
-   * It would seem more logical to allocate these above when we create
-   * a new rshim_usb structure, but we don't want to do it until we've
-   * upped the usb device reference count.
-   */
-  allocfail |= rshim_fifo_alloc(bd);
-
-  if (!bd->read_buf)
-    bd->read_buf = calloc(1, READ_BUF_SIZE);
+  dev->handle = handle;
+  rshim_ref(bd);
 
   if (!dev->intr_buf) {
     dev->intr_buf = calloc(1, sizeof(*dev->intr_buf));
     if (dev->intr_buf != NULL)
       *dev->intr_buf = 0;
   }
-
-  if (!bd->write_buf)
-    bd->write_buf = calloc(1, WRITE_BUF_SIZE);
 
   if (!dev->read_or_intr_urb)
     dev->read_or_intr_urb = libusb_alloc_transfer(0);
@@ -701,22 +687,15 @@ error:
   if (dev) {
     libusb_free_transfer(dev->read_or_intr_urb);
     dev->read_or_intr_urb = NULL;
+
     libusb_free_transfer(dev->write_urb);
     dev->write_urb = NULL;
-
-    free(dev->bd.read_buf);
-    dev->bd.read_buf = NULL;
-
-    free(dev->bd.write_buf);
-    dev->bd.write_buf = NULL;
-
-    rshim_fifo_free(&dev->bd);
 
     free(dev->intr_buf);
     dev->intr_buf = NULL;
 
     rshim_lock();
-    rshim_usb_delete(&dev->bd);
+    rshim_deref(bd);
     rshim_unlock();
   }
 
@@ -773,22 +752,12 @@ static void rshim_usb_disconnect(struct libusb_device *usb_dev)
   bd->has_cons_work = 0;
 
   libusb_cancel_transfer(dev->read_or_intr_urb);
-//  libusb_free_transfer(dev->read_or_intr_urb);
   dev->read_or_intr_urb = NULL;
   libusb_cancel_transfer(dev->write_urb);
-//  libusb_free_transfer(dev->write_urb);
   dev->write_urb = NULL;
-
-  free(bd->read_buf);
-  bd->read_buf = NULL;
 
   free(dev->intr_buf);
   dev->intr_buf = NULL;
-
-  free(bd->write_buf);
-  bd->write_buf = NULL;
-
-  rshim_fifo_free(bd);
 
   if (!bd->has_rshim && !bd->has_tm)
     RSHIM_INFO("USB disconnected\n");
@@ -797,8 +766,13 @@ static void rshim_usb_disconnect(struct libusb_device *usb_dev)
 
   pthread_mutex_unlock(&bd->mutex);
 
+  if (dev->handle) {
+    libusb_close(dev->handle);
+    dev->handle = NULL;
+  }
+
   rshim_lock();
-  rshim_usb_delete(bd);
+  rshim_deref(bd);
   rshim_unlock();
 }
 

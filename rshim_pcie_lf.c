@@ -427,7 +427,7 @@ static void rshim_pcie_delete(struct rshim_backend *bd)
 static int rshim_pcie_probe(struct pci_dev *pci_dev)
 {
   const int max_name_len = 64;
-  int ret, allocfail = 0;
+  int ret;
   struct rshim_backend *bd;
   struct rshim_pcie *dev;
   char *pcie_dev_name;
@@ -464,30 +464,7 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
     pthread_mutex_init(&bd->mutex, NULL);
   }
 
-  ret = rshim_fifo_alloc(bd);
-  if (ret) {
-    rshim_unlock();
-    RSHIM_ERR("Failed to allocate fifo\n");
-    ret = -ENOMEM;
-    goto error;
-  }
-
-  allocfail |= rshim_fifo_alloc(bd);
-
-  if (!bd->read_buf)
-    bd->read_buf = calloc(1, READ_BUF_SIZE);
-  allocfail |= bd->read_buf == 0;
-
-  if (!bd->write_buf)
-    bd->write_buf = calloc(1, WRITE_BUF_SIZE);
-  allocfail |= bd->write_buf == 0;
-
-  if (allocfail) {
-    rshim_unlock();
-    RSHIM_ERR("can't allocate buffers\n");
-    ret = -ENOMEM;
-    goto error;
-  }
+  rshim_ref(bd);
 
   rshim_unlock();
 
@@ -520,8 +497,11 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
 
   return 0;
 
- rshim_map_failed:
- error:
+rshim_map_failed:
+  rshim_lock();
+  rshim_deref(bd);
+  rshim_unlock();
+error:
    free(pcie_dev_name);
    return ret;
 }
@@ -531,6 +511,7 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
 static void rshim_pcie_remove(struct pci_dev *pci_dev)
 {
   struct rshim_pcie *dev = dev_get_drvdata(&pci_dev->dev);
+  struct rshim_backend *bd = &dev->bd;
   int rc, flush_wq;
 
   /*
@@ -539,32 +520,29 @@ static void rshim_pcie_remove(struct pci_dev *pci_dev)
    * values that don't match the new BAR0 address that is assigned to
    * the PCIe ports, causing host MMIO access to RShim to fail.
    */
-  rc = rshim_pcie_write(&dev->bd, (RSH_SWINT >> 16) & 0xF,
+  rc = rshim_pcie_write(bd, (RSH_SWINT >> 16) & 0xF,
                         RSH_SWINT & 0xFFFF, RSH_INT_VEC0_RTC__SWINT3_MASK);
   if (rc)
     ERROR("RShim write failed");
 
   /* Clear the flags before deleting the backend. */
-  dev->bd.has_rshim = 0;
-  dev->bd.has_tm = 0;
+  bd->has_rshim = 0;
+  bd->has_tm = 0;
 
-  rshim_notify(&dev->bd, RSH_EVENT_DETACH, 0);
-  mutex_lock(&dev->bd.mutex);
-  flush_wq = !cancel_delayed_work(&dev->bd.work);
+  rshim_notify(bd, RSH_EVENT_DETACH, 0);
+  mutex_lock(bd->mutex);
+  flush_wq = !cancel_delayed_work(bd->work);
   if (flush_wq)
     flush_workqueue(rshim_wq);
-  dev->bd.has_cons_work = 0;
-  kfree(dev->bd.read_buf);
-  kfree(dev->bd.write_buf);
-  rshim_fifo_free(&dev->bd);
-  mutex_unlock(&dev->bd.mutex);
-
-  rshim_lock();
-  kref_put(&dev->bd.kref, rshim_pcie_delete);
-  rshim_unlock();
+  bd->has_cons_work = 0;
+  mutex_unlock(&bd->mutex);
 
   pci_disable_device(pci_dev);
   dev_set_drvdata(&pci_dev->dev, NULL);
+
+  rshim_lock();
+  rshim_deref(bd);
+  rshim_unlock();
 }
 #endif
 

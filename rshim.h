@@ -195,6 +195,9 @@ struct rshim_backend {
   uint32_t peer_mac_set : 1;      /* A flag to send MAC-set request. */
   uint32_t peer_pxe_id_set : 1;   /* A flag to send pxe-id-set request. */
 
+  /* reference count. */
+  volatile int ref;
+
   /* Last keepalive time. */
   int last_keepalive;
 
@@ -427,6 +430,10 @@ static inline void rshim_net_tx(struct rshim_backend *bd)
 {
 }
 #endif
+
+void rshim_ref(struct rshim_backend *bd);
+
+void rshim_deref(struct rshim_backend *bd);
 
 /* USB backend APIs. */
 void* rshim_usb_init(int epoll_fd);

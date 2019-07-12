@@ -231,7 +231,7 @@ static void rshim_pcie_delete(struct rshim_backend *bd)
 static int rshim_pcie_probe(struct pci_dev *pci_dev)
 {
   const int max_name_len = 64;
-  int ret, allocfail = 0;
+  int ret;
   struct rshim_backend *bd;
   struct rshim_pcie *dev;
   char *pcie_dev_name;
@@ -270,32 +270,7 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
     pthread_mutex_init(&bd->mutex, NULL);
   }
 
-  ret = rshim_fifo_alloc(bd);
-  if (ret) {
-    rshim_unlock();
-    RSHIM_ERR("Failed to allocate fifo\n");
-    ret = -ENOMEM;
-    goto enable_failed;
-  }
-
-  allocfail |= rshim_fifo_alloc(bd);
-
-  if (!bd->read_buf) {
-    bd->read_buf = calloc(1, READ_BUF_SIZE);
-  }
-  allocfail |= bd->read_buf == 0;
-
-  if (!bd->write_buf) {
-    bd->write_buf = calloc(1, WRITE_BUF_SIZE);
-  }
-  allocfail |= bd->write_buf == 0;
-
-  if (allocfail) {
-    rshim_unlock();
-    RSHIM_ERR("can't allocate buffers");
-    ret = -ENOMEM;
-    goto enable_failed;
-  }
+  rshim_ref(bd);
 
   rshim_unlock();
 
@@ -383,6 +358,7 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
  rshim_map_failed:
  enable_failed:
    rshim_lock();
+   rshim_deref(bd);
    rshim_unlock();
  error:
    free(pcie_dev_name);
@@ -422,13 +398,10 @@ static void rshim_pcie_remove(struct pci_dev *pci_dev)
   if (flush_wq)
     flush_workqueue(rshim_wq);
   dev->bd.has_cons_work = 0;
-  kfree(dev->bd.read_buf);
-  kfree(dev->bd.write_buf);
-  rshim_fifo_free(&dev->bd);
   pthread_mutex_unlock(&dev->bd.mutex);
 
   rshim_lock();
-  kref_put(&dev->bd.kref, rshim_pcie_delete);
+  rshim_deref(bd);
   rshim_unlock();
 }
 #endif
