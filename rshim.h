@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: (BSD-3-Clause OR GPL-2.0)
+/* SPDX-License-Identifier: (BSD-3-Clause OR GPL-2.0) */
 /*
  * Copyright 2019 Mellanox Technologies. All Rights Reserved.
  *
@@ -146,8 +146,7 @@ struct rshim_fifo {
 
 /* RShim network packet. */
 #define ETH_PKT_SIZE 1536
-typedef struct
-{
+typedef struct {
   rshim_tmfifo_msg_hdr_t hdr;   /* message header */
   char buf[ETH_PKT_SIZE];       /* packet buffer */
 } rshim_net_pkt_t;
@@ -354,22 +353,6 @@ extern int rshim_epoll_fd;
 
 /* Common APIs. */
 
-#if 0
-#ifdef __LP64__
-static inline uint64_t readq(volatile void *addr)
-{
-  __sync_synchronize();
-  return *(volatile uint64_t *)addr;
-}
-
-static inline void writeq(uint64_t value, volatile void *addr)
-{
-  *(volatile uint64_t *)addr = value;
-  __sync_synchronize();
-}
-#endif
-#endif
-
 /* Register/unregister backend. */
 int rshim_register(struct rshim_backend *bd);
 void rshim_deregister(struct rshim_backend *bd);
@@ -436,7 +419,7 @@ void rshim_ref(struct rshim_backend *bd);
 void rshim_deref(struct rshim_backend *bd);
 
 /* USB backend APIs. */
-void* rshim_usb_init(int epoll_fd);
+void *rshim_usb_init(int epoll_fd);
 void rshim_usb_poll(void *ctx);
 void rshim_usb_exit(void);
 

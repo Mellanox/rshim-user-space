@@ -24,7 +24,7 @@
 struct rshim_usb {
   /* RShim backend structure. */
   struct rshim_backend bd;
-  
+
   libusb_device_handle *handle;
 
   /* Control data. */
@@ -56,7 +56,7 @@ static void rshim_usb_delete(struct rshim_backend *bd)
 {
   struct rshim_usb *dev = container_of(bd, struct rshim_usb, bd);
 
-  printf("rshim_usb_delete\n");
+  RSHIM_INFO("rshim USB deleted\n");
 
   rshim_deregister(bd);
   free(dev);
@@ -350,20 +350,20 @@ static void rshim_usb_fifo_write_callback(struct libusb_transfer *urb)
       break;
     }
 
-    case LIBUSB_TRANSFER_CANCELLED:
-      break;
+  case LIBUSB_TRANSFER_CANCELLED:
+    break;
 
-    default:
-      /*
-       * We got some error we don't know how to handle, or we got
-       * too many errors.  Either way we don't retry any more,
-       * but we signal the error to upper layers.
-       */
-      RSHIM_ERR("usb_fifo_write_callback: urb completed abnormally %d\n",
-                urb->status);
-      rshim_notify(bd, RSH_EVENT_FIFO_ERR,
-                   urb->status > 0 ? -urb->status : urb->status);
-      break;
+  default:
+    /*
+     * We got some error we don't know how to handle, or we got
+     * too many errors.  Either way we don't retry any more,
+     * but we signal the error to upper layers.
+     */
+    RSHIM_ERR("usb_fifo_write_callback: urb completed abnormally %d\n",
+              urb->status);
+    rshim_notify(bd, RSH_EVENT_FIFO_ERR,
+                 urb->status > 0 ? -urb->status : urb->status);
+    break;
   }
 
   pthread_mutex_unlock(&bd->ringlock);
@@ -804,7 +804,7 @@ static int rshim_hotplug_callback(struct libusb_context *ctx,
 
 static int rshim_usb_add_poll(int epoll_fd, libusb_context *ctx)
 {
-  const struct libusb_pollfd** usb_pollfd = libusb_get_pollfds(ctx);
+  const struct libusb_pollfd **usb_pollfd = libusb_get_pollfds(ctx);
   struct epoll_event event;
   int i = 0, rc = -ENODEV;
 
@@ -813,14 +813,14 @@ static int rshim_usb_add_poll(int epoll_fd, libusb_context *ctx)
 
   memset(&event, 0, sizeof(event));
 
-  while(usb_pollfd[i]) {
+  while (usb_pollfd[i]) {
     event.data.fd = usb_pollfd[i]->fd;
     event.events = 0;
 
 #define	RSHIM_CONVERT(flag) do { \
   if (usb_pollfd[i]->events & flag) \
     event.events |= E##flag; \
-} while(0)
+} while (0)
 
   RSHIM_CONVERT(POLLIN);
   RSHIM_CONVERT(POLLOUT);
@@ -849,7 +849,7 @@ static int rshim_usb_add_poll(int epoll_fd, libusb_context *ctx)
   return rc;
 }
 
-void* rshim_usb_init(int epoll_fd)
+void *rshim_usb_init(int epoll_fd)
 {
   libusb_device **devs, *dev;
   libusb_context *ctx = NULL;

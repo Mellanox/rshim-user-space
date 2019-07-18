@@ -506,7 +506,7 @@ error:
    return ret;
 }
 
-#if 0
+#if TBD
 /* Called via pci_unregister_driver() when the module is removed. */
 static void rshim_pcie_remove(struct pci_dev *pci_dev)
 {

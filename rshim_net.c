@@ -30,8 +30,7 @@ static int rshim_if_set_non_blocking(int fd)
   int flags, err;
 
   flags = fcntl(fd, F_GETFL, 0);
-  if (flags == -1)
-  {
+  if (flags == -1) {
     RSHIM_ERR("fcntl");
     return -1;
   }
@@ -48,7 +47,7 @@ static int rshim_if_set_non_blocking(int fd)
 
 #ifdef __linux__
 /* Open tun/tap interface. */
-static int rshim_if_open(char* ifname, int index)
+static int rshim_if_open(char *ifname, int index)
 {
   struct ifreq ifr;
   int s, fd;
@@ -65,8 +64,7 @@ static int rshim_if_open(char* ifname, int index)
   ifr.ifr_flags = IFF_TAP | IFF_NO_PI;
   strncpy(ifr.ifr_name, ifname, IFNAMSIZ);
 
-  if (ioctl(fd, TUNSETIFF, (void *) &ifr) < 0)
-  {
+  if (ioctl(fd, TUNSETIFF, (void *) &ifr) < 0) {
     RSHIM_ERR("ioctl failed: %m");
     close(fd);
     return -1;
@@ -82,15 +80,13 @@ static int rshim_if_open(char* ifname, int index)
   }
 
   s = socket(AF_INET, SOCK_DGRAM, 0);
-  if (s < 0)
-  {
+  if (s < 0) {
     RSHIM_ERR("socket failed: %m");
     close(fd);
     return -1;
   }
 
-  if (ioctl(s, SIOCGIFFLAGS, &ifr) >= 0)
-  {
+  if (ioctl(s, SIOCGIFFLAGS, &ifr) >= 0) {
     ifr.ifr_flags |= IFF_UP;
     ioctl(s, SIOCSIFFLAGS, &ifr);
   }
@@ -101,7 +97,7 @@ static int rshim_if_open(char* ifname, int index)
 }
 #elif defined(__FreeBSD__)
 /* Open tun/tap interface. */
-static int rshim_if_open(char* ifname, int index)
+static int rshim_if_open(char *ifname, int index)
 {
   struct ifreq ifr;
   int s, fd;
@@ -191,12 +187,12 @@ static int rshim_if_open(char* ifname, int index)
 #error "Unsupported platform"
 #endif
 
-static int rshim_if_read(int fd, char* buf, size_t len)
+static int rshim_if_read(int fd, char *buf, size_t len)
 {
   return read(fd, buf, len);
 }
 
-static int rshim_if_write(int fd, const char* buf, size_t len)
+static int rshim_if_write(int fd, const char *buf, size_t len)
 {
   return write(fd, buf, len);
 }
@@ -204,8 +200,7 @@ static int rshim_if_write(int fd, const char* buf, size_t len)
 #ifdef __linux__
 static void rshim_if_close(int fd)
 {
-  if (fd >= 0)
-  {
+  if (fd >= 0) {
     ioctl(fd, TUNSETPERSIST, 0);
     close(fd);
   }
@@ -302,7 +297,7 @@ int rshim_net_del(struct rshim_backend *bd)
 
   rshim_if_close(bd->net_fd);
   bd->net_fd = -1;
-  return (0);
+  return 0;
 }
 
 void rshim_net_rx(struct rshim_backend *bd)

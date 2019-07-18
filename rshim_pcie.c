@@ -31,7 +31,6 @@
 /* The size the RShim region. */
 #define PCI_RSHIM_WINDOW_SIZE       0x100000
 
-#if 1
 static inline uint64_t
 readq(const volatile void *addr)
 {
@@ -43,7 +42,6 @@ writeq(uint64_t value, volatile void *addr)
 {
   *(volatile uint64_t *)addr = value;
 }
-#endif
 
 struct rshim_pcie {
   /* RShim backend structure. */
@@ -289,7 +287,8 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
   bar0 = (pci_dev->base_addr[0] & PCI_BASE_ADDRESS_MEM_MASK) &
          ~(getpagesize() - 1);
   dev->rshim_regs = mmap(NULL, PCI_RSHIM_WINDOW_SIZE, PROT_READ | PROT_WRITE,
-                         MAP_SHARED, dev->pci_fd, bar0 + PCI_RSHIM_WINDOW_OFFSET);
+                         MAP_SHARED, dev->pci_fd,
+                         bar0 + PCI_RSHIM_WINDOW_OFFSET);
   if (dev->rshim_regs == MAP_FAILED) {
     RSHIM_ERR("Failed to map RShim registers\n");
     ret = -ENOMEM;
@@ -365,7 +364,7 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
    return ret;
 }
 
-#if 0
+#if TBD
 /* Called via pci_unregister_driver() when the module is removed. */
 static void rshim_pcie_remove(struct pci_dev *pci_dev)
 {
@@ -387,7 +386,7 @@ static void rshim_pcie_remove(struct pci_dev *pci_dev)
   /* Clear the flags before unmapping rshim registers to avoid race. */
   dev->bd.has_rshim = 0;
   dev->bd.has_tm = 0;
-  mb();
+  __sync_synchronize();
 
   if (dev->rshim_regs)
     iounmap(dev->rshim_regs);
