@@ -1,5 +1,5 @@
-/* SPDX-License-Identifier: (BSD-3-Clause OR GPL-2.0)
- *
+// SPDX-License-Identifier: (BSD-3-Clause OR GPL-2.0)
+/*
  * Copyright 2019 Mellanox Technologies. All Rights Reserved.
  *
  */
@@ -529,12 +529,12 @@ static int rshim_usb_probe(libusb_context *ctx, libusb_device *usb_dev)
   /* Find the backend. */
   bd = rshim_find_by_name(usb_dev_name);
   if (bd) {
-    RSHIM_INFO("Found usb backend\n");
+    RSHIM_INFO("Found USB backend\n");
     dev = container_of(bd, struct rshim_usb, bd);
     free(usb_dev_name);
     usb_dev_name = NULL;
   } else {
-    RSHIM_INFO("Create new USB backend\n");
+    RSHIM_INFO("Create USB backend\n");
     dev = calloc(1, sizeof(*dev));
     if (dev == NULL) {
       RSHIM_ERR("couldn't get memory for new device");
