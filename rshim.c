@@ -2535,6 +2535,11 @@ static void rshim_rshim_ioctl(fuse_req_t req, int cmd, void *arg,
       return;
     }
 
+    if (!out_bufsz) {
+      fuse_reply_ioctl_retry(req, &iov, 1, &iov, 1);
+      return;
+    }
+
     memcpy(&msg, in_buf, sizeof(msg));
 
     if (cmd == RSHIM_IOC_WRITE) {
@@ -2545,11 +2550,6 @@ static void rshim_rshim_ioctl(fuse_req_t req, int cmd, void *arg,
                            msg.data);
       pthread_mutex_unlock(&bd->mutex);
     } else {
-      if (!out_bufsz) {
-        fuse_reply_ioctl_retry(req, &iov, 1, &iov, 1);
-        return;
-      }
-
       pthread_mutex_lock(&bd->mutex);
       rc = bd->read_rshim(bd,
                            (msg.addr >> 16) & 0xF, /* channel # */
