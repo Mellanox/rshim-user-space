@@ -3,21 +3,44 @@
 # Copyright 2019 Mellanox Technologies. All Rights Reserved.
 #
 
-TARGET = bfrshim
+TARGET:= bfrshim
+
+PREFIX:=/usr/local
+LOCALBASE:=/usr/local
+BINDIR:=${PREFIX}/sbin
+LIBDIR:=${PREFIX}/lib
+INCDIR:=${PREFIX}/include
+MANDIR:=${PREFIX}/share/man
+CC:= cc
+INSTALL:= install
+
+CFLAGS = \
+       -O2 \
+       -I$(LOCALBASE)/include \
+       -I$(LOCALBASE)/include/libepoll-shim \
+       -D_FILE_OFFSET_BITS=64 \
+       -DHAVE_RSHIM_NET \
+       -DHAVE_RSHIM_CUSE \
+       -DHAVE_RSHIM_PCIE \
+       -DHAVE_RSHIM_PCIE_LF \
+       -g
+
+ifndef HAVE_DEBUG
+CFLAGS += -DRSHIM_LOG_ENABLE=0
+else
+CFLAGS += -DRSHIM_LOG_ENABLE=1
+endif
+
+LIBS = -L$(LOCALBASE)/lib \
+       -lpci \
+       -lepoll-shim \
+       -lusb \
+       -lcuse \
+       -lpthread
 
 .PHONY: $(TARGET) clean
 
 all: $(TARGET)
-
-CC = cc
-INC = -I/usr/local/include -I/usr/local/include/libepoll-shim
-CDEF = -D_FILE_OFFSET_BITS=64 -DRSHIM_LOG_ENABLE=1
-CDEF += -DHAVE_RSHIM_NET
-CDEF += -DHAVE_RSHIM_CUSE
-CDEF += -DHAVE_RSHIM_PCIE
-CDEF += -DHAVE_RSHIM_PCIE_LF
-CFLAGS = $(INC) $(CDEF) -Wno-pointer-sign -g
-LIBS = -L/usr/local/lib -lusb -lpci -lcuse -lpthread -lepoll-shim
 
 OBJS := $(patsubst %.c,%.o,$(wildcard *.c))
 
@@ -29,3 +52,7 @@ $(TARGET): $(OBJS)
 
 clean:
 	$(RM) $(TARGET) *.o
+
+install:
+	$(INSTALL) -d $(DESTDIR)$(BINDIR)
+	$(INSTALL) -m 755 $(TARGET) $(DESTDIR)$(BINDIR)/
