@@ -552,10 +552,10 @@ static int rshim_usb_probe(libusb_context *ctx, libusb_device *usb_dev)
     bd->read_rshim = rshim_usb_read_rshim;
     bd->write_rshim = rshim_usb_write_rshim;
     bd->has_reprobe = 1;
-    bd->dev = usb_dev;
     pthread_mutex_init(&bd->mutex, NULL);
   }
 
+  bd->dev = usb_dev;
   dev->handle = handle;
   rshim_ref(bd);
 
