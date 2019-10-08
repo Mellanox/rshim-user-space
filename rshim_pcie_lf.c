@@ -17,7 +17,8 @@
 
 /** Our Vendor/Device IDs. */
 #define TILERA_VENDOR_ID            0x15b3
-#define BLUEFIELD_DEVICE_ID         0x0211
+#define BLUEFIELD1_DEVICE_ID        0x0211
+#define BLUEFIELD2_DEVICE_ID        0x0214
 
 /* Mellanox Address & Data Capabilities */
 #define MELLANOX_ADDR               0x58
@@ -39,9 +40,7 @@
 #define TRIO_CR_GW_READ_4BYTE       0x6
 #define TRIO_CR_GW_WRITE_4BYTE      0x2
 
-/* Base RShim Address */
-#define RSH_BASE_ADDR               0x80000000
-#define RSH_CHANNEL1_BASE           0x80010000
+#define CRSPACE_RSH_CHANNEL1_BASE   0x310000
 
 struct rshim_pcie {
   /* RShim backend structure. */
@@ -95,7 +94,7 @@ static int pci_cap_write(struct pci_dev *pci_dev, int offset, uint32_t value)
 /* Acquire and release the TRIO_CR_GW_LOCK. */
 static int trio_cr_gw_lock_acquire(struct pci_dev *pci_dev)
 {
-  uint32_t read_value;
+  uint32_t read_value, retry = 0;
   int rc;
 
   /* Wait until TRIO_CR_GW_LOCK is free */
@@ -103,6 +102,9 @@ static int trio_cr_gw_lock_acquire(struct pci_dev *pci_dev)
     rc = pci_cap_read(pci_dev, TRIO_CR_GW_LOCK, &read_value);
     if (rc)
       return rc;
+
+    if (++retry > LOCK_RETRY_CNT)
+      return -ETIMEDOUT;
   } while (read_value & TRIO_CR_GW_LOCK_ACQUIRED);
 
   /* Acquire TRIO_CR_GW_LOCK */
@@ -126,9 +128,18 @@ static int trio_cr_gw_lock_release(struct pci_dev *pci_dev)
 /*
  * Mechanism to access the RShim from the CR space using the TRIO_CR_GATEWAY.
  */
-static int trio_cr_gw_read(struct pci_dev *pci_dev, int addr, uint32_t *result)
+static int crspace_rsh_gw_read(struct pci_dev *pci_dev, int addr,
+                               uint32_t *result)
 {
   int rc;
+
+  if (pci_dev->device_id == BLUEFIELD2_DEVICE_ID) {
+    addr = (addr & 0xffff) + CRSPACE_RSH_CHANNEL1_BASE;
+    rc = pci_cap_read(pci_dev, addr, result);
+    return rc;
+  }
+
+  addr += RSH_CHANNEL_BASE(RSHIM_CHANNEL);
 
   /* Acquire TRIO_CR_GW_LOCK */
   rc = trio_cr_gw_lock_acquire(pci_dev);
@@ -155,6 +166,8 @@ static int trio_cr_gw_read(struct pci_dev *pci_dev, int addr, uint32_t *result)
   if (rc)
     return rc;
 
+  *result = ntohl(*result);
+
   /* Release TRIO_CR_GW_LOCK */
   rc = trio_cr_gw_lock_release(pci_dev);
   if (rc)
@@ -163,9 +176,23 @@ static int trio_cr_gw_read(struct pci_dev *pci_dev, int addr, uint32_t *result)
   return 0;
 }
 
-static int trio_cr_gw_write(struct pci_dev *pci_dev, int addr, uint32_t value)
+static int crspace_rsh_gw_write(struct pci_dev *pci_dev, int addr,
+                                uint32_t value)
 {
   int rc;
+
+  if (pci_dev->device_id == BLUEFIELD2_DEVICE_ID) {
+    addr = (addr & 0xffff) + CRSPACE_RSH_CHANNEL1_BASE;
+    rc = pci_cap_write(pci_dev, addr, value);
+    return rc;
+  }
+
+  /*
+   * All Rshim accesses except writes to the BOOT_FIFO_DATA go through
+   * the Byte Access Widget and hence need to use the RSHIM_CHANNEL.
+   */
+  if ((addr & 0xffff) != RSH_BOOT_FIFO_DATA)
+    addr += RSH_CHANNEL_BASE(RSHIM_CHANNEL);
 
   /* Acquire TRIO_CR_GW_LOCK */
   rc = trio_cr_gw_lock_acquire(pci_dev);
@@ -173,7 +200,7 @@ static int trio_cr_gw_write(struct pci_dev *pci_dev, int addr, uint32_t value)
     return rc;
 
   /* Write 32-bit data to TRIO_CR_GW_DATA_LOWER */
-  rc = pci_cap_write(pci_dev, TRIO_CR_GW_DATA_LOWER, value);
+  rc = pci_cap_write(pci_dev, TRIO_CR_GW_DATA_LOWER, htonl(value));
   if (rc)
     return rc;
 
@@ -203,17 +230,45 @@ static int trio_cr_gw_write(struct pci_dev *pci_dev, int addr, uint32_t value)
 /* Wait until the RSH_BYTE_ACC_CTL pending bit is cleared */
 static int rshim_byte_acc_pending_wait(struct pci_dev *pci_dev)
 {
-  uint32_t read_value;
+  uint32_t read_value, retry = 0;
   int rc;
 
   do {
-    rc = trio_cr_gw_read(pci_dev, RSH_CHANNEL1_BASE + RSH_BYTE_ACC_CTL,
-                         &read_value);
+    rc = crspace_rsh_gw_read(pci_dev, RSH_BYTE_ACC_CTL, &read_value);
     if (rc)
       return rc;
-  } while (read_value & (RSH_CHANNEL1_BASE + RSH_BYTE_ACC_PENDING));
+
+    if (++retry > LOCK_RETRY_CNT)
+      return -ETIMEDOUT;
+  } while (read_value & RSH_BYTE_ACC_PENDING);
 
   return 0;
+}
+
+/* Acquire BAW Interlock */
+static int rshim_byte_acc_lock_acquire(struct pci_dev *pci_dev)
+{
+  int rc, retry = 0;
+  uint32_t read_value;
+
+  do {
+    if (++retry > LOCK_RETRY_CNT)
+      return -ETIMEDOUT;
+
+    rc = crspace_rsh_gw_read(pci_dev, RSH_BYTE_ACC_INTERLOCK,
+                             &read_value);
+    if (rc)
+      return rc;
+  } while (!(read_value & 0x1));
+
+  return 0;
+}
+
+/* Release BAW Interlock */
+static int rshim_byte_acc_lock_release(struct pci_dev *pci_dev)
+{
+  return crspace_rsh_gw_write(pci_dev,
+                              RSH_BYTE_ACC_INTERLOCK, 0);
 }
 
 /*
@@ -232,52 +287,56 @@ static int rshim_byte_acc_read(struct pci_dev *pci_dev, int addr,
   if (rc)
     return rc;
 
-  /* Write control bits to RSH_BYTE_ACC_CTL */
-  rc = trio_cr_gw_write(pci_dev, RSH_CHANNEL1_BASE + RSH_BYTE_ACC_CTL,
-                        RSH_BYTE_ACC_SIZE);
-  if (rc)
-    return rc;
+  /* Acquire RSH_BYTE_ACC_INTERLOCK */
+  if (pci_dev->device_id == BLUEFIELD2_DEVICE_ID) {
+    rc = rshim_byte_acc_lock_acquire(pci_dev);
+    if (rc)
+      return rc;
+  }
 
   /* Write target address to RSH_BYTE_ACC_ADDR */
-  rc = trio_cr_gw_write(pci_dev, RSH_CHANNEL1_BASE + RSH_BYTE_ACC_ADDR,
-        addr);
+  rc = crspace_rsh_gw_write(pci_dev, RSH_BYTE_ACC_ADDR, addr);
   if (rc)
-    return rc;
+    goto exit_read;
 
-  /* Write trigger bits to perform read */
-  rc = trio_cr_gw_write(pci_dev, RSH_CHANNEL1_BASE + RSH_BYTE_ACC_CTL,
-        RSH_BYTE_ACC_READ_TRIGGER);
+  /* Write control and trigger bits to perform read */
+  rc = crspace_rsh_gw_write(pci_dev, RSH_BYTE_ACC_CTL,
+                            RSH_BYTE_ACC_READ_TRIGGER |
+                            RSH_BYTE_ACC_SIZE_4BYTE);
   if (rc)
-    return rc;
+    goto exit_read;
 
   /* Wait for RSH_BYTE_ACC_CTL pending bit to be cleared */
   rc = rshim_byte_acc_pending_wait(pci_dev);
   if (rc)
-    return rc;
+    goto exit_read;
 
   /* Read RSH_BYTE_ACC_RDAT to read lower 32-bits of data */
-  rc = trio_cr_gw_read(pci_dev, RSH_CHANNEL1_BASE + RSH_BYTE_ACC_RDAT,
-                       &read_value);
+  rc = crspace_rsh_gw_read(pci_dev, RSH_BYTE_ACC_RDAT, &read_value);
   if (rc)
-    return rc;
+    goto exit_read;
 
-  read_result = (uint64_t)read_value << 32;
+  read_result = (uint64_t)read_value;
 
   /* Wait for RSH_BYTE_ACC_CTL pending bit to be cleared */
   rc = rshim_byte_acc_pending_wait(pci_dev);
   if (rc)
-    return rc;
+    goto exit_read;
 
   /* Read RSH_BYTE_ACC_RDAT to read upper 32-bits of data */
-  rc = trio_cr_gw_read(pci_dev, RSH_CHANNEL1_BASE + RSH_BYTE_ACC_RDAT,
-                       &read_value);
+  rc = crspace_rsh_gw_read(pci_dev, RSH_BYTE_ACC_RDAT, &read_value);
   if (rc)
-    return rc;
+    goto exit_read;
 
-  read_result |= (uint64_t)read_value;
-  *result = be64toh(read_result);
+  read_result |= ((u64)read_value << 32);
+  *result = read_result;
 
-  return 0;
+exit_read:
+  /* Release RSH_BYTE_ACC_INTERLOCK */
+  if (pci_dev->device_id == BLUEFIELD2_DEVICE_ID)
+    rc = rshim_byte_acc_lock_release(pci_dev);
+
+  return rc;
 }
 
 static int rshim_byte_acc_write(struct pci_dev *pci_dev, int addr,
@@ -285,47 +344,44 @@ static int rshim_byte_acc_write(struct pci_dev *pci_dev, int addr,
 {
   int rc;
 
-  /* Wait for RSH_BYTE_ACC_CTL pending bit to be cleared */
-  rc = rshim_byte_acc_pending_wait(pci_dev);
-  if (rc)
-    return rc;
-
-  /* Write control bits to RSH_BYTE_ACC_CTL */
-  rc = trio_cr_gw_write(pci_dev, RSH_CHANNEL1_BASE + RSH_BYTE_ACC_CTL,
-                        RSH_BYTE_ACC_SIZE);
-  if (rc)
-    return rc;
+  /* Acquire RSH_BYTE_ACC_INTERLOCK */
+  if (pci_dev->device_id == BLUEFIELD2_DEVICE_ID) {
+    rc = rshim_byte_acc_lock_acquire(pci_dev);
+    if (rc)
+      return rc;
+  }
 
   /* Write target address to RSH_BYTE_ACC_ADDR */
-  rc = trio_cr_gw_write(pci_dev, RSH_CHANNEL1_BASE + RSH_BYTE_ACC_ADDR,
-        addr);
+  rc = crspace_rsh_gw_write(pci_dev, RSH_BYTE_ACC_ADDR, addr);
   if (rc)
     return rc;
 
   /* Write control bits to RSH_BYTE_ACC_CTL */
-  rc = trio_cr_gw_write(pci_dev, RSH_CHANNEL1_BASE + RSH_BYTE_ACC_CTL,
-                        RSH_BYTE_ACC_SIZE);
+  rc = crspace_rsh_gw_write(pci_dev, RSH_BYTE_ACC_CTL, RSH_BYTE_ACC_SIZE_4BYTE);
   if (rc)
-    return rc;
+    goto exit_write;
 
   /* Write lower 32 bits of data to TRIO_CR_GW_DATA */
-  rc = trio_cr_gw_write(pci_dev, RSH_CHANNEL1_BASE + RSH_BYTE_ACC_WDAT,
-                        (uint32_t)(value >> 32));
+  rc = crspace_rsh_gw_write(pci_dev, RSH_BYTE_ACC_WDAT, (uint32_t)value);
   if (rc)
-    return rc;
+    goto exit_write;
 
   /* Wait for RSH_BYTE_ACC_CTL pending bit to be cleared */
   rc = rshim_byte_acc_pending_wait(pci_dev);
   if (rc)
-    return rc;
+    goto exit_write;
 
   /* Write upper 32 bits of data to TRIO_CR_GW_DATA */
-  rc = trio_cr_gw_write(pci_dev, RSH_CHANNEL1_BASE + RSH_BYTE_ACC_WDAT,
-                        (uint32_t)(value));
+  rc = crspace_rsh_gw_write(pci_dev, RSH_BYTE_ACC_WDAT,
+                            (uint32_t)(value >> 32));
   if (rc)
-    return rc;
+    goto exit_write;
 
-  return 0;
+exit_write:
+  /* Release RSH_BYTE_ACC_INTERLOCK */
+  if (pci_dev->device_id == BLUEFIELD2_DEVICE_ID)
+    rc = rshim_byte_acc_lock_release(pci_dev);
+  return rc;
 }
 
 /*
@@ -341,12 +397,12 @@ static int rshim_boot_fifo_write(struct pci_dev *pci_dev, int addr,
   int rc;
 
   /* Write lower 32 bits of data to RSH_BOOT_FIFO_DATA */
-  rc = trio_cr_gw_write(pci_dev, addr, (uint32_t)(value >> 32));
+  rc = crspace_rsh_gw_write(pci_dev, addr, (uint32_t)value);
   if (rc)
     return rc;
 
   /* Write upper 32 bits of data to RSH_BOOT_FIFO_DATA */
-  rc = trio_cr_gw_write(pci_dev, addr, (uint32_t)(value));
+  rc = crspace_rsh_gw_write(pci_dev, addr, (uint32_t)(value >> 32));
   if (rc)
     return rc;
 
@@ -366,13 +422,9 @@ static int rshim_pcie_read(struct rshim_backend *bd, int chan, int addr,
 
   dev->write_count = 0;
 
-  addr = RSH_BASE_ADDR + (addr | (chan << 16));
-  addr = be32toh(addr);
-
-  rc = rshim_byte_acc_read(pci_dev, addr, result);
+  rc = rshim_byte_acc_read(pci_dev, RSH_CHANNEL_BASE(chan) + addr, result);
 
   return rc;
-
 }
 
 static int rshim_pcie_write(struct rshim_backend *bd, int chan, int addr,
@@ -387,13 +439,8 @@ static int rshim_pcie_write(struct rshim_backend *bd, int chan, int addr,
   if (!bd->has_rshim)
     return -ENODEV;
 
-  addr = RSH_BASE_ADDR + (addr | (chan << 16));
-  if (!is_boot_stream)
-    addr = be32toh(addr);
-
-  value = be64toh(value);
-
   /*
+   * Limitation in BlueField-1
    * We cannot stream large numbers of PCIe writes to the RShim's BAR.
    * Instead, we must write no more than 15 8-byte words before
    * doing a read from another register within the BAR,
@@ -401,16 +448,18 @@ static int rshim_pcie_write(struct rshim_backend *bd, int chan, int addr,
    * Note that we allow a max write_count of 7 since each 8-byte
    * write is done using 2 4-byte writes in the boot fifo case.
    */
-  if (dev->write_count == 7) {
-    __sync_synchronize();
-    rshim_pcie_read(bd, chan, RSH_SCRATCHPAD, &result);
-  }
+  if (pci_dev->device_id == BLUEFIELD1_DEVICE_ID) {
+    if (dev->write_count == 7) {
+      __sync_synchronize();
+      rshim_pcie_read(bd, chan, RSH_SCRATCHPAD, &result);
+    }
   dev->write_count++;
+  }
 
   if (is_boot_stream)
-    rc = rshim_boot_fifo_write(pci_dev, addr, value);
+    rc = rshim_boot_fifo_write(pci_dev, RSH_CHANNEL_BASE(chan) + addr, value);
   else
-    rc = rshim_byte_acc_write(pci_dev, addr, value);
+    rc = rshim_byte_acc_write(pci_dev, RSH_CHANNEL_BASE(chan) + addr, value);
 
   return rc;
 }
@@ -506,46 +555,6 @@ error:
    return ret;
 }
 
-#if TBD
-/* Called via pci_unregister_driver() when the module is removed. */
-static void rshim_pcie_remove(struct pci_dev *pci_dev)
-{
-  struct rshim_pcie *dev = dev_get_drvdata(&pci_dev->dev);
-  struct rshim_backend *bd = &dev->bd;
-  int rc, flush_wq;
-
-  /*
-   * Reset TRIO_PCIE_INTFC_RX_BAR0_ADDR_MASK and TRIO_MAP_RSH_BASE.
-   * Otherwise, upon host reboot, the two registers will retain previous
-   * values that don't match the new BAR0 address that is assigned to
-   * the PCIe ports, causing host MMIO access to RShim to fail.
-   */
-  rc = rshim_pcie_write(bd, (RSH_SWINT >> 16) & 0xF,
-                        RSH_SWINT & 0xFFFF, RSH_INT_VEC0_RTC__SWINT3_MASK);
-  if (rc)
-    ERROR("RShim write failed");
-
-  /* Clear the flags before deleting the backend. */
-  bd->has_rshim = 0;
-  bd->has_tm = 0;
-
-  rshim_notify(bd, RSH_EVENT_DETACH, 0);
-  mutex_lock(bd->mutex);
-  flush_wq = !cancel_delayed_work(bd->work);
-  if (flush_wq)
-    flush_workqueue(rshim_wq);
-  bd->has_cons_work = 0;
-  mutex_unlock(&bd->mutex);
-
-  pci_disable_device(pci_dev);
-  dev_set_drvdata(&pci_dev->dev, NULL);
-
-  rshim_lock();
-  rshim_deref(bd);
-  rshim_unlock();
-}
-#endif
-
 int rshim_pcie_lf_init(void)
 {
   struct pci_access *pci;
@@ -564,7 +573,8 @@ int rshim_pcie_lf_init(void)
     pci_fill_info(dev, PCI_FILL_IDENT | PCI_FILL_BASES | PCI_FILL_CLASS);
 
     if (dev->vendor_id != TILERA_VENDOR_ID ||
-        dev->device_id != BLUEFIELD_DEVICE_ID)
+        (dev->device_id != BLUEFIELD1_DEVICE_ID &&
+         dev->device_id != BLUEFIELD2_DEVICE_ID))
       continue;
 
     rshim_pcie_probe(dev);

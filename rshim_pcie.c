@@ -27,7 +27,8 @@
 
 /* Our Vendor/Device IDs. */
 #define TILERA_VENDOR_ID            0x15b3
-#define BLUEFIELD_DEVICE_ID         0xc2d2
+#define BLUEFIELD1_DEVICE_ID        0xc2d2
+#define BLUEFIELD2_DEVICE_ID        0xc2d6
 
 /* The offset in BAR2 of the RShim region. */
 #define PCI_RSHIM_WINDOW_OFFSET     0x0
@@ -68,10 +69,10 @@ struct rshim_pcie {
   struct pci_dev *pci_dev;
 
   /* Address of the RShim registers. */
-  volatile u8 *rshim_regs;
+  volatile uint8_t *rshim_regs;
 
   /* Keep track of number of 8-byte word writes */
-  u8 write_count;
+  uint8_t write_count;
 
   /* File handle for PCI BAR */
   int pci_fd;
@@ -79,21 +80,44 @@ struct rshim_pcie {
 
 #ifndef __LP64__
 /* Wait until the RSH_BYTE_ACC_CTL pending bit is cleared */
-static int rshim_byte_acc_pending_wait(struct rshim_pcie *dev, int chan)
+static int rshim_byte_acc_pending_wait(struct rshim_pcie *dev)
 {
+  int retry = 0;
   uint32_t read_value;
 
   do {
     read_value = readl(dev->rshim_regs +
-      (RSH_BYTE_ACC_CTL | (chan << 16)));
+                       (RSH_BYTE_ACC_CTL | (RSHIM_CHANNEL << 16)));
 
-#ifdef HAVE_RSHIM_CUSE
-    if (cuse_got_peer_signal() == 0)
-      return -EINTR;
-#endif
+    if (++retry > LOCK_RETRY_CNT)
+      return -ETIMEDOUT;
+
   } while (read_value & RSH_BYTE_ACC_PENDING);
 
   return 0;
+}
+
+/* Acquire BAW Interlock */
+static int rshim_byte_acc_lock_acquire(struct rshim_pcie *dev)
+{
+  int retry = 0;
+  uint32_t read_value;
+
+  do {
+    if (++retry > LOCK_RETRY_CNT)
+      return -ETIMEDOUT;
+
+    read_value = readl(dev->rshim_regs +
+                      (RSH_BYTE_ACC_INTERLOCK | (RSHIM_CHANNEL << 16)));
+  } while (!(read_value & 0x1));
+
+  return 0;
+}
+
+/* Release BAW Interlock */
+static void rshim_byte_acc_lock_release(struct rshim_pcie *dev)
+{
+  writel(0, dev->rshim_regs + (RSH_BYTE_ACC_INTERLOCK | (RSHIM_CHANNEL << 16)));
 }
 
 /*
@@ -101,7 +125,7 @@ static int rshim_byte_acc_pending_wait(struct rshim_pcie *dev, int chan)
  * Mechanism to do an 8-byte access to the Rshim using
  * two 4-byte accesses through the Rshim Byte Access Widget.
  */
-static int rshim_byte_acc_read(struct rshim_pcie *dev, int chan, int addr,
+static int rshim_byte_acc_read(struct rshim_pcie *dev, int addr,
                                uint64_t *result)
 {
   uint64_t read_result;
@@ -109,84 +133,99 @@ static int rshim_byte_acc_read(struct rshim_pcie *dev, int chan, int addr,
   int rc;
 
   /* Wait for RSH_BYTE_ACC_CTL pending bit to be cleared */
-  rc = rshim_byte_acc_pending_wait(dev, chan);
+  rc = rshim_byte_acc_pending_wait(dev);
   if (rc)
     return rc;
 
-  /* Write control bits to RSH_BYTE_ACC_CTL */
-  writel(RSH_BYTE_ACC_SIZE, dev->rshim_regs +
-         (RSH_BYTE_ACC_CTL | (chan << 16)));
+  if (dev->pci_dev->device_id == BLUEFIELD2_DEVICE_ID) {
+    /* Acquire RSH_BYTE_ACC_INTERLOCK */
+    rc = rshim_byte_acc_lock_acquire(dev);
+    if (rc)
+      return rc;
+  }
 
   /* Write target address to RSH_BYTE_ACC_ADDR */
-  writel(addr, dev->rshim_regs + (RSH_BYTE_ACC_ADDR | (chan << 16)));
+  writel(addr, dev->rshim_regs + (RSH_BYTE_ACC_ADDR | (RSHIM_CHANNEL << 16)));
 
-  /* Write trigger bits to perform read */
-  writel(RSH_BYTE_ACC_READ_TRIGGER, dev->rshim_regs +
-         (RSH_BYTE_ACC_CTL | (chan << 16)));
+  /* Write control and trigger bits to perform read */
+  writel(RSH_BYTE_ACC_SIZE_4BYTE | RSH_BYTE_ACC_READ_TRIGGER,
+         dev->rshim_regs + (RSH_BYTE_ACC_CTL | (RSHIM_CHANNEL << 16)));
 
   /* Wait for RSH_BYTE_ACC_CTL pending bit to be cleared */
-  rc = rshim_byte_acc_pending_wait(dev, chan);
+  rc = rshim_byte_acc_pending_wait(dev);
   if (rc)
-    return rc;
+    goto exit_read;
 
   /* Read RSH_BYTE_ACC_RDAT to read lower 32-bits of data */
-  read_value = readl(dev->rshim_regs + (RSH_BYTE_ACC_RDAT | (chan << 16)));
+  read_value = readl(dev->rshim_regs +
+                     (RSH_BYTE_ACC_RDAT | (RSHIM_CHANNEL << 16)));
 
   read_result = (uint64_t)read_value << 32;
 
   /* Wait for RSH_BYTE_ACC_CTL pending bit to be cleared */
-  rc = rshim_byte_acc_pending_wait(dev, chan);
+  rc = rshim_byte_acc_pending_wait(dev);
   if (rc)
-    return rc;
+    goto exit_read;
 
   /* Read RSH_BYTE_ACC_RDAT to read upper 32-bits of data */
-  read_value = readl(dev->rshim_regs + (RSH_BYTE_ACC_RDAT | (chan << 16)));
+  read_value = readl(dev->rshim_regs +
+                     (RSH_BYTE_ACC_RDAT | (RSHIM_CHANNEL << 16)));
 
   read_result |= (uint64_t)read_value;
-#ifndef __linux__
   *result = be64toh(read_result);
-#else
-  *result = be64_to_cpu(read_result);
-#endif
 
-  return 0;
+exit_read:
+  /* Release RSH_BYTE_ACC_INTERLOCK */
+  if (dev->pci_dev->device_id == BLUEFIELD2_DEVICE_ID)
+    rshim_byte_acc_lock_release(dev);
+
+  return rc;
 }
 
-static int rshim_byte_acc_write(struct rshim_pcie *dev, int chan, int addr,
+static int rshim_byte_acc_write(struct rshim_pcie *dev, int addr,
                                 uint64_t value)
 {
   int rc;
 
   /* Wait for RSH_BYTE_ACC_CTL pending bit to be cleared */
-  rc = rshim_byte_acc_pending_wait(dev, chan);
+  rc = rshim_byte_acc_pending_wait(dev);
   if (rc)
     return rc;
 
-  /* Write control bits to RSH_BYTE_ACC_CTL */
-  writel(RSH_BYTE_ACC_SIZE, dev->rshim_regs +
-         (RSH_BYTE_ACC_CTL | (chan << 16)));
+  if (dev->pci_dev->device_id == BLUEFIELD2_DEVICE_ID) {
+    /* Acquire RSH_BYTE_ACC_INTERLOCK */
+    rc = rshim_byte_acc_lock_acquire(dev);
+    if (rc)
+      return rc;
+  }
 
   /* Write target address to RSH_BYTE_ACC_ADDR */
-  writel(addr, dev->rshim_regs + (RSH_BYTE_ACC_ADDR | (chan << 16)));
+  writel(addr, dev->rshim_regs +
+         (RSH_BYTE_ACC_ADDR | (RSHIM_CHANNEL << 16)));
 
   /* Write control bits to RSH_BYTE_ACC_CTL */
-  writel(RSH_BYTE_ACC_SIZE, dev->rshim_regs +
-         (RSH_BYTE_ACC_CTL | (chan << 16)));
+  writel(RSH_BYTE_ACC_SIZE_4BYTE, dev->rshim_regs +
+         (RSH_BYTE_ACC_CTL | (RSHIM_CHANNEL << 16)));
 
   /* Write lower 32 bits of data to TRIO_CR_GW_DATA */
   writel((uint32_t)(value >> 32), dev->rshim_regs +
-         (RSH_BYTE_ACC_WDAT | (chan << 16)));
+         (RSH_BYTE_ACC_WDAT | (RSHIM_CHANNEL << 16)));
 
   /* Wait for RSH_BYTE_ACC_CTL pending bit to be cleared */
-  rc = rshim_byte_acc_pending_wait(dev, chan);
+  rc = rshim_byte_acc_pending_wait(dev);
   if (rc)
-    return rc;
+    goto exit_write;
 
   /* Write upper 32 bits of data to TRIO_CR_GW_DATA */
   writel((uint32_t)(value), dev->rshim_regs +
-         (RSH_BYTE_ACC_WDAT | (chan << 16)));
+         (RSH_BYTE_ACC_WDAT | (RSHIM_CHANNEL << 16)));
 
-  return 0;
+exit_write:
+  /* Release RSH_BYTE_ACC_INTERLOCK */
+  if (dev->pci_dev->device_id == BLUEFIELD2_DEVICE_ID)
+    rshim_byte_acc_lock_release(dev);
+
+  return rc;
 }
 #endif
 
@@ -203,7 +242,7 @@ static int rshim_pcie_read(struct rshim_backend *bd, int chan, int addr,
   dev->write_count = 0;
 
 #ifndef __LP64__
-  rc = rshim_byte_acc_read(dev, chan, addr, result);
+  rc = rshim_byte_acc_read(dev, RSH_CHANNEL_BASE(chan) + addr, result);
 #else
   *result = readq(dev->rshim_regs + (addr | (chan << 16)));
 #endif
@@ -226,13 +265,15 @@ static int rshim_pcie_write(struct rshim_backend *bd, int chan, int addr,
    * doing a read from another register within the BAR,
    * which forces previous writes to drain.
    */
-  if (dev->write_count == 15) {
-    __sync_synchronize();
-    rshim_pcie_read(bd, chan, RSH_SCRATCHPAD, &result);
+  if (dev->pci_dev->device_id == BLUEFIELD1_DEVICE_ID) {
+    if (dev->write_count == 15) {
+      __sync_synchronize();
+      rshim_pcie_read(bd, chan, RSH_SCRATCHPAD, &result);
+    }
+    dev->write_count++;
   }
-  dev->write_count++;
 #ifndef __LP64__
-  rc = rshim_byte_acc_write(dev, chan, addr, value);
+  rc = rshim_byte_acc_write(dev, RSH_CHANNEL_BASE(chan) + addr, value);
 #else
   writeq(value, dev->rshim_regs + (addr | (chan << 16)));
 #endif
@@ -387,47 +428,6 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
    return ret;
 }
 
-#if TBD
-/* Called via pci_unregister_driver() when the module is removed. */
-static void rshim_pcie_remove(struct pci_dev *pci_dev)
-{
-  struct rshim_pcie *dev = dev_get_drvdata(&pci_dev->dev);
-  int flush_wq;
-
-  if (!dev)
-    return;
-
-  /*
-   * Reset TRIO_PCIE_INTFC_RX_BAR0_ADDR_MASK and TRIO_MAP_RSH_BASE.
-   * Otherwise, upon host reboot, the two registers will retain previous
-   * values that don't match the new BAR0 address that is assigned to
-   * the PCIe ports, causing host MMIO access to RShim to fail.
-   */
-  rshim_pcie_write(&dev->bd, (RSH_SWINT >> 16) & 0xF,
-                   RSH_SWINT & 0xFFFF, RSH_INT_VEC0_RTC__SWINT3_MASK);
-
-  /* Clear the flags before unmapping rshim registers to avoid race. */
-  dev->bd.has_rshim = 0;
-  dev->bd.has_tm = 0;
-  __sync_synchronize();
-
-  if (dev->rshim_regs)
-    iounmap(dev->rshim_regs);
-
-  rshim_notify(&dev->bd, RSH_EVENT_DETACH, 0);
-  pthread_mutex_lock(&dev->bd.mutex);
-  flush_wq = !cancel_delayed_work(&dev->bd.work);
-  if (flush_wq)
-    flush_workqueue(rshim_wq);
-  dev->bd.has_cons_work = 0;
-  pthread_mutex_unlock(&dev->bd.mutex);
-
-  rshim_lock();
-  rshim_deref(bd);
-  rshim_unlock();
-}
-#endif
-
 int rshim_pcie_init(void)
 {
   struct pci_access *pci;
@@ -446,7 +446,8 @@ int rshim_pcie_init(void)
     pci_fill_info(dev, PCI_FILL_IDENT | PCI_FILL_BASES | PCI_FILL_CLASS);
 
     if (dev->vendor_id != TILERA_VENDOR_ID ||
-        dev->device_id != BLUEFIELD_DEVICE_ID)
+        (dev->device_id != BLUEFIELD1_DEVICE_ID &&
+         dev->device_id != BLUEFIELD2_DEVICE_ID))
       continue;
 
     rshim_pcie_probe(dev);

@@ -1023,7 +1023,7 @@ static int rshim_fifo_ctrl_tx(struct rshim_backend *bd)
     rshim_fifo_ctrl_update_checksum(&hdr);
     memcpy(bd->write_buf, &hdr.data, sizeof(hdr.data));
     len = sizeof(hdr.data);
-  }else if (bd->peer_ctrl_req) {
+  } else if (bd->peer_ctrl_req) {
     bd->peer_ctrl_req = 0;
     hdr.data = 0;
     hdr.type = TMFIFO_MSG_CTRL_REQ;
@@ -2495,7 +2495,8 @@ static int rshim_misc_write(struct cuse_dev *cdev, int fflags,
     rshim_work_signal(bd);
     pthread_mutex_unlock(&bd->mutex);
   } else if (strcmp(key, "VLAN_ID") == 0) {
-    sscanf(p, "%d %d", &vlan[0], &vlan[1]);
+    if (sscanf(p, "%d %d", &vlan[0], &vlan[1]) == EOF)
+      goto invalid;
     pthread_mutex_lock(&bd->mutex);
     bd->vlan[0] = vlan[0];
     bd->vlan[1] = vlan[1];
@@ -2503,7 +2504,7 @@ static int rshim_misc_write(struct cuse_dev *cdev, int fflags,
     bd->has_cons_work = 1;
     rshim_work_signal(bd);
     pthread_mutex_unlock(&bd->mutex);
-  }else {
+  } else {
 invalid:
 #ifdef HAVE_RSHIM_FUSE
     fuse_reply_err(req, -EINVAL);
