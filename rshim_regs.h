@@ -157,5 +157,9 @@
 
 #define RSH_BYTE_ACC_ADDR 0x4a8
 
+#define RSH_UPTIME 0x0630
+
+#define RSH_UPTIME_POR 0x0638
+
 #endif /* !defined(__DOXYGEN__) */
 #endif /* !defined(__RSHIM_REGS_H__) */

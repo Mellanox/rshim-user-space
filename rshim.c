@@ -49,6 +49,9 @@ static int rshim_sw_reset_skip;
 /* Advanced config options. */
 static int rshim_adv_cfg;
 
+/* Boot timeout in seconds. */
+static int rshim_boot_timeout = 100;
+
 #define RSH_KEEPALIVE_MAGIC_NUM 0x5089836482ULL
 
 /* Circular buffer macros. */
@@ -274,7 +277,7 @@ static void rshim_work_signal(struct rshim_backend *bd)
 static ssize_t rshim_read_default(struct rshim_backend *bd, int devtype,
                                   char *buf, size_t count)
 {
-  int retval, total = 0, avail = 0;
+  int rc, total = 0, avail = 0;
   uint64_t reg;
 
   /* Read is only supported for RShim TMFIFO. */
@@ -288,15 +291,15 @@ static ssize_t rshim_read_default(struct rshim_backend *bd, int devtype,
 
   while (total < count) {
     if (avail == 0) {
-      retval = bd->read_rshim(bd, RSHIM_CHANNEL, RSH_TM_TILE_TO_HOST_STS, &reg);
-      if (retval < 0)
+      rc = bd->read_rshim(bd, RSHIM_CHANNEL, RSH_TM_TILE_TO_HOST_STS, &reg);
+      if (rc < 0)
         break;
       avail = reg & RSH_TM_TILE_TO_HOST_STS__COUNT_MASK;
       if (avail == 0)
         break;
     }
-    retval = bd->read_rshim(bd, RSHIM_CHANNEL, RSH_TM_TILE_TO_HOST_DATA, &reg);
-    if (retval < 0)
+    rc = bd->read_rshim(bd, RSHIM_CHANNEL, RSH_TM_TILE_TO_HOST_DATA, &reg);
+    if (rc < 0)
       break;
 
     /*
@@ -333,7 +336,7 @@ static ssize_t rshim_write_delayed(struct rshim_backend *bd, int devtype,
   uint64_t reg;
   char pad_buf[sizeof(uint64_t)] = { 0 };
   int size_addr, size_mask, data_addr, max_size;
-  int retval, avail = 0, byte_cnt = 0, retry;
+  int rc, avail = 0, byte_cnt = 0, retry;
 
   switch (devtype) {
   case RSH_DEV_TYPE_TMFIFO:
@@ -342,10 +345,10 @@ static ssize_t rshim_write_delayed(struct rshim_backend *bd, int devtype,
     size_addr = RSH_TM_HOST_TO_TILE_STS;
     size_mask = RSH_TM_HOST_TO_TILE_STS__COUNT_MASK;
     data_addr = RSH_TM_HOST_TO_TILE_DATA;
-    retval = bd->read_rshim(bd, RSHIM_CHANNEL, RSH_TM_HOST_TO_TILE_CTL, &reg);
-    if (retval < 0) {
-      RSHIM_ERR("read_rshim error %d\n", retval);
-      return retval;
+    rc = bd->read_rshim(bd, RSHIM_CHANNEL, RSH_TM_HOST_TO_TILE_CTL, &reg);
+    if (rc < 0) {
+      RSHIM_ERR("read_rshim error %d\n", rc);
+      return rc;
     }
     max_size = (reg >> RSH_TM_HOST_TO_TILE_CTL__MAX_ENTRIES_SHIFT) &
                RSH_TM_HOST_TO_TILE_CTL__MAX_ENTRIES_RMASK;
@@ -377,9 +380,9 @@ static ssize_t rshim_write_delayed(struct rshim_backend *bd, int devtype,
     retry = 0;
     while (avail <= 0) {
       /* Calculate available space in words. */
-      retval = bd->read_rshim(bd, RSHIM_CHANNEL, size_addr, &reg);
-      if (retval < 0) {
-        RSHIM_ERR("read_rshim error %d\n", retval);
+      rc = bd->read_rshim(bd, RSHIM_CHANNEL, size_addr, &reg);
+      if (rc < 0) {
+        RSHIM_ERR("read_rshim error %d\n", rc);
         break;
       }
       avail = max_size - (int)(reg & size_mask) - 8;
@@ -387,10 +390,10 @@ static ssize_t rshim_write_delayed(struct rshim_backend *bd, int devtype,
         break;
 
       /*
-       * Retry 100s, or else return failure since the other side seems not
-       * to be responding.
+       * Retry or return failure if the other side is not responding
+       * after the configured time.
        */
-      if (++retry > 100000)
+      if (++retry > rshim_boot_timeout * 1000)
         return -ETIMEDOUT;
       pthread_mutex_unlock(&bd->mutex);
       usleep(1000);
@@ -403,9 +406,9 @@ static ssize_t rshim_write_delayed(struct rshim_backend *bd, int devtype,
      * receiving side should call le64toh() to convert it back.
      */
     reg = htole64(reg);
-    retval = bd->write_rshim(bd, RSHIM_CHANNEL, data_addr, reg);
-    if (retval < 0) {
-      RSHIM_ERR("write_rshim error %d\n", retval);
+    rc = bd->write_rshim(bd, RSHIM_CHANNEL, data_addr, reg);
+    if (rc < 0) {
+      RSHIM_ERR("write_rshim error %d\n", rc);
       break;
     }
     buf += sizeof(reg);
@@ -420,7 +423,7 @@ static ssize_t rshim_write_delayed(struct rshim_backend *bd, int devtype,
 static ssize_t rshim_write_default(struct rshim_backend *bd, int devtype,
                                    const char *buf, size_t count)
 {
-  int retval;
+  int rc;
 
   switch (devtype) {
   case RSH_DEV_TYPE_TMFIFO:
@@ -444,9 +447,9 @@ static ssize_t rshim_write_default(struct rshim_backend *bd, int devtype,
     bd->boot_work_buf = (char *)buf;
     rshim_work_signal(bd);
 
-    retval = pthread_cond_wait(&bd->boot_write_complete_cond, &bd->mutex);
+    rc = pthread_cond_wait(&bd->boot_write_complete_cond, &bd->mutex);
     /* Cancel the request if interrupted. */
-    if (retval)
+    if (rc)
       bd->boot_work_buf = NULL;
 
     return bd->boot_work_buf_actual_len;
@@ -469,7 +472,7 @@ static ssize_t rshim_write_default(struct rshim_backend *bd, int devtype,
  */
 static int wait_for_boot_done(struct rshim_backend *bd)
 {
-  int retval;
+  int rc;
 
   if (!bd->has_reprobe || rshim_sw_reset_skip)
     return 0;
@@ -481,13 +484,50 @@ static int wait_for_boot_done(struct rshim_backend *bd)
        * FIXME: might we want a timeout here, too?  If the reprobe takes a very
        * long time, something's probably wrong.  Maybe a couple of minutes?
        */
-      retval = pthread_cond_wait(&bd->boot_complete_cond, &bd->mutex);
-      if (retval)
-        return retval;
+      rc = pthread_cond_wait(&bd->boot_complete_cond, &bd->mutex);
+      if (rc)
+        return rc;
     }
 
     if (!bd->has_rshim)
       return -ENODEV;
+  }
+
+  return 0;
+}
+
+/*
+ * Write to the RShim reset control register.
+ */
+static int rshim_write_reset_control(struct rshim_backend *bd)
+{
+  int rc;
+  uint64_t reg, val;
+  uint8_t shift;
+
+  rc = bd->read_rshim(bd, RSHIM_CHANNEL, RSH_RESET_CONTROL, &reg);
+  if (rc < 0) {
+    RSHIM_ERR("failed to read rshim reset control error %d", rc);
+    return rc;
+  }
+
+  val = RSH_RESET_CONTROL__RESET_CHIP_VAL_KEY;
+  shift = RSH_RESET_CONTROL__RESET_CHIP_SHIFT;
+  reg &= ~((uint64_t) RSH_RESET_CONTROL__RESET_CHIP_MASK);
+  reg |= (val << shift);
+
+  /*
+   * The reset of the ARM can be blocked when the DISABLED bit
+   * is set. The big assumption is that the DISABLED bit would
+   * be hold high for a short period and only the platform code
+   * can reset that bit. Thus the ARM reset can be delayed and
+   * in theory this should not impact the behavior of the RShim
+   * driver.
+   */
+  rc = bd->write_rshim(bd, RSHIM_CHANNEL, RSH_RESET_CONTROL, reg);
+  if (rc < 0) {
+    RSHIM_ERR("failed to write rshim reset control error %d", rc);
+    return rc;
   }
 
   return 0;
@@ -587,8 +627,7 @@ static int rshim_boot_open(struct cuse_dev *cdev, int fflags)
   bd->is_boot_open = 1;
 
   /* SW reset. */
-  rc = bd->write_rshim(bd, RSHIM_CHANNEL, RSH_RESET_CONTROL,
-                       RSH_RESET_CONTROL__RESET_CHIP_VAL_KEY);
+  rc = rshim_write_reset_control(bd);
 
   /* Reset the TmFifo. */
   rshim_fifo_reset(bd);
@@ -664,7 +703,7 @@ static int rshim_boot_write(struct cuse_dev *cdev, int fflags,
   struct rshim_backend *bd = cuse_dev_get_priv0(cdev);
 #endif
   size_t bytes_written = 0, bytes_left;
-  int retval = 0, whichbuf = 0;
+  int rc = 0, whichbuf = 0;
 
   /*
    * Hardware requires that we send multiples of 8 bytes.  Ideally
@@ -696,12 +735,12 @@ static int rshim_boot_write(struct cuse_dev *cdev, int fflags,
 #endif
   }
 
-  retval = wait_for_boot_done(bd);
-  if (retval) {
-    RSHIM_ERR("boot_write: wait for boot failed, err %d\n", retval);
+  rc = wait_for_boot_done(bd);
+  if (rc) {
+    RSHIM_ERR("boot_write: wait for boot failed, err %d\n", rc);
     pthread_mutex_unlock(&bd->mutex);
 #ifdef HAVE_RSHIM_FUSE
-    fuse_reply_err(req, retval);
+    fuse_reply_err(req, rc);
     return;
 #endif
 #ifdef HAVE_RSHIM_CUSE
@@ -725,22 +764,22 @@ static int rshim_boot_write(struct cuse_dev *cdev, int fflags,
     memcpy(buf, user_buffer, buf_bytes);
 #endif
 #ifdef HAVE_RSHIM_CUSE
-   retval = cuse_copy_in(user_buffer, buf, buf_bytes);
-   if (retval < 0)
+   rc = cuse_copy_in(user_buffer, buf, buf_bytes);
+   if (rc < 0)
 	break;
 #endif
 
-    retval = bd->write(bd, RSH_DEV_TYPE_BOOT, buf, buf_bytes);
-    if (retval > 0) {
-      bytes_left -= retval;
-      user_buffer += retval;
-      bytes_written += retval;
-    } else if (retval == 0) {
+    rc = bd->write(bd, RSH_DEV_TYPE_BOOT, buf, buf_bytes);
+    if (rc > 0) {
+      bytes_left -= rc;
+      user_buffer += rc;
+      bytes_written += rc;
+    } else if (rc == 0) {
       /* Wait for some time instead of busy polling. */
       usleep(1000);
       continue;
     }
-    if (retval != buf_bytes)
+    if (rc != buf_bytes)
       break;
   }
 
@@ -766,7 +805,7 @@ static int rshim_boot_write(struct cuse_dev *cdev, int fflags,
   if (bytes_written > 0 || count == 0)
     fuse_reply_write(req, bytes_written);
   else
-    fuse_reply_err(req, retval);
+    fuse_reply_err(req, rc);
 #endif
 #ifdef HAVE_RSHIM_CUSE
   if (bytes_written > 0 || count == 0)
@@ -789,14 +828,14 @@ static int rshim_boot_release(struct cuse_dev *cdev, int fflags)
 #ifdef HAVE_RSHIM_CUSE
   struct rshim_backend *bd = cuse_dev_get_priv0(cdev);
 #endif
-  int retval;
+  int rc;
 
   /* Restore the boot mode register. */
-  retval = bd->write_rshim(bd, RSHIM_CHANNEL,
+  rc = bd->write_rshim(bd, RSHIM_CHANNEL,
                            RSH_BOOT_CONTROL,
                            RSH_BOOT_CONTROL__BOOT_MODE_VAL_EMMC);
-  if (retval)
-    RSHIM_ERR("couldn't set boot_control, err %d\n", retval);
+  if (rc)
+    RSHIM_ERR("couldn't set boot_control, err %d\n", rc);
 
   pthread_mutex_lock(&bd->mutex);
   bd->is_boot_open = 0;
@@ -935,6 +974,10 @@ static void rshim_fifo_ctrl_rx(struct rshim_backend *bd,
   case TMFIFO_MSG_MAC_2:
     memcpy(bd->peer_mac + 3, hdr->mac, 3);
     break;
+  case TMFIFO_MSG_VLAN_ID:
+    bd->vlan[0] = ntohs(hdr->vlan[0]);
+    bd->vlan[1] = ntohs(hdr->vlan[1]);
+    break;
   case TMFIFO_MSG_PXE_ID:
     bd->pxe_client_id = ntohl(hdr->pxe_id);
     /* Last info to receive, set the flag. */
@@ -971,7 +1014,16 @@ static int rshim_fifo_ctrl_tx(struct rshim_backend *bd)
     rshim_fifo_ctrl_update_checksum(&hdr);
     memcpy(bd->write_buf, &hdr.data, sizeof(hdr.data));
     len = sizeof(hdr.data);
-  } else if (bd->peer_ctrl_req) {
+  } else if (bd->peer_vlan_set) {
+    bd->peer_vlan_set = 0;
+    hdr.data = 0;
+    hdr.type = TMFIFO_MSG_VLAN_ID;
+    hdr.vlan[0] = htons(bd->vlan[0]);
+    hdr.vlan[1] = htons(bd->vlan[1]);
+    rshim_fifo_ctrl_update_checksum(&hdr);
+    memcpy(bd->write_buf, &hdr.data, sizeof(hdr.data));
+    len = sizeof(hdr.data);
+  }else if (bd->peer_ctrl_req) {
     bd->peer_ctrl_req = 0;
     hdr.data = 0;
     hdr.type = TMFIFO_MSG_CTRL_REQ;
@@ -2086,21 +2138,21 @@ static int rshim_console_ioctl(struct cuse_dev *cdev, int fflags,
                                unsigned long cmd, void *peer_data)
 {
   struct rshim_backend *bd = cuse_dev_get_priv0(cdev);
-  int retval = CUSE_ERR_INVALID;
+  int rc = CUSE_ERR_INVALID;
   int value;
 
   pthread_mutex_lock(&bd->mutex);
 
   switch (cmd) {
   case TIOCGETA:
-    retval = cuse_copy_out(&bd->cons_termios, peer_data,
+    rc = cuse_copy_out(&bd->cons_termios, peer_data,
                            sizeof(struct termios));
     break;
 
   case TIOCSETA:
   case TIOCSETAW:
   case TIOCSETAF:
-    retval = cuse_copy_in(peer_data, &bd->cons_termios,
+    rc = cuse_copy_in(peer_data, &bd->cons_termios,
                           sizeof(struct termios));
     break;
 
@@ -2108,14 +2160,14 @@ static int rshim_console_ioctl(struct cuse_dev *cdev, int fflags,
   case TIOCNXCL:
   case FIONBIO:
   case FIOASYNC:
-    retval = 0;
+    rc = 0;
     break;
 
   case FIONREAD:
     pthread_mutex_lock(&bd->ringlock);
     value = read_empty(bd, TMFIFO_CONS_CHAN) ? 0 : 1;
     pthread_mutex_unlock(&bd->ringlock);
-    retval = cuse_copy_out(&value, peer_data, sizeof(value));
+    rc = cuse_copy_out(&value, peer_data, sizeof(value));
     break;
 
   default:
@@ -2123,7 +2175,7 @@ static int rshim_console_ioctl(struct cuse_dev *cdev, int fflags,
   }
 
   pthread_mutex_unlock(&bd->mutex);
-  return retval;
+  return rc;
 }
 #endif
 
@@ -2313,7 +2365,12 @@ static int rshim_misc_read(struct cuse_dev *cdev, int fflags, void *peer_ptr,
                    mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
     p += seg;
     len -= seg;
+
     seg = snprintf(p, len, "PXE_ID    0x%08x\n", htonl(bd->pxe_client_id));
+    p += seg;
+    len -= seg;
+
+    seg = snprintf(p, len, "VLAN_ID   %d %d\n", bd->vlan[0], bd->vlan[1]);
     p += seg;
     len -= seg;
   }
@@ -2359,7 +2416,7 @@ static int rshim_misc_write(struct cuse_dev *cdev, int fflags,
   char buf[4096];
   const char *p = buf;
 #endif
-  int i, rc = 0, value = 0, mac[6];
+  int i, rc = 0, value = 0, mac[6], vlan[2] = {0};
   char key[32];
 
 #ifdef HAVE_RSHIM_FUSE
@@ -2403,10 +2460,9 @@ static int rshim_misc_write(struct cuse_dev *cdev, int fflags,
         pthread_mutex_unlock(&bd->mutex);
       }
 
+      /* SW reset. */
       pthread_mutex_lock(&bd->mutex);
-      rc = bd->write_rshim(bd, RSHIM_CHANNEL,
-                           RSH_RESET_CONTROL,
-                           RSH_RESET_CONTROL__RESET_CHIP_VAL_KEY);
+      rc = rshim_write_reset_control(bd);
       pthread_mutex_unlock(&bd->mutex);
 
       if (!bd->has_reprobe) {
@@ -2438,7 +2494,16 @@ static int rshim_misc_write(struct cuse_dev *cdev, int fflags,
     bd->has_cons_work = 1;
     rshim_work_signal(bd);
     pthread_mutex_unlock(&bd->mutex);
-  } else {
+  } else if (strcmp(key, "VLAN_ID") == 0) {
+    sscanf(p, "%d %d", &vlan[0], &vlan[1]);
+    pthread_mutex_lock(&bd->mutex);
+    bd->vlan[0] = vlan[0];
+    bd->vlan[1] = vlan[1];
+    bd->peer_vlan_set = 1;
+    bd->has_cons_work = 1;
+    rshim_work_signal(bd);
+    pthread_mutex_unlock(&bd->mutex);
+  }else {
 invalid:
 #ifdef HAVE_RSHIM_FUSE
     fuse_reply_err(req, -EINVAL);
@@ -2575,7 +2640,7 @@ static int rshim_rshim_ioctl(struct cuse_dev *cdev, int fflags,
                              unsigned long cmd, void *peer_data)
 {
   struct rshim_backend *bd = cuse_dev_get_priv0(cdev);
-  int rc, retval = CUSE_ERR_INVALID;
+  int rc, rc = CUSE_ERR_INVALID;
   rshim_ioctl_msg msg;
   uint64_t data;
 
@@ -2583,29 +2648,29 @@ static int rshim_rshim_ioctl(struct cuse_dev *cdev, int fflags,
 
   switch (cmd) {
   case RSHIM_IOC_READ:
-    retval = cuse_copy_in(peer_data, &msg, sizeof(msg));
-    if (retval == CUSE_ERR_NONE) {
+    rc = cuse_copy_in(peer_data, &msg, sizeof(msg));
+    if (rc == CUSE_ERR_NONE) {
       data = msg.data;
       rc = bd->read_rshim(bd,
                            (msg.addr >> 16) & 0xF, /* channel # */
                            msg.addr & 0xFFFF, /* addr */
                            &data);
       if (!rc)
-        retval = cuse_copy_out(&msg, peer_data, sizeof(msg));
+        rc = cuse_copy_out(&msg, peer_data, sizeof(msg));
       else
-        retval = CUSE_ERR_INVALID;
+        rc = CUSE_ERR_INVALID;
     }
     break;
 
   case RSHIM_IOC_WRITE:
-    retval = cuse_copy_in(peer_data, &msg, sizeof(msg));
+    rc = cuse_copy_in(peer_data, &msg, sizeof(msg));
 
     rc = bd->write_rshim(bd,
                          (msg.addr >> 16) & 0xF, /* channel # */
                          msg.addr & 0xFFFF, /* addr */
                          msg.data);
     if (rc)
-      retval = CUSE_ERR_INVALID;
+      rc = CUSE_ERR_INVALID;
     break;
 
   default:
@@ -2613,7 +2678,7 @@ static int rshim_rshim_ioctl(struct cuse_dev *cdev, int fflags,
   }
 
   pthread_mutex_unlock(&bd->mutex);
-  return retval;
+  return rc;
 }
 #endif
 
@@ -2909,11 +2974,71 @@ static void rshim_timer_run(void)
   }
 }
 
+/*
+ * For some SmartNIC cards with UART connected to the same RSim host, the
+ * BOO_MODE comes up with 0 after power-cycle thus not able to boot from eMMC.
+ * This function provides a workaround to detect such case and reset the card
+ * with the correct boot mode.
+ */
+static void rshim_boot_workaround_check(struct rshim_backend *bd)
+{
+  int rc;
+  uint64_t value, uptime_sw, uptime_hw;
+
+  /* Check boot mode 0, which supposes to be set externally. */
+  rc = bd->read_rshim(bd, RSHIM_CHANNEL, RSH_BOOT_CONTROL, &value);
+  if (rc || value != RSH_BOOT_CONTROL__BOOT_MODE_VAL_NONE)
+    return;
+
+  /*
+   * The logic below detects whether it's a hard reset. Register
+   * RSH_UPTIME_POR has the value of cycles since hw reset, register
+   * RSH_UPTIME has value of the most recent reset (sw or hard reset).
+   * If the gap between these two values is less than 1G, we treat it
+   * as hard reset.
+   *
+   * If boot mode is 0 after hard-reset, we update the boot mode and
+   * initiate sw reset so the chip could boot up.
+   */
+  rc = bd->read_rshim(bd, RSHIM_CHANNEL, RSH_UPTIME_POR, &uptime_hw);
+  if (rc)
+    return;
+
+  rc = bd->read_rshim(bd, RSHIM_CHANNEL, RSH_UPTIME, &uptime_sw);
+  if (rc)
+    return;
+
+  if (uptime_sw - uptime_hw < 1000000000ULL) {
+    rc = bd->write_rshim(bd, RSHIM_CHANNEL, RSH_BOOT_CONTROL,
+                         RSH_BOOT_CONTROL__BOOT_MODE_VAL_EMMC);
+    if (!rc) {
+      /* SW reset. */
+      rc = rshim_write_reset_control(bd);
+      usleep(100000);
+    }
+  }
+}
+
 /* Check whether backend is allowed to register or not. */
 static int rshim_access_check(struct rshim_backend *bd)
 {
   uint64_t value;
   int i, rc;
+
+  /*
+   * Add a check and delay to make sure rshim is ready.
+   * It's mainly used in BlueField-2+ where the rshim (like USB) access is
+   * enabled in boot ROM which might happen after external host detects the
+   * rshim device.
+   */
+  for (i = 0; i < 10; i++) {
+    rc = bd->read_rshim(bd, RSHIM_CHANNEL, RSH_TM_HOST_TO_TILE_CTL, &value);
+    if (!rc && value)
+      break;
+    usleep(100000);
+  }
+
+  rshim_boot_workaround_check(bd);
 
   /* Write value 0 to RSH_SCRATCHPAD1. */
   rc = bd->write_rshim(bd, RSHIM_CHANNEL, RSH_SCRATCHPAD1, 0);
@@ -3215,6 +3340,7 @@ static void print_help(void)
   printf("  -b <usb|pcie|pcie_lf>  driver name\n");
   printf("  -k                     skip sw_reset\n");
   printf("  -l <0~4>               debug level\n");
+  printf("  -t <seconds>           boot timeout\n");
 }
 
 int main(int argc, char *argv[])
@@ -3223,7 +3349,7 @@ int main(int argc, char *argv[])
   int c;
 
   /* Parse arguments. */
-  while ((c = getopt(argc, argv, "ab:kl:h")) != -1) {
+  while ((c = getopt(argc, argv, "ab:hkl:t:")) != -1) {
     switch (c) {
     case 'a':
       rshim_adv_cfg = 1;
@@ -3236,6 +3362,9 @@ int main(int argc, char *argv[])
       break;
     case 'l':
       rshim_log_level = atoi(optarg);
+      break;
+    case 't':
+      rshim_boot_timeout = atoi(optarg);
       break;
     case 'h':
     default:

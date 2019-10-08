@@ -94,6 +94,7 @@ enum {
 
 /* Internal message types in addition to the standard VIRTIO_ID_xxx types. */
 enum {
+  TMFIFO_MSG_VLAN_ID = 0xFB,      /* vlan id */
   TMFIFO_MSG_PXE_ID = 0xFC,       /* pxe client identifier */
   TMFIFO_MSG_CTRL_REQ = 0xFD,     /* ctrl request */
   TMFIFO_MSG_MAC_1 = 0xFE,        /* mac[0:2] */
@@ -108,6 +109,7 @@ typedef union rshim_tmfifo_msg_hdr {
     union {
       uint8_t mac[3];      /* 3-bytes of the MAC address */
       uint32_t pxe_id;     /* pxe identifier in network order */
+      uint16_t vlan[2];    /* up to two vlan id */
     };
     uint8_t checksum;      /* header checksum */
   } __attribute__((packed));
@@ -193,6 +195,7 @@ struct rshim_backend {
   uint32_t peer_ctrl_resp : 1;    /* A flag to indicate MAC response rcvd. */
   uint32_t peer_mac_set : 1;      /* A flag to send MAC-set request. */
   uint32_t peer_pxe_id_set : 1;   /* A flag to send pxe-id-set request. */
+  uint32_t peer_vlan_set : 1;     /* A flag to set vlan IDs. */
 
   /* reference count. */
   volatile int ref;
@@ -306,6 +309,9 @@ struct rshim_backend {
 
   /* Configured PXE client identifier. */
   uint32_t pxe_client_id;
+
+  /* Up to two VLAN IDs for PXE purpose. */
+  uint16_t vlan[2];
 
   /* APIs provided by backend. */
 
