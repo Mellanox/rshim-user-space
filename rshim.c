@@ -3077,7 +3077,6 @@ static void rshim_main(int argc, char *argv[])
   void *usb_ctx = NULL;
   struct itimerspec ts;
   uint32_t len;
-  bool found;
 
   memset(&event, 0, sizeof(event));
   memset(events, 0, sizeof(events));
@@ -3164,7 +3163,6 @@ static void rshim_main(int argc, char *argv[])
     }
 
     for (i = 0; i < num; i++) {
-      found = false;
       fd = events[i].data.fd;
 
       if ((events[i].events & EPOLLERR) || (events[i].events & EPOLLHUP)) {
@@ -3176,11 +3174,9 @@ static void rshim_main(int argc, char *argv[])
       if (fd == timer_fd) {
         uint64_t res;
 
-        found = true;
         rshim_fd_full_read(timer_fd, &res, sizeof(res));
         rshim_timer_run();
       } else if (fd == rshim_work_fd[0]) {
-        found = true;
         rc = rshim_fd_full_read(rshim_work_fd[0], &bd, sizeof(bd));
         if (rc == sizeof(bd))
           rshim_work_handler(bd);
@@ -3195,20 +3191,18 @@ static void rshim_main(int argc, char *argv[])
 
           if (fd == bd->net_notify_fd[0]) {
             /* Rx. */
-            found = true;
             if (read(fd, &tmp, 1) == 1)
               rshim_net_rx(bd);
             break;
           } else if (fd == rshim_devs[index]->net_fd) {
             /* Tx. */
-            found = true;
             rshim_net_tx(bd);
             break;
           }
         }
       }
 
-      if (!found && usb_ctx)
+      if (usb_ctx)
         rshim_usb_poll(usb_ctx);
     }
   }
