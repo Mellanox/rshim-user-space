@@ -21,6 +21,10 @@
 
 #include "rshim.h"
 
+#ifdef HAVE_RSHIM_CUSE
+#include <cuse.h>
+#endif
+
 /* Our Vendor/Device IDs. */
 #define TILERA_VENDOR_ID            0x15b3
 #define BLUEFIELD_DEVICE_ID         0xc2d2
@@ -31,6 +35,19 @@
 /* The size the RShim region. */
 #define PCI_RSHIM_WINDOW_SIZE       0x100000
 
+#ifndef __LP64__
+static inline uint32_t
+readl(const volatile void *addr)
+{
+  return *(const volatile uint32_t *)addr;
+}
+
+static inline void
+writel(uint32_t value, volatile void *addr)
+{
+  *(volatile uint32_t *)addr = value;
+}
+#else
 static inline uint64_t
 readq(const volatile void *addr)
 {
@@ -42,6 +59,7 @@ writeq(uint64_t value, volatile void *addr)
 {
   *(volatile uint64_t *)addr = value;
 }
+#endif
 
 struct rshim_pcie {
   /* RShim backend structure. */
@@ -69,9 +87,10 @@ static int rshim_byte_acc_pending_wait(struct rshim_pcie *dev, int chan)
     read_value = readl(dev->rshim_regs +
       (RSH_BYTE_ACC_CTL | (chan << 16)));
 
-    if (signal_pending(current))
+#ifdef HAVE_RSHIM_CUSE
+    if (cuse_got_peer_signal() == 0)
       return -EINTR;
-
+#endif
   } while (read_value & RSH_BYTE_ACC_PENDING);
 
   return 0;
@@ -124,7 +143,11 @@ static int rshim_byte_acc_read(struct rshim_pcie *dev, int chan, int addr,
   read_value = readl(dev->rshim_regs + (RSH_BYTE_ACC_RDAT | (chan << 16)));
 
   read_result |= (uint64_t)read_value;
+#ifndef __linux__
+  *result = be64toh(read_result);
+#else
   *result = be64_to_cpu(read_result);
+#endif
 
   return 0;
 }

@@ -2640,7 +2640,7 @@ static int rshim_rshim_ioctl(struct cuse_dev *cdev, int fflags,
                              unsigned long cmd, void *peer_data)
 {
   struct rshim_backend *bd = cuse_dev_get_priv0(cdev);
-  int rc, rc = CUSE_ERR_INVALID;
+  int rc = CUSE_ERR_INVALID;
   rshim_ioctl_msg msg;
   uint64_t data;
 
