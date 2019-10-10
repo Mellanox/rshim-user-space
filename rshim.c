@@ -1757,7 +1757,7 @@ static int rshim_boot_done(struct rshim_backend *bd)
     }
 
     /* Tell the user this device is now attached. */
-    RSHIM_INFO("rshim%d now attached\n", bd->dev_index);
+    RSHIM_INFO("rshim%d attached\n", bd->dev_index);
   }
 
   return 0;
