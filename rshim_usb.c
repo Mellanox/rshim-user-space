@@ -254,7 +254,7 @@ static void rshim_usb_fifo_read(struct rshim_usb *dev, char *buffer,
     urb = dev->read_or_intr_urb;
 
     libusb_fill_bulk_transfer(urb, dev->handle, dev->tm_fifo_in_ep,
-                              buffer, count, rshim_usb_fifo_read_callback,
+                              (uint8_t *)buffer, count, rshim_usb_fifo_read_callback,
                               dev, RSHIM_USB_TIMEOUT);
 
     dev->bd.spin_flags |= RSH_SFLG_READING;
@@ -380,7 +380,7 @@ static int rshim_usb_fifo_write(struct rshim_usb *dev, const char *buffer,
 
   /* Initialize the urb properly. */
   libusb_fill_bulk_transfer(dev->write_urb,  dev->handle,
-                            dev->tm_fifo_out_ep, (char *)buffer,
+                            dev->tm_fifo_out_ep, (uint8_t *)buffer,
                             count, rshim_usb_fifo_write_callback,
                             dev, RSHIM_USB_TIMEOUT);
   dev->write_retries = 0;
@@ -480,7 +480,7 @@ static int rshim_usb_probe(libusb_context *ctx, libusb_device *usb_dev)
   usb_dev_name = calloc(1, dev_name_len);
   sprintf(usb_dev_name, "usb-");
   rc = libusb_get_port_numbers(usb_dev,
-                               usb_dev_name + strlen(usb_dev_name),
+                               (uint8_t *)usb_dev_name + strlen(usb_dev_name),
                                dev_name_len - strlen(usb_dev_name));
   if (rc <= 0) {
     perror("Failed to get USB ports\n");

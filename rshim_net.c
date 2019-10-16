@@ -310,7 +310,7 @@ void rshim_net_rx(struct rshim_backend *bd)
   for (;;) {
     total_len = sizeof(pkt->hdr);
     while (bd->net_rx_len < total_len) {
-      len = rshim_fifo_read(bd, (uint8_t *)pkt + bd->net_rx_len,
+      len = rshim_fifo_read(bd, (char *)pkt + bd->net_rx_len,
                             total_len - bd->net_rx_len,
                             TMFIFO_NET_CHAN, true);
       if (len <= 0)
@@ -320,7 +320,7 @@ void rshim_net_rx(struct rshim_backend *bd)
 
     total_len = ntohs(pkt->hdr.len) + sizeof(pkt->hdr);
     while (bd->net_rx_len < total_len) {
-      len = rshim_fifo_read(bd, (uint8_t *)pkt + bd->net_rx_len,
+      len = rshim_fifo_read(bd, (char *)pkt + bd->net_rx_len,
                             total_len - bd->net_rx_len,
                             TMFIFO_NET_CHAN, true);
       if (len <= 0)
@@ -358,7 +358,7 @@ void rshim_net_tx(struct rshim_backend *bd)
     }
 
     len = ntohs(pkt->hdr.len) + sizeof(pkt->hdr) - bd->net_tx_len;
-    written = rshim_fifo_write(bd, (uint8_t *)pkt + bd->net_tx_len,
+    written = rshim_fifo_write(bd, (char *)pkt + bd->net_tx_len,
                                len, TMFIFO_NET_CHAN, true);
     if (written > 0)
       bd->net_tx_len += written;

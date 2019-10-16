@@ -4,6 +4,7 @@
  *
  */
 
+#include <arpa/inet.h>
 #include <libusb.h>
 #include <pthread.h>
 #include <signal.h>
@@ -14,12 +15,12 @@
 #include <sys/poll.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <sys/timerfd.h>
 
 #ifdef __FreeBSD__
 #include <termios.h>
 #include <unistd.h>
 #include <netinet/in.h>
-#include <sys/timerfd.h>
 #include <sys/stat.h>
 #include <sys/filio.h>
 #endif
@@ -331,10 +332,10 @@ static ssize_t rshim_read_default(struct rshim_backend *bd, int devtype,
  * aligned which is required by RShim HW.
  */
 static ssize_t rshim_write_delayed(struct rshim_backend *bd, int devtype,
-                                   const char *buf, size_t count)
+                                   const uint8_t *buf, size_t count)
 {
   uint64_t reg;
-  char pad_buf[sizeof(uint64_t)] = { 0 };
+  uint8_t pad_buf[sizeof(uint64_t)] = { 0 };
   int size_addr, size_mask, data_addr, max_size;
   int rc, avail = 0, byte_cnt = 0, retry;
 
@@ -374,7 +375,7 @@ static ssize_t rshim_write_delayed(struct rshim_backend *bd, int devtype,
     /* Add padding if less than 8 bytes left. */
     if (byte_cnt + sizeof(uint64_t) > count) {
       memcpy(pad_buf, buf, count - byte_cnt);
-      buf = (const char *)pad_buf;
+      buf = (const uint8_t *)pad_buf;
     }
 
     retry = 0;
@@ -434,7 +435,7 @@ static ssize_t rshim_write_default(struct rshim_backend *bd, int devtype,
     bd->spin_flags |= RSH_SFLG_WRITING;
 
     /* Wake up the worker. */
-    bd->fifo_work_buf = (char *)buf;
+    bd->fifo_work_buf = (uint8_t *)buf;
     bd->fifo_work_buf_len = count;
     bd->fifo_work_devtype = devtype;
     bd->has_fifo_work = 1;
@@ -444,7 +445,7 @@ static ssize_t rshim_write_default(struct rshim_backend *bd, int devtype,
   case RSH_DEV_TYPE_BOOT:
     bd->boot_work_buf_len = count;
     bd->boot_work_buf_actual_len = 0;
-    bd->boot_work_buf = (char *)buf;
+    bd->boot_work_buf = (uint8_t *)buf;
     rshim_work_signal(bd);
 
     rc = pthread_cond_wait(&bd->boot_write_complete_cond, &bd->mutex);
