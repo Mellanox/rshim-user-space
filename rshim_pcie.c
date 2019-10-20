@@ -302,17 +302,17 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
 #endif
 
   pcie_dev_name = malloc(max_name_len);
-  snprintf(pcie_dev_name, max_name_len, "pcie-%d-%d-%d-%d",
+  snprintf(pcie_dev_name, max_name_len, "pcie-%x-%x-%x-%x",
            pci_dev->domain_16, pci_dev->bus, pci_dev->dev, pci_dev->func);
-
-  RSHIM_INFO("Probing %s\n", pcie_dev_name);
 
   rshim_lock();
 
   bd = rshim_find_by_name(pcie_dev_name);
   if (bd) {
+    RSHIM_INFO("found %s\n", pcie_dev_name);
     dev = container_of(bd, struct rshim_pcie, bd);
   } else {
+    RSHIM_INFO("create rshim %s\n", pcie_dev_name);
     dev = calloc(1, sizeof(*dev));
     if (dev == NULL) {
       ret = -ENOMEM;

@@ -2342,7 +2342,7 @@ static int rshim_misc_read(struct cuse_dev *cdev, int fflags, void *peer_ptr,
   len -= seg;
 
   /* Display the driver name. */
-  seg = snprintf(p, len, "DRV_NAME  %s\n", bd->drv_name);
+  seg = snprintf(p, len, "DEV_NAME  %s\n", bd->dev_name);
   p += seg;
   len -= seg;
 
@@ -3287,7 +3287,7 @@ static void rshim_main(int argc, char *argv[])
   }
   if (!has_usb && rc) {
     if (rc) {
-      RSHIM_ERR("No rshim devices found\n");
+      RSHIM_ERR("no rshim devices found\n");
       exit(-1);
     }
   }

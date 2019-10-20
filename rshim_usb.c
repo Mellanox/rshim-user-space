@@ -58,9 +58,8 @@ static void rshim_usb_delete(struct rshim_backend *bd)
 {
   struct rshim_usb *dev = container_of(bd, struct rshim_usb, bd);
 
-  RSHIM_INFO("rshim USB deleted\n");
-
   rshim_deregister(bd);
+  RSHIM_INFO("rshim %s deleted\n", bd->dev_name);
   free(dev);
 }
 
@@ -468,7 +467,7 @@ static void rshim_usb_backend_cancel_req(struct rshim_backend *bd, int devtype,
 
 static int rshim_usb_probe(libusb_context *ctx, libusb_device *usb_dev)
 {
-  int i, allocfail = 0, rc = -ENOMEM, dev_name_len = 32;
+  int i, allocfail = 0, rc = -ENOMEM, dev_name_len = 64;
   const struct libusb_interface_descriptor *iface_desc;
   const struct libusb_endpoint_descriptor *ep;
   const struct libusb_interface *interface;
@@ -476,17 +475,20 @@ static int rshim_usb_probe(libusb_context *ctx, libusb_device *usb_dev)
   libusb_device_handle *handle;
   struct rshim_usb *dev = NULL;
   struct rshim_backend *bd;
-  char *usb_dev_name;
+  char *usb_dev_name, *p;
   uint8_t port_numbers[8];
 
-  usb_dev_name = calloc(1, dev_name_len);
-  sprintf(usb_dev_name, "usb-");
-  rc = libusb_get_port_numbers(usb_dev,
-                               (uint8_t *)usb_dev_name + strlen(usb_dev_name),
-                               dev_name_len - strlen(usb_dev_name));
+  rc = libusb_get_port_numbers(usb_dev, port_numbers, sizeof(port_numbers));
   if (rc <= 0) {
     perror("Failed to get USB ports\n");
     return -ENODEV;
+  }
+  usb_dev_name = calloc(1, dev_name_len);
+  sprintf(usb_dev_name, "usb");
+  p = usb_dev_name + strlen(usb_dev_name);
+  for (i = 0; i < rc; i++) {
+    sprintf(p, "-%x", port_numbers[i]);
+    p += strlen(p);
   }
 
   rc = libusb_get_active_config_descriptor(usb_dev, &config);
@@ -504,10 +506,10 @@ static int rshim_usb_probe(libusb_context *ctx, libusb_device *usb_dev)
   for (i = 0; i < config->bNumInterfaces; i++) {
 #if TBD
     if (libusb_kernel_driver_active(handle, i) == 1) {
-      RSHIM_INFO("Found kernel driver\n");
+      RSHIM_INFO("found kernel driver\n");
       rc = libusb_detach_kernel_driver(handle, i);
       if (!rc) {
-        RSHIM_INFO("Detach kernel driver\n");
+        RSHIM_INFO("detach kernel driver\n");
       } else {
         RSHIM_ERR("Failed to detach kernel driver\n");
         return -EBUSY;
@@ -531,12 +533,12 @@ static int rshim_usb_probe(libusb_context *ctx, libusb_device *usb_dev)
   /* Find the backend. */
   bd = rshim_find_by_name(usb_dev_name);
   if (bd) {
-    RSHIM_INFO("Found USB backend\n");
+    RSHIM_INFO("found %s\n", usb_dev_name);
     dev = container_of(bd, struct rshim_usb, bd);
     free(usb_dev_name);
     usb_dev_name = NULL;
   } else {
-    RSHIM_INFO("Create USB backend\n");
+    RSHIM_INFO("create rshim %s\n", usb_dev_name);
     dev = calloc(1, sizeof(*dev));
     if (dev == NULL) {
       RSHIM_ERR("couldn't get memory for new device");
@@ -592,7 +594,7 @@ static int rshim_usb_probe(libusb_context *ctx, libusb_device *usb_dev)
     iface_desc = &interface->altsetting[0];
 
     if (iface_desc->bInterfaceSubClass == 0) {
-      RSHIM_INFO("Found rshim interface\n");
+      RSHIM_DBG("Found rshim interface\n");
 
       /*
        * We only expect one endpoint here, just make sure its
@@ -614,7 +616,7 @@ static int rshim_usb_probe(libusb_context *ctx, libusb_device *usb_dev)
       bd->has_rshim = 1;
       dev->boot_fifo_ep = ep_addr(ep);
     } else if (iface_desc->bInterfaceSubClass == 1) {
-      RSHIM_INFO("Found tmfifo interface\n");
+      RSHIM_DBG("Found tmfifo interface\n");
       /*
        * We expect 3 endpoints here.  Since they're listed in
        * random order we have to use their attributes to figure
@@ -835,7 +837,7 @@ static int rshim_hotplug_callback(struct libusb_context *ctx,
 
   switch (event) {
   case LIBUSB_HOTPLUG_EVENT_DEVICE_ARRIVED:
-    RSHIM_INFO("Found USB device\n");
+    RSHIM_INFO("USB device detected\n");
     rshim_usb_probe(ctx, dev);
     break;
 
@@ -881,7 +883,7 @@ bool rshim_usb_init(int epoll_fd)
                                         (void *)(uintptr_t)epoll_fd,
                                         &rshim_hotplug_handle);
   if (rc != LIBUSB_SUCCESS) {
-    RSHIM_ERR("Failed to register hotplug callback\n");
+    RSHIM_ERR("failed to register hotplug callback\n");
     return false;
   }
 #else
