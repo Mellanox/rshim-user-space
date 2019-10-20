@@ -432,7 +432,6 @@ void rshim_deref(struct rshim_backend *bd);
 /* USB backend APIs. */
 bool rshim_usb_init(int epoll_fd);
 void rshim_usb_poll(void);
-void rshim_usb_exit(void);
 
 /* PCIe backend APIs. */
 #ifdef HAVE_RSHIM_PCIE

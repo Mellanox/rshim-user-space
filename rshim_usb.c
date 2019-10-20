@@ -53,6 +53,8 @@ struct rshim_usb {
 };
 
 static libusb_context *rshim_usb_ctx;
+static int rshim_usb_epoll_fd;
+static bool rshim_usb_need_probe;
 
 static void rshim_usb_delete(struct rshim_backend *bd)
 {
@@ -465,7 +467,7 @@ static void rshim_usb_backend_cancel_req(struct rshim_backend *bd, int devtype,
   }
 }
 
-static int rshim_usb_probe(libusb_context *ctx, libusb_device *usb_dev)
+static int rshim_usb_probe_one(libusb_context *ctx, libusb_device *usb_dev)
 {
   int i, allocfail = 0, rc = -ENOMEM, dev_name_len = 64;
   const struct libusb_interface_descriptor *iface_desc;
@@ -478,6 +480,14 @@ static int rshim_usb_probe(libusb_context *ctx, libusb_device *usb_dev)
   char *usb_dev_name, *p;
   uint8_t port_numbers[8];
 
+  /* Check if already exists. */
+  rshim_lock();
+  bd = rshim_find_by_dev(usb_dev);
+  rshim_unlock();
+  if (bd)
+    return 0;
+
+  /* Check the path of the rshim device path. */
   rc = libusb_get_port_numbers(usb_dev, port_numbers, sizeof(port_numbers));
   if (rc <= 0) {
     perror("Failed to get USB ports\n");
@@ -714,9 +724,9 @@ static void rshim_usb_disconnect(struct libusb_device *usb_dev)
 
   rshim_lock();
   bd = rshim_find_by_dev(usb_dev);
+  rshim_unlock();
   if (!bd)
     return;
-  rshim_unlock();
 
   dev = container_of(bd, struct rshim_usb, bd);
 
@@ -780,7 +790,7 @@ static void rshim_usb_disconnect(struct libusb_device *usb_dev)
   rshim_unlock();
 }
 
-static int rshim_usb_add_poll(int epoll_fd, libusb_context *ctx)
+static int rshim_usb_add_poll(libusb_context *ctx)
 {
   const struct libusb_pollfd **usb_pollfd = libusb_get_pollfds(ctx);
   struct epoll_event event;
@@ -814,7 +824,8 @@ static int rshim_usb_add_poll(int epoll_fd, libusb_context *ctx)
 
 #undef RSHIM_CONVERT
 
-    rc = epoll_ctl(epoll_fd, EPOLL_CTL_ADD, usb_pollfd[i]->fd, &event);
+    rc = epoll_ctl(rshim_usb_epoll_fd, EPOLL_CTL_ADD, usb_pollfd[i]->fd,
+                   &event);
     if (rc == -1 && errno != EEXIST)
       RSHIM_ERR("epoll_ctl failed; %m\n");
     i++;
@@ -833,12 +844,15 @@ static int rshim_hotplug_callback(struct libusb_context *ctx,
                                   libusb_hotplug_event event,
                                   void *user_data)
 {
-  int epoll_fd = (uintptr_t)user_data;
-
   switch (event) {
   case LIBUSB_HOTPLUG_EVENT_DEVICE_ARRIVED:
+    /*
+     * The probe function would send control packet which could cause race
+     * condition when calling from the hotplug callback function. Thus set
+     * a flag and do it later in the main loop.
+     */
     RSHIM_INFO("USB device detected\n");
-    rshim_usb_probe(ctx, dev);
+    rshim_usb_need_probe = true;
     break;
 
   case LIBUSB_HOTPLUG_EVENT_DEVICE_LEFT:
@@ -850,43 +864,18 @@ static int rshim_hotplug_callback(struct libusb_context *ctx,
     break;
   }
 
-  rshim_usb_add_poll(epoll_fd, ctx);
+  rshim_usb_add_poll(ctx);
 
   return (0);	/* keep filter registered */
 }
 #endif
 
-bool rshim_usb_init(int epoll_fd)
+static bool rshim_usb_probe(void)
 {
+  libusb_context *ctx = rshim_usb_ctx;
   libusb_device **devs, *dev;
-  libusb_context *ctx = NULL;
   int rc, i = 0;
 
-  rc = libusb_init(&ctx);
-  if (rc < 0) {
-    RSHIM_ERR("USB Init Error: %m\n");
-    return false;
-  }
-
-  if (rshim_log_level > 1)
-    libusb_set_debug(ctx, LIBUSB_LOG_LEVEL_INFO);
-
-#if LIBUSB_API_VERSION >= 0x01000102
-  rc = libusb_hotplug_register_callback(ctx,
-                                        LIBUSB_HOTPLUG_EVENT_DEVICE_ARRIVED |
-                                        LIBUSB_HOTPLUG_EVENT_DEVICE_LEFT,
-                                        LIBUSB_HOTPLUG_ENUMERATE,
-                                        USB_TILERA_VENDOR_ID,
-                                        USB_BLUEFIELD_PRODUCT_ID,
-                                        LIBUSB_HOTPLUG_MATCH_ANY,
-                                        rshim_hotplug_callback,
-                                        (void *)(uintptr_t)epoll_fd,
-                                        &rshim_hotplug_handle);
-  if (rc != LIBUSB_SUCCESS) {
-    RSHIM_ERR("failed to register hotplug callback\n");
-    return false;
-  }
-#else
   rc = libusb_get_device_list(ctx, &devs);
   if (rc < 0) {
     perror("USB Get Device Error\n");
@@ -902,29 +891,63 @@ bool rshim_usb_init(int epoll_fd)
 
     if (desc.idVendor == USB_TILERA_VENDOR_ID &&
         desc.idProduct == USB_BLUEFIELD_PRODUCT_ID)
-      rshim_usb_probe(ctx, dev);
+      rshim_usb_probe_one(ctx, dev);
   }
 
-  rc = rshim_usb_add_poll(epoll_fd, ctx);
+  rc = rshim_usb_add_poll(ctx);
   if (rc)
     return false;
-#endif
-
-  rshim_usb_ctx = ctx;
 
   return true;
 }
 
-void rshim_usb_exit(void)
+bool rshim_usb_init(int epoll_fd)
 {
+  libusb_context *ctx = NULL;
+  int rc;
+
+  rc = libusb_init(&ctx);
+  if (rc < 0) {
+    RSHIM_ERR("USB Init Error: %m\n");
+    return false;
+  }
+
+  if (rshim_log_level > 1)
+    libusb_set_debug(ctx, LIBUSB_LOG_LEVEL_ERROR);
+
+  rshim_usb_ctx = ctx;
+  rshim_usb_epoll_fd = epoll_fd;
+
 #if LIBUSB_API_VERSION >= 0x01000102
-  libusb_hotplug_deregister_callback(NULL, rshim_hotplug_handle);
+  rc = libusb_hotplug_register_callback(ctx,
+                                        LIBUSB_HOTPLUG_EVENT_DEVICE_ARRIVED |
+                                        LIBUSB_HOTPLUG_EVENT_DEVICE_LEFT,
+                                        LIBUSB_HOTPLUG_ENUMERATE,
+                                        USB_TILERA_VENDOR_ID,
+                                        USB_BLUEFIELD_PRODUCT_ID,
+                                        LIBUSB_HOTPLUG_MATCH_ANY,
+                                        rshim_hotplug_callback,
+                                        NULL,
+                                        &rshim_hotplug_handle);
+  if (rc != LIBUSB_SUCCESS) {
+    RSHIM_ERR("failed to register hotplug callback\n");
+    return false;
+  }
+#else
+  rshim_usb_probe();
 #endif
+
+  return true;
 }
 
 void rshim_usb_poll(void)
 {
   struct timeval tv = {0, 0};
+
+  if (rshim_usb_need_probe) {
+    rshim_usb_need_probe = false;
+    rshim_usb_probe();
+  }
 
   libusb_handle_events_timeout_completed(rshim_usb_ctx, &tv, NULL);
 }

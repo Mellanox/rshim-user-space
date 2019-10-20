@@ -3037,7 +3037,6 @@ static int rshim_access_check(struct rshim_backend *bd)
   uint64_t value;
   int i, rc;
 
-  return 0; // FIXME: need to avoid race, skip it for now.
   /*
    * Add a check and delay to make sure rshim is ready.
    * It's mainly used in BlueField-2+ where the rshim (like USB) access is
