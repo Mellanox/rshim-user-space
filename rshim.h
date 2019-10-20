@@ -430,8 +430,8 @@ void rshim_ref(struct rshim_backend *bd);
 void rshim_deref(struct rshim_backend *bd);
 
 /* USB backend APIs. */
-void *rshim_usb_init(int epoll_fd);
-void rshim_usb_poll(void *ctx);
+bool rshim_usb_init(int epoll_fd);
+void rshim_usb_poll(void);
 void rshim_usb_exit(void);
 
 /* PCIe backend APIs. */

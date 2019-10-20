@@ -52,6 +52,8 @@ struct rshim_usb {
   uint8_t tm_fifo_out_ep;
 };
 
+static libusb_context *rshim_usb_ctx;
+
 static void rshim_usb_delete(struct rshim_backend *bd)
 {
   struct rshim_usb *dev = container_of(bd, struct rshim_usb, bd);
@@ -776,32 +778,6 @@ static void rshim_usb_disconnect(struct libusb_device *usb_dev)
   rshim_unlock();
 }
 
-#if LIBUSB_API_VERSION >= 0x01000102
-static libusb_hotplug_callback_handle rshim_hotplug_handle;
-
-static int rshim_hotplug_callback(struct libusb_context *ctx,
-                                  struct libusb_device *dev,
-                                  libusb_hotplug_event event,
-                                  void *user_data)
-{
-  switch (event) {
-  case LIBUSB_HOTPLUG_EVENT_DEVICE_ARRIVED:
-    RSHIM_INFO("Found USB device\n");
-    rshim_usb_probe(ctx, dev);
-    break;
-
-  case LIBUSB_HOTPLUG_EVENT_DEVICE_LEFT:
-    RSHIM_INFO("USB device leaving\n");
-    rshim_usb_disconnect(dev);
-    break;
-
-  default:
-    break;
-  }
-  return (0);	/* keep filter registered */
-}
-#endif
-
 static int rshim_usb_add_poll(int epoll_fd, libusb_context *ctx)
 {
   const struct libusb_pollfd **usb_pollfd = libusb_get_pollfds(ctx);
@@ -837,10 +813,8 @@ static int rshim_usb_add_poll(int epoll_fd, libusb_context *ctx)
 #undef RSHIM_CONVERT
 
     rc = epoll_ctl(epoll_fd, EPOLL_CTL_ADD, usb_pollfd[i]->fd, &event);
-    if (rc == -1) {
+    if (rc == -1 && errno != EEXIST)
       RSHIM_ERR("epoll_ctl failed; %m\n");
-      break;
-    }
     i++;
   }
 
@@ -849,7 +823,38 @@ static int rshim_usb_add_poll(int epoll_fd, libusb_context *ctx)
   return rc;
 }
 
-void *rshim_usb_init(int epoll_fd)
+#if LIBUSB_API_VERSION >= 0x01000102
+static libusb_hotplug_callback_handle rshim_hotplug_handle;
+
+static int rshim_hotplug_callback(struct libusb_context *ctx,
+                                  struct libusb_device *dev,
+                                  libusb_hotplug_event event,
+                                  void *user_data)
+{
+  int epoll_fd = (uintptr_t)user_data;
+
+  switch (event) {
+  case LIBUSB_HOTPLUG_EVENT_DEVICE_ARRIVED:
+    RSHIM_INFO("Found USB device\n");
+    rshim_usb_probe(ctx, dev);
+    break;
+
+  case LIBUSB_HOTPLUG_EVENT_DEVICE_LEFT:
+    RSHIM_INFO("USB device leaving\n");
+    rshim_usb_disconnect(dev);
+    break;
+
+  default:
+    break;
+  }
+
+  rshim_usb_add_poll(epoll_fd, ctx);
+
+  return (0);	/* keep filter registered */
+}
+#endif
+
+bool rshim_usb_init(int epoll_fd)
 {
   libusb_device **devs, *dev;
   libusb_context *ctx = NULL;
@@ -858,7 +863,7 @@ void *rshim_usb_init(int epoll_fd)
   rc = libusb_init(&ctx);
   if (rc < 0) {
     RSHIM_ERR("USB Init Error: %m\n");
-    return NULL;
+    return false;
   }
 
   if (rshim_log_level > 1)
@@ -872,17 +877,18 @@ void *rshim_usb_init(int epoll_fd)
                                         USB_TILERA_VENDOR_ID,
                                         USB_BLUEFIELD_PRODUCT_ID,
                                         LIBUSB_HOTPLUG_MATCH_ANY,
-                                        rshim_hotplug_callback, NULL,
+                                        rshim_hotplug_callback,
+                                        (void *)(uintptr_t)epoll_fd,
                                         &rshim_hotplug_handle);
   if (rc != LIBUSB_SUCCESS) {
     RSHIM_ERR("Failed to register hotplug callback\n");
-    return NULL;
+    return false;
   }
 #else
   rc = libusb_get_device_list(ctx, &devs);
   if (rc < 0) {
     perror("USB Get Device Error\n");
-    return NULL;
+    return false;
   }
 
   while ((dev = devs[i++]) != NULL) {
@@ -896,13 +902,15 @@ void *rshim_usb_init(int epoll_fd)
         desc.idProduct == USB_BLUEFIELD_PRODUCT_ID)
       rshim_usb_probe(ctx, dev);
   }
-#endif
 
   rc = rshim_usb_add_poll(epoll_fd, ctx);
   if (rc)
-    return NULL;
+    return false;
+#endif
 
-  return ctx;
+  rshim_usb_ctx = ctx;
+
+  return true;
 }
 
 void rshim_usb_exit(void)
@@ -910,13 +918,11 @@ void rshim_usb_exit(void)
 #if LIBUSB_API_VERSION >= 0x01000102
   libusb_hotplug_deregister_callback(NULL, rshim_hotplug_handle);
 #endif
-
-//libusb_exit(ctx);
 }
 
-void rshim_usb_poll(void *ctx)
+void rshim_usb_poll(void)
 {
   struct timeval tv = {0, 0};
 
-  libusb_handle_events_timeout_completed(ctx, &tv, NULL);
+  libusb_handle_events_timeout_completed(rshim_usb_ctx, &tv, NULL);
 }

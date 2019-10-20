@@ -3037,6 +3037,7 @@ static int rshim_access_check(struct rshim_backend *bd)
   uint64_t value;
   int i, rc;
 
+  return 0; // FIXME: need to avoid race, skip it for now.
   /*
    * Add a check and delay to make sure rshim is ready.
    * It's mainly used in BlueField-2+ where the rshim (like USB) access is
@@ -3211,7 +3212,7 @@ static void rshim_main(int argc, char *argv[])
   struct epoll_event events[MAXEVENTS];
   struct epoll_event event;
   struct rshim_backend *bd;
-  void *usb_ctx = NULL;
+  bool has_usb = false;
   struct itimerspec ts;
   uint32_t len;
 
@@ -3270,21 +3271,21 @@ static void rshim_main(int argc, char *argv[])
   /* Scan rshim backends. */
   rc = 0;
   if (!rshim_backend_name) {
-    usb_ctx = rshim_usb_init(epoll_fd);
-    if (!usb_ctx) {
+    has_usb = rshim_usb_init(epoll_fd);
+    if (!has_usb) {
       rc = rshim_pcie_init();
       if (rc)
         rc = rshim_pcie_lf_init();
     }
   } else {
     if (!strcmp(rshim_backend_name, "usb"))
-      usb_ctx = rshim_usb_init(epoll_fd);
+      has_usb = rshim_usb_init(epoll_fd);
     else if (!strcmp(rshim_backend_name, "pcie"))
       rc = rshim_pcie_init();
     else if (!strcmp(rshim_backend_name, "pcie_lf"))
       rc = rshim_pcie_lf_init();
   }
-  if (!usb_ctx && rc) {
+  if (!has_usb && rc) {
     if (rc) {
       RSHIM_ERR("No rshim devices found\n");
       exit(-1);
@@ -3339,8 +3340,8 @@ static void rshim_main(int argc, char *argv[])
         }
       }
 
-      if (usb_ctx)
-        rshim_usb_poll(usb_ctx);
+      if (has_usb)
+        rshim_usb_poll();
     }
   }
 }
