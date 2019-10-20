@@ -2400,37 +2400,39 @@ ready:
 }
 
 #ifdef HAVE_RSHIM_FUSE
-static void rshim_misc_write(fuse_req_t req, const char *buf, size_t size,
-                             off_t off, struct fuse_file_info *fi)
+static void rshim_misc_write(fuse_req_t req, const char *user_buffer,
+                             size_t size, off_t off, struct fuse_file_info *fi)
 #endif
 #ifdef HAVE_RSHIM_CUSE
 static int rshim_misc_write(struct cuse_dev *cdev, int fflags,
 			    const void *user_buffer, int size)
 #endif
 {
+  char buf[4096];
 #ifdef HAVE_RSHIM_FUSE
   struct rshim_backend *bd = fuse_req_userdata(req);
   const char *p = buf;
 #endif
 #ifdef HAVE_RSHIM_CUSE
   struct rshim_backend *bd = cuse_dev_get_priv0(cdev);
-  char buf[4096];
   const char *p = buf;
 #endif
   int i, rc = 0, value = 0, mac[6], vlan[2] = {0};
   char key[32];
 
+  if (size >= sizeof(buf))
+    size = sizeof(buf) - 1;
 #ifdef HAVE_RSHIM_FUSE
   if (off)
     goto invalid;
+  memcpy(buf, user_buffer, size);
 #endif
 #ifdef HAVE_RSHIM_CUSE
-  if (size > sizeof(buf))
-    size = sizeof(buf);
   rc = cuse_copy_in(user_buffer, buf, size);
   if (rc != CUSE_ERR_NONE)
     return rc;
 #endif
+  buf[size] = 0;
 
   if (sscanf(buf, "%s", key) != 1)
     goto invalid;
@@ -2725,8 +2727,8 @@ static void *cuse_worker(void *arg)
   struct fuse_session *se = arg;
   int rc;
 
-  rc = fuse_session_loop_mt(se);
-  cuse_lowlevel_teardown(se);
+  rc = fuse_session_loop(se);
+  fuse_session_destroy(se);
 
   return (void *)(unsigned long)rc;
 #endif
@@ -2743,10 +2745,10 @@ static int rshim_fs_init(struct rshim_backend *bd)
 {
   char buf[128], *name;
   pthread_t thread;
-  const char *bufp = buf;
+  const char *bufp[] = {buf};
 #ifdef HAVE_RSHIM_FUSE
   struct cuse_info ci = {.dev_info_argc = 1,
-                         .dev_info_argv = &bufp,
+                         .dev_info_argv = bufp,
                          .flags = CUSE_UNRESTRICTED_IOCTL};
   static const struct cuse_lowlevel_ops *ops[RSH_DEV_TYPES] =
 #endif
@@ -2780,6 +2782,7 @@ static int rshim_fs_init(struct rshim_backend *bd)
       RSHIM_ERR("Failed to setup CUSE %s", name);
       return -1;
     }
+    fuse_remove_signal_handlers(bd->fuse_session[i]);
     rc = pthread_create(&bd->thread[i], NULL, cuse_worker, bd->fuse_session[i]);
     if (rc) {
       RSHIM_ERR("Failed to create cuse thread %m");
@@ -2821,8 +2824,15 @@ static int rshim_fs_del(struct rshim_backend *bd)
 #ifdef HAVE_RSHIM_CUSE
       cuse_dev_destroy(bd->fuse_session[i]);
 #endif
+      bd->fuse_session[i] = NULL;
+    }
+  }
+
+  for (i = 0; i < RSH_DEV_TYPES; i++) {
+    if (bd->thread[i]) {
       pthread_kill(bd->thread[i], SIGINT);
       pthread_join(bd->thread[i], NULL);
+      bd->thread[i] = 0;
     }
   }
   return 0;
