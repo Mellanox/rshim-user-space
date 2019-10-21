@@ -478,7 +478,7 @@ static int rshim_usb_probe_one(libusb_context *ctx, libusb_device *usb_dev)
   struct rshim_usb *dev = NULL;
   struct rshim_backend *bd;
   char *usb_dev_name, *p;
-  uint8_t port_numbers[8];
+  uint8_t port_numbers[8], bus;
 
   /* Check if already exists. */
   rshim_lock();
@@ -487,14 +487,15 @@ static int rshim_usb_probe_one(libusb_context *ctx, libusb_device *usb_dev)
   if (bd)
     return 0;
 
-  /* Check the path of the rshim device path. */
+  /* Check bus number and the port path of the rshim device path. */
+  bus = libusb_get_bus_number(usb_dev);
   rc = libusb_get_port_numbers(usb_dev, port_numbers, sizeof(port_numbers));
   if (rc <= 0) {
     perror("Failed to get USB ports\n");
     return -ENODEV;
   }
   usb_dev_name = calloc(1, dev_name_len);
-  sprintf(usb_dev_name, "usb");
+  sprintf(usb_dev_name, "usb-%x", bus);
   p = usb_dev_name + strlen(usb_dev_name);
   for (i = 0; i < rc; i++) {
     sprintf(p, "-%x", port_numbers[i]);
