@@ -31,14 +31,14 @@ static int rshim_if_set_non_blocking(int fd)
 
   flags = fcntl(fd, F_GETFL, 0);
   if (flags == -1) {
-    RSHIM_ERR("fcntl");
+    RSHIM_ERR("fcntl %m\n");
     return -1;
   }
 
   flags |= O_NONBLOCK;
   err = fcntl(fd, F_SETFL, flags);
   if (err == -1) {
-      RSHIM_ERR("fcntl");
+      RSHIM_ERR("fcntl %m\n");
       return -1;
   }
 
@@ -65,7 +65,7 @@ static int rshim_if_open(char *ifname, int index)
   strncpy(ifr.ifr_name, ifname, IFNAMSIZ);
 
   if (ioctl(fd, TUNSETIFF, (void *) &ifr) < 0) {
-    RSHIM_ERR("ioctl failed: %m");
+    RSHIM_ERR("ioctl failed: %m\n");
     close(fd);
     return -1;
   }
@@ -81,7 +81,7 @@ static int rshim_if_open(char *ifname, int index)
 
   s = socket(AF_INET, SOCK_DGRAM, 0);
   if (s < 0) {
-    RSHIM_ERR("socket failed: %m");
+    RSHIM_ERR("socket failed: %m\n");
     close(fd);
     return -1;
   }
@@ -104,7 +104,7 @@ static int rshim_if_open(char *ifname, int index)
 
   s = socket(AF_INET, SOCK_DGRAM, 0);
   if (s < 0) {
-    RSHIM_ERR("socket failed: %m");
+    RSHIM_ERR("socket failed: %m\n");
     return -1;
   }
 
@@ -136,7 +136,7 @@ static int rshim_if_open(char *ifname, int index)
 
     /* cleanup old device */
     if (ioctl(s, SIOCIFDESTROY, &ifr) < 0) {
-      RSHIM_ERR("SIOCIFDESTROY failed: %m");
+      RSHIM_ERR("SIOCIFDESTROY failed: %m\n");
       close(s);
       close(fd);
       return -1;
@@ -146,7 +146,7 @@ static int rshim_if_open(char *ifname, int index)
 
     /* try to rename device again */
     if (ioctl(s, SIOCSIFNAME, &ifr) < 0) {
-      RSHIM_ERR("SIOCIFNAME failed: %m");
+      RSHIM_ERR("SIOCIFNAME failed: %m\n");
       close(s);
       close(fd);
       return -1;
@@ -223,12 +223,12 @@ static void rshim_if_close(int fd)
 
   s = socket(AF_INET, SOCK_DGRAM, 0);
   if (s < 0) {
-    RSHIM_ERR("socket failed: %m");
+    RSHIM_ERR("socket failed: %m\n");
     return;
   }
 
   if (ioctl(s, SIOCIFDESTROY, &ifr) < 0) {
-    RSHIM_ERR("SIOCIFDESTROY failed: %m");
+    RSHIM_ERR("SIOCIFDESTROY failed: %m\n");
     close(s);
     return;
   }

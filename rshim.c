@@ -508,7 +508,7 @@ static int rshim_write_reset_control(struct rshim_backend *bd)
 
   rc = bd->read_rshim(bd, RSHIM_CHANNEL, RSH_RESET_CONTROL, &reg);
   if (rc < 0) {
-    RSHIM_ERR("failed to read rshim reset control error %d", rc);
+    RSHIM_ERR("failed to read rshim reset control error %d\n", rc);
     return rc;
   }
 
@@ -527,7 +527,7 @@ static int rshim_write_reset_control(struct rshim_backend *bd)
    */
   rc = bd->write_rshim(bd, RSHIM_CHANNEL, RSH_RESET_CONTROL, reg);
   if (rc < 0) {
-    RSHIM_ERR("failed to write rshim reset control error %d", rc);
+    RSHIM_ERR("failed to write rshim reset control error %d\n", rc);
     return rc;
   }
 
@@ -895,7 +895,7 @@ static int rshim_fifo_tx_avail(struct rshim_backend *bd)
   /* Get FIFO max size. */
   ret = bd->read_rshim(bd, RSHIM_CHANNEL, RSH_TM_HOST_TO_TILE_CTL, &word);
   if (ret) {
-    RSHIM_ERR("read_rshim error %d", ret);
+    RSHIM_ERR("read_rshim error %d\n", ret);
     return ret;
   }
   max_size = (word >> RSH_TM_HOST_TO_TILE_CTL__MAX_ENTRIES_SHIFT) &
@@ -904,7 +904,7 @@ static int rshim_fifo_tx_avail(struct rshim_backend *bd)
   /* Calculate available size. */
   ret = bd->read_rshim(bd, RSHIM_CHANNEL, RSH_TM_HOST_TO_TILE_STS, &word);
   if (ret) {
-    RSHIM_ERR("read_rshim error %d", ret);
+    RSHIM_ERR("read_rshim error %d\n", ret);
     return ret;
   }
   avail = max_size - (int)(word & RSH_TM_HOST_TO_TILE_STS__COUNT_MASK) - 1;
@@ -1704,7 +1704,7 @@ static void rshim_work_handler(struct rshim_backend *bd)
       rshim_notify(bd, RSH_EVENT_FIFO_OUTPUT, 0);
     } else {
       rshim_notify(bd, RSH_EVENT_FIFO_ERR, -1);
-      RSHIM_ERR("fifo_write: completed abnormally (%d).", len);
+      RSHIM_ERR("fifo_write: completed abnormally (%d)\n", len);
     }
 
     pthread_mutex_unlock(&bd->ringlock);
@@ -2779,13 +2779,13 @@ static int rshim_fs_init(struct rshim_backend *bd)
                                       (char **)argv,
                                       &ci, ops[i], NULL, bd);
     if (!bd->fuse_session[i]) {
-      RSHIM_ERR("Failed to setup CUSE %s", name);
+      RSHIM_ERR("Failed to setup CUSE %s\n", name);
       return -1;
     }
     fuse_remove_signal_handlers(bd->fuse_session[i]);
     rc = pthread_create(&bd->thread[i], NULL, cuse_worker, bd->fuse_session[i]);
     if (rc) {
-      RSHIM_ERR("Failed to create cuse thread %m");
+      RSHIM_ERR("Failed to create cuse thread %m\n");
       return rc;
     }
 #endif
@@ -2798,7 +2798,7 @@ static int rshim_fs_init(struct rshim_backend *bd)
       cuse_dev_create(ops[i], bd, NULL, 0 /* UID_ROOT */, 0 /* GID_WHEEL */,
                       0600, "rshim%d/%s", bd->dev_index, name);
     if (!bd->fuse_session[i]) {
-      RSHIM_ERR("Failed to setup CUSE %s", name);
+      RSHIM_ERR("Failed to setup CUSE %s\n", name);
       return -1;
     }
     rc = pthread_create(&bd->thread[i], NULL, cuse_worker, bd->fuse_session[i]);

@@ -341,7 +341,7 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
 
 #ifdef __linux__
   if (!pci_dev->size[0]) {
-    RSHIM_ERR("BAR[0] unassigned, run 'lspci -v'.");
+    RSHIM_ERR("BAR[0] unassigned, run 'lspci -v'\n");
     ret = -ENOMEM;
     goto rshim_map_failed;
   }
