@@ -1949,6 +1949,13 @@ static int rshim_fifo_release(struct cuse_dev *cdev, int fflags, int chan)
     pthread_mutex_unlock(&bd->ringlock);
   }
 
+#ifdef HAVE_RSHIM_FUSE
+  if (bd->rx_poll_handle[chan]) {
+    fuse_pollhandle_destroy(bd->rx_poll_handle[chan]);
+    bd->rx_poll_handle[chan] = NULL;
+  }
+#endif
+
   pthread_mutex_unlock(&bd->mutex);
 
 #ifdef HAVE_RSHIM_FUSE
