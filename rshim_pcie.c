@@ -302,8 +302,8 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
 #endif
 
   pcie_dev_name = malloc(max_name_len);
-  snprintf(pcie_dev_name, max_name_len, "pcie-%x-%x-%x-%x",
-           pci_dev->domain_16, pci_dev->bus, pci_dev->dev, pci_dev->func);
+  snprintf(pcie_dev_name, max_name_len, "pcie-%02x:%02x.%x",
+           pci_dev->bus, pci_dev->dev, pci_dev->func);
 
   rshim_lock();
 
