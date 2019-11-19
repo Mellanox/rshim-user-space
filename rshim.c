@@ -627,6 +627,13 @@ static int rshim_boot_open(struct cuse_dev *cdev, int fflags)
 
   bd->is_boot_open = 1;
 
+  /*
+   * Disable the watchdog. The channel and offset are the same on all
+   * the BlueField SoC so far.
+   */
+  bd->write_rshim(bd, RSH_MMIO_ADDRESS_SPACE__CHANNEL_VAL_WDOG1,
+                  RSH_ARM_WDG_CONTROL_WCS, 0);
+
   /* SW reset. */
   rc = rshim_write_reset_control(bd);
 
