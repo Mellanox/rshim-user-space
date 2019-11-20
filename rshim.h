@@ -31,12 +31,12 @@
 #include "rshim_regs.h"
 
 /* Debug Macros. */
-extern int rshim_log_level;
+extern int rshim_dbg_level;
 
 #ifdef RSHIM_DEBUG_ENABLE
 #define RSHIM_DEBUG(level, fmt...) \
 do { \
-  if ((level) <= rshim_log_level) \
+  if ((level) <= rshim_dbg_level) \
     printf(fmt); \
 } while (0)
 #else
@@ -433,7 +433,7 @@ void rshim_deref(struct rshim_backend *bd);
 int rshim_log_show(struct rshim_backend *bd, char *buf, int len);
 
 /* USB backend APIs. */
-bool rshim_usb_init(int epoll_fd);
+int rshim_usb_init(int epoll_fd);
 void rshim_usb_poll(void);
 
 /* PCIe backend APIs. */

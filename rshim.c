@@ -196,7 +196,7 @@ char *rshim_dev_minor_names[RSH_DEV_TYPES] = {
     [RSH_DEV_TYPE_MISC] = "misc",
 };
 
-int rshim_log_level = 3;
+int rshim_dbg_level = 3;
 
 /* FIFO reset. */
 static void rshim_fifo_reset(struct rshim_backend *bd);
@@ -3074,6 +3074,7 @@ static void rshim_boot_workaround_check(struct rshim_backend *bd)
 /* Check whether backend is allowed to register or not. */
 static int rshim_access_check(struct rshim_backend *bd)
 {
+  struct rshim_backend *other_bd;
   uint64_t value;
   int i, rc;
 
@@ -3097,6 +3098,17 @@ static int rshim_access_check(struct rshim_backend *bd)
   if (rc < 0)
     return -ENODEV;
 
+  /* Write magic number to all the other backends. */
+  for (i = 0; i < RSHIM_MAX_DEV; i++) {
+    other_bd = rshim_devs[i];
+    if (!other_bd || other_bd == bd)
+      continue;
+    pthread_mutex_lock(&other_bd->mutex);
+    other_bd->write_rshim(other_bd, RSHIM_CHANNEL, RSH_SCRATCHPAD1,
+                    RSH_KEEPALIVE_MAGIC_NUM);
+    pthread_mutex_unlock(&other_bd->mutex);
+  }
+
   /*
    * Poll RSH_SCRATCHPAD1 up to one second to check whether it's reset to
    * the keepalive magic value, which indicates another backend driver has
@@ -3108,7 +3120,7 @@ static int rshim_access_check(struct rshim_backend *bd)
       return -ENODEV;
 
     if (value == RSH_KEEPALIVE_MAGIC_NUM) {
-      RSHIM_INFO("another backend already attached.\n");
+      RSHIM_INFO("another backend already attached\n");
       return -EEXIST;
     }
 
@@ -3251,7 +3263,6 @@ static void rshim_main(int argc, char *argv[])
   struct epoll_event events[MAXEVENTS];
   struct epoll_event event;
   struct rshim_backend *bd;
-  bool has_usb = false;
   struct itimerspec ts;
   uint32_t len;
 
@@ -3310,25 +3321,20 @@ static void rshim_main(int argc, char *argv[])
   /* Scan rshim backends. */
   rc = 0;
   if (!rshim_backend_name) {
-    has_usb = rshim_usb_init(epoll_fd);
-    if (!has_usb) {
-      rc = rshim_pcie_init();
-      if (rc)
-        rc = rshim_pcie_lf_init();
-    }
+    rshim_usb_init(epoll_fd);
+    rshim_pcie_init();
+    rshim_pcie_lf_init();
   } else {
     if (!strcmp(rshim_backend_name, "usb"))
-      has_usb = rshim_usb_init(epoll_fd);
+      rc = rshim_usb_init(epoll_fd);
     else if (!strcmp(rshim_backend_name, "pcie"))
       rc = rshim_pcie_init();
     else if (!strcmp(rshim_backend_name, "pcie_lf"))
       rc = rshim_pcie_lf_init();
   }
-  if (!has_usb && rc) {
-    if (rc) {
-      RSHIM_ERR("no rshim devices found\n");
-      exit(-1);
-    }
+  if (rc) {
+    RSHIM_ERR("failed to initialize rshim backend\n");
+    exit(-1);
   }
 
   for (;;) {
@@ -3379,8 +3385,7 @@ static void rshim_main(int argc, char *argv[])
         }
       }
 
-      if (has_usb)
-        rshim_usb_poll();
+      rshim_usb_poll();
     }
   }
 }
@@ -3388,11 +3393,9 @@ static void rshim_main(int argc, char *argv[])
 static void print_help(void)
 {
   printf("./rshim [options]\n");
-  printf("  -a                     advanced options\n");
   printf("  -b <usb|pcie|pcie_lf>  driver name\n");
   printf("  -k                     skip sw_reset\n");
   printf("  -l <0~4>               debug level\n");
-  printf("  -t <seconds>           boot timeout\n");
 }
 
 int main(int argc, char *argv[])
@@ -3401,7 +3404,7 @@ int main(int argc, char *argv[])
   int c;
 
   /* Parse arguments. */
-  while ((c = getopt(argc, argv, "b:hkl:t:")) != -1) {
+  while ((c = getopt(argc, argv, "b:hkl:")) != -1) {
     switch (c) {
     case 'b':
       rshim_backend_name = optarg;
@@ -3410,10 +3413,7 @@ int main(int argc, char *argv[])
       rshim_sw_reset_skip = 1;
       break;
     case 'l':
-      rshim_log_level = atoi(optarg);
-      break;
-    case 't':
-      rshim_boot_timeout = atoi(optarg);
+      rshim_dbg_level = atoi(optarg);
       break;
     case 'h':
     default:
@@ -3423,7 +3423,7 @@ int main(int argc, char *argv[])
   }
 
   /* Put into daemon mode if no debugging. */
-  if (!rshim_log_level) {
+  if (!rshim_dbg_level) {
     int pid = fork();
 
     if (pid < 0) {

@@ -62,6 +62,10 @@ static void rshim_usb_delete(struct rshim_backend *bd)
 
   rshim_deregister(bd);
   RSHIM_INFO("rshim %s deleted\n", bd->dev_name);
+  if (dev->handle) {
+    libusb_close(dev->handle);
+    dev->handle = NULL;
+  }
   free(dev);
 }
 
@@ -502,6 +506,7 @@ static int rshim_usb_probe_one(libusb_context *ctx, libusb_device *usb_dev)
     sprintf(p, "-%x", port_numbers[i]);
     p += strlen(p);
   }
+  RSHIM_INFO("Probing %s\n", usb_dev_name);
 
   rc = libusb_get_active_config_descriptor(usb_dev, &config);
   if (rc) {
@@ -524,6 +529,7 @@ static int rshim_usb_probe_one(libusb_context *ctx, libusb_device *usb_dev)
         RSHIM_INFO("detach kernel driver\n");
       } else {
         RSHIM_ERR("Failed to detach kernel driver\n");
+        libusb_close(handle);
         return -EBUSY;
       }
     }
@@ -532,6 +538,7 @@ static int rshim_usb_probe_one(libusb_context *ctx, libusb_device *usb_dev)
     rc = libusb_claim_interface(handle, i);
     if (rc < 0) {
       perror("Failed to claim interface\n");
+      libusb_close(handle);
       return rc;
     }
   }
@@ -903,7 +910,7 @@ static bool rshim_usb_probe(void)
   return true;
 }
 
-bool rshim_usb_init(int epoll_fd)
+int rshim_usb_init(int epoll_fd)
 {
   libusb_context *ctx = NULL;
   int rc;
@@ -911,10 +918,10 @@ bool rshim_usb_init(int epoll_fd)
   rc = libusb_init(&ctx);
   if (rc < 0) {
     RSHIM_ERR("USB Init Error: %m\n");
-    return false;
+    return rc;
   }
 
-  if (rshim_log_level > 1)
+  if (rshim_dbg_level > 1)
     libusb_set_debug(ctx, LIBUSB_LOG_LEVEL_ERROR);
 
   rshim_usb_ctx = ctx;
@@ -933,18 +940,23 @@ bool rshim_usb_init(int epoll_fd)
                                         &rshim_hotplug_handle);
   if (rc != LIBUSB_SUCCESS) {
     RSHIM_ERR("failed to register hotplug callback\n");
-    return false;
+    libusb_exit(ctx);
+    rshim_usb_ctx = NULL;
+    return rc;
   }
 #else
   rshim_usb_probe();
 #endif
 
-  return true;
+  return 0;
 }
 
 void rshim_usb_poll(void)
 {
   struct timeval tv = {0, 0};
+
+  if (!rshim_usb_ctx)
+    return;
 
   if (rshim_usb_need_probe) {
     rshim_usb_need_probe = false;

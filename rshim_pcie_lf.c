@@ -485,7 +485,7 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
   pciaddr_t bar0;
 
   pcie_dev_name = malloc(max_name_len);
-  snprintf(pcie_dev_name, max_name_len, "pcie-%02x:%02x.%d",
+  snprintf(pcie_dev_name, max_name_len, "pcie-lf-%02x:%02x.%d",
            pci_dev->bus, pci_dev->dev, pci_dev->func);
 
   RSHIM_INFO("Probing %s\n", pcie_dev_name);
