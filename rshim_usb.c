@@ -257,7 +257,8 @@ static void rshim_usb_fifo_read(struct rshim_usb *dev, char *buffer,
     urb = dev->read_or_intr_urb;
 
     libusb_fill_bulk_transfer(urb, dev->handle, dev->tm_fifo_in_ep,
-                              (uint8_t *)buffer, count, rshim_usb_fifo_read_callback,
+                              (uint8_t *)buffer, count,
+                              rshim_usb_fifo_read_callback,
                               dev, RSHIM_USB_TIMEOUT);
 
     dev->bd.spin_flags |= RSH_SFLG_READING;
@@ -867,7 +868,7 @@ static int rshim_hotplug_callback(struct libusb_context *ctx,
 
   rshim_usb_add_poll(ctx);
 
-  return (0);	/* keep filter registered */
+  return 0;	/* keep filter registered */
 }
 #endif
 

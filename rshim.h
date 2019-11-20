@@ -33,14 +33,14 @@
 /* Debug Macros. */
 extern int rshim_log_level;
 
-#ifdef RSHIM_LOG_ENABLE
-#define RSHIM_LOG(level, fmt...) \
+#ifdef RSHIM_DEBUG_ENABLE
+#define RSHIM_DEBUG(level, fmt...) \
 do { \
   if ((level) <= rshim_log_level) \
     printf(fmt); \
 } while (0)
 #else
-#define RSHIM_LOG(level, fmt...)
+#define RSHIM_DEBUG(level, fmt...)
 #endif
 
 #ifndef offsetof
@@ -53,10 +53,10 @@ do { \
   ((type *)(__mptr - offsetof(type, member))); })
 #endif
 
-#define RSHIM_ERR(fmt...)      RSHIM_LOG(1, fmt)
-#define RSHIM_WARN(fmt...)     RSHIM_LOG(2, fmt)
-#define RSHIM_INFO(fmt...)     RSHIM_LOG(3, fmt)
-#define RSHIM_DBG(fmt...)      RSHIM_LOG(4, fmt)
+#define RSHIM_ERR(fmt...)      RSHIM_DEBUG(1, fmt)
+#define RSHIM_WARN(fmt...)     RSHIM_DEBUG(2, fmt)
+#define RSHIM_INFO(fmt...)     RSHIM_DEBUG(3, fmt)
+#define RSHIM_DBG(fmt...)      RSHIM_DEBUG(4, fmt)
 
 /* Spin flag values. */
 #define RSH_SFLG_READING  0x1  /* read is active. */
@@ -428,6 +428,9 @@ static inline void rshim_net_tx(struct rshim_backend *bd)
 void rshim_ref(struct rshim_backend *bd);
 
 void rshim_deref(struct rshim_backend *bd);
+
+/* Display the rshim logging buffer. */
+int rshim_log_show(struct rshim_backend *bd, char *buf, int len);
 
 /* USB backend APIs. */
 bool rshim_usb_init(int epoll_fd);

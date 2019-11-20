@@ -47,9 +47,6 @@ static int rshim_keepalive_period = 300;
 /* Skip SW_RESET during booting. */
 static int rshim_sw_reset_skip;
 
-/* Advanced config options. */
-static int rshim_adv_cfg;
-
 /* Boot timeout in seconds. */
 static int rshim_boot_timeout = 100;
 
@@ -203,6 +200,9 @@ int rshim_log_level = 3;
 
 /* FIFO reset. */
 static void rshim_fifo_reset(struct rshim_backend *bd);
+
+/* Display level of the misc device file. */
+static int rshim_misc_level;
 
 /* Global lock / unlock. */
 
@@ -2310,7 +2310,7 @@ static int rshim_misc_read(struct cuse_dev *cdev, int fflags, void *peer_ptr,
   off_t off;
 #endif
   uint8_t *mac = bd->peer_mac;
-  int rc, len = sizeof(rm->buffer), seg;
+  int rc, len = sizeof(rm->buffer), n;
   struct timespec ts;
   struct timeval tp;
   uint64_t value;
@@ -2345,22 +2345,33 @@ static int rshim_misc_read(struct cuse_dev *cdev, int fflags, void *peer_ptr,
 
   p = rm->buffer;
 
-  seg = snprintf(p, len, "BOOT_MODE %lld\n",
-                 (long long)(value & RSH_BOOT_CONTROL__BOOT_MODE_MASK));
-  p += seg;
-  len -= seg;
+  n = snprintf(p, len, "%-16s%d (0:basic, 1:advanced, 2:log)\n",
+                 "DISPLAY_LEVEL", rshim_misc_level);
+  p += n;
+  len -= n;
+
+  n = snprintf(p, len, "%-16s%lld (0:rshim, 1:emmc, 2:emmc-boot-swap)\n",
+                 "BOOT_MODE",
+                 (unsigned long long)value & RSH_BOOT_CONTROL__BOOT_MODE_MASK);
+  p += n;
+  len -= n;
+
+  n = snprintf(p, len, "%-16s%d (seconds)\n", "BOOT_TIMEOUT",
+                 rshim_boot_timeout);
+  p += n;
+  len -= n;
 
   /* SW reset flag is always 0. */
-  seg = snprintf(p, len, "SW_RESET  %d\n", 0);
-  p += seg;
-  len -= seg;
+  n = snprintf(p, len, "%-16s%d (1: reset)\n", "SW_RESET", 0);
+  p += n;
+  len -= n;
 
   /* Display the driver name. */
-  seg = snprintf(p, len, "DEV_NAME  %s\n", bd->dev_name);
-  p += seg;
-  len -= seg;
+  n = snprintf(p, len, "%-16s%s (ro)\n", "DRV_NAME", bd->dev_name);
+  p += n;
+  len -= n;
 
-  if (rshim_adv_cfg) {
+  if (rshim_misc_level == 1) {
     gettimeofday(&tp, NULL);
 
     /*
@@ -2376,19 +2387,26 @@ static int rshim_misc_read(struct cuse_dev *cdev, int fflags, void *peer_ptr,
     ts.tv_sec  = tp.tv_sec + 1;
     ts.tv_nsec = tp.tv_usec * 1000;
     pthread_cond_timedwait(&bd->ctrl_wait_cond, &bd->mutex, &ts);
-    seg = snprintf(p, len, "PEER_MAC  %02x:%02x:%02x:%02x:%02x:%02x\n",
-                   mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-    p += seg;
-    len -= seg;
+    n = snprintf(p, len, "%-16s%02x:%02x:%02x:%02x:%02x:%02x (rw)\n",
+                   "PEER_MAC", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+    p += n;
+    len -= n;
 
-    seg = snprintf(p, len, "PXE_ID    0x%08x\n", htonl(bd->pxe_client_id));
-    p += seg;
-    len -= seg;
+    n = snprintf(p, len, "%-16s0x%08x (rw)\n",
+                   "PXE_ID", htonl(bd->pxe_client_id));
+    p += n;
+    len -= n;
 
-    seg = snprintf(p, len, "VLAN_ID   %d %d\n", bd->vlan[0], bd->vlan[1]);
-    p += seg;
-    len -= seg;
+    n = snprintf(p, len, "%-16s%d %d (rw)\n",
+                   "VLAN_ID", bd->vlan[0], bd->vlan[1]);
+    p += n;
+    len -= n;
+  } else if (rshim_misc_level == 2) {
+    n = rshim_log_show(bd, p, len);
+    p += n;
+    len -= n;
   }
+
   rm->len = p - rm->buffer;
 
 ready:
@@ -2453,7 +2471,15 @@ static int rshim_misc_write(struct cuse_dev *cdev, int fflags,
 
   p += strlen(key);
 
-  if (strcmp(key, "BOOT_MODE") == 0) {
+  if (strcmp(key, "DISPLAY_LEVEL") == 0) {
+    if (sscanf(p, "%d", &value) != 1)
+      goto invalid;
+    rshim_misc_level = value;
+  } else if (strcmp(key, "BOOT_TIMEOUT") == 0) {
+    if (sscanf(p, "%d", &value) != 1)
+      goto invalid;
+    rshim_boot_timeout = value;
+  } else if (strcmp(key, "BOOT_MODE") == 0) {
     if (sscanf(p, "%x", &value) != 1)
       goto invalid;
 
@@ -3375,11 +3401,8 @@ int main(int argc, char *argv[])
   int c;
 
   /* Parse arguments. */
-  while ((c = getopt(argc, argv, "ab:hkl:t:")) != -1) {
+  while ((c = getopt(argc, argv, "b:hkl:t:")) != -1) {
     switch (c) {
-    case 'a':
-      rshim_adv_cfg = 1;
-      break;
     case 'b':
       rshim_backend_name = optarg;
       break;
