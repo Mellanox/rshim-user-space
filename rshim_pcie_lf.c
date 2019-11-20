@@ -488,6 +488,11 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
   snprintf(pcie_dev_name, max_name_len, "pcie-lf-%02x:%02x.%d",
            pci_dev->bus, pci_dev->dev, pci_dev->func);
 
+  if (!rshim_allow_device(pcie_dev_name)) {
+    free(pcie_dev_name);
+    return -EACCES;
+  }
+
   RSHIM_INFO("Probing %s\n", pcie_dev_name);
 
   rshim_lock();

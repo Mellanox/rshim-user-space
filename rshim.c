@@ -184,9 +184,13 @@ static char *rshim_backend_name;
 /* Global epoll handler. */
 int rshim_epoll_fd;
 
+/* Index base of /dev/rshim<index>. */
+int rshim_dev_index_base;
+
 /* Array of devices and device names. */
 struct rshim_backend *rshim_devs[RSHIM_MAX_DEV];
 char *rshim_dev_names[RSHIM_MAX_DEV];
+char *rshim_allowed_dev_names[RSHIM_MAX_DEV];
 
 /* Name of the sub-device types. */
 char *rshim_dev_minor_names[RSH_DEV_TYPES] = {
@@ -1765,7 +1769,7 @@ static int rshim_boot_done(struct rshim_backend *bd)
     }
 
     /* Tell the user this device is now attached. */
-    RSHIM_INFO("rshim%d attached\n", bd->dev_index);
+    RSHIM_INFO("rshim%d attached\n", bd->dev_index + rshim_dev_index_base);
   }
 
   return 0;
@@ -2812,7 +2816,8 @@ static int rshim_fs_init(struct rshim_backend *bd)
   for (i = 0; i < RSH_DEV_TYPES; i++) {
 #ifdef HAVE_RSHIM_FUSE
     name = rshim_dev_minor_names[i];
-    snprintf(buf, sizeof(buf), "DEVNAME=rshim%d/%s", bd->dev_index, name);
+    snprintf(buf, sizeof(buf), "DEVNAME=rshim%d/%s",
+             bd->dev_index + rshim_dev_index_base, name);
     if (!ops[i])
       continue;
     bd->fuse_session[i] = cuse_lowlevel_setup(sizeof(argv)/sizeof(char *),
@@ -2831,12 +2836,14 @@ static int rshim_fs_init(struct rshim_backend *bd)
 #endif
 #ifdef HAVE_RSHIM_CUSE
     name = rshim_dev_minor_names[i];
-    snprintf(buf, sizeof(buf), "rshim%d/%s", bd->dev_index, name);
+    snprintf(buf, sizeof(buf), "rshim%d/%s",
+             bd->dev_index + rshim_dev_index_base, name);
     if (!ops[i])
       continue;
     bd->fuse_session[i] =
       cuse_dev_create(ops[i], bd, NULL, 0 /* UID_ROOT */, 0 /* GID_WHEEL */,
-                      0600, "rshim%d/%s", bd->dev_index, name);
+                      0600, "rshim%d/%s", bd->dev_index + rshim_dev_index_base,
+                      name);
     if (!bd->fuse_session[i]) {
       RSHIM_ERR("Failed to setup CUSE %s\n", name);
       return -1;
@@ -3252,6 +3259,25 @@ void rshim_deref(struct rshim_backend *bd)
   }
 }
 
+bool rshim_allow_device(const char *devname)
+{
+  int i;
+  char *name;
+
+  if (!rshim_allowed_dev_names[0])
+    return true;
+
+  for (i = 0; i < RSHIM_MAX_DEV; i++) {
+    name = rshim_allowed_dev_names[i];
+    if (!name)
+      break;
+    if (!strcmp(name, devname))
+      return true;
+  }
+
+  return false;
+}
+
 static void rshim_main(int argc, char *argv[])
 {
   int i, fd, num, rc, epoll_fd, timer_fd;
@@ -3393,18 +3419,20 @@ static void rshim_main(int argc, char *argv[])
 static void print_help(void)
 {
   printf("./rshim [options]\n");
-  printf("  -b <usb|pcie|pcie_lf>  driver name\n");
-  printf("  -k                     skip sw_reset\n");
-  printf("  -l <0~4>               debug level\n");
+  printf("  -b <usb|pcie|pcie_lf>  driver name (optional)\n");
+  printf("  -d <devname> -d ...    device list (optional)\n");
+  printf("  -k                     skip sw_reset (optional)\n");
+  printf("  -l <0~4>               debug level (optional)\n");
+  printf("  -m <num>               rshim index base (optional)\n");
 }
 
 int main(int argc, char *argv[])
 {
   pthread_t thread;
-  int c;
+  int c, i = 0, has_index = 0;
 
   /* Parse arguments. */
-  while ((c = getopt(argc, argv, "b:hkl:")) != -1) {
+  while ((c = getopt(argc, argv, "b:d:hkl:m:")) != -1) {
     switch (c) {
     case 'b':
       rshim_backend_name = optarg;
@@ -3415,11 +3443,23 @@ int main(int argc, char *argv[])
     case 'l':
       rshim_dbg_level = atoi(optarg);
       break;
+    case 'm':
+      rshim_dev_index_base = atoi(optarg);
+      has_index = 1;
+      break;
+    case 'd':
+      rshim_allowed_dev_names[i++] = optarg;
+      break;
     case 'h':
     default:
       print_help();
       return -1;
     }
+  }
+
+  if (rshim_allowed_dev_names[0] && !has_index) {
+    printf("rshim index base ('-m <base>' option) is needed\n");
+    return -1;
   }
 
   /* Put into daemon mode if no debugging. */

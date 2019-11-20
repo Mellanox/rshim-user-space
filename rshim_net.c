@@ -244,8 +244,9 @@ int rshim_net_init(struct rshim_backend *bd)
   char ifname[64];
   int rc;
 
-  snprintf(ifname, sizeof(ifname), "tmfifo_net%d", bd->dev_index);
-  bd->net_fd = rshim_if_open(ifname, bd->dev_index);
+  snprintf(ifname, sizeof(ifname), "tmfifo_net%d",
+           bd->dev_index + rshim_dev_index_base);
+  bd->net_fd = rshim_if_open(ifname, bd->dev_index + rshim_dev_index_base);
 
   if (bd->net_fd < 0)
     return bd->net_fd;

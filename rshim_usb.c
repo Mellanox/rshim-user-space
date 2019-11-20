@@ -506,6 +506,12 @@ static int rshim_usb_probe_one(libusb_context *ctx, libusb_device *usb_dev)
     sprintf(p, "-%x", port_numbers[i]);
     p += strlen(p);
   }
+
+  if (!rshim_allow_device(usb_dev_name)) {
+    free(usb_dev_name);
+    return -EACCES;
+  }
+
   RSHIM_INFO("Probing %s\n", usb_dev_name);
 
   rc = libusb_get_active_config_descriptor(usb_dev, &config);

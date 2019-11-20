@@ -361,6 +361,7 @@ struct rshim_service {
 /* Global variables. */
 
 extern int rshim_epoll_fd;
+extern int rshim_dev_index_base;
 
 /* Common APIs. */
 
@@ -431,6 +432,8 @@ void rshim_deref(struct rshim_backend *bd);
 
 /* Display the rshim logging buffer. */
 int rshim_log_show(struct rshim_backend *bd, char *buf, int len);
+
+bool rshim_allow_device(const char *devname);
 
 /* USB backend APIs. */
 int rshim_usb_init(int epoll_fd);
