@@ -25,12 +25,6 @@ CFLAGS = \
        -DHAVE_RSHIM_PCIE_LF \
        -g
 
-ifndef HAVE_DEBUG
-CFLAGS += -DRSHIM_DEBUG_ENABLE=0
-else
-CFLAGS += -DRSHIM_DEBUG_ENABLE=1
-endif
-
 LIBS = -L$(LOCALBASE)/lib \
        -lpci \
        -lepoll-shim \
@@ -42,7 +36,7 @@ LIBS = -L$(LOCALBASE)/lib \
 
 all: $(TARGET)
 
-OBJS := $(patsubst %.c,%.o,$(wildcard *.c))
+OBJS := $(patsubst %.c,%.o,$(wildcard src/*.c))
 
 $(TARGET): $(OBJS)
 	$(CC) $^ -o $@ $(LIBS)

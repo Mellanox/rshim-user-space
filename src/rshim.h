@@ -33,15 +33,11 @@
 /* Debug Macros. */
 extern int rshim_dbg_level;
 
-#ifdef RSHIM_DEBUG_ENABLE
 #define RSHIM_DEBUG(level, fmt...) \
 do { \
   if ((level) <= rshim_dbg_level) \
     printf(fmt); \
 } while (0)
-#else
-#define RSHIM_DEBUG(level, fmt...)
-#endif
 
 #ifndef offsetof
 #define offsetof(TYPE, MEMBER)	((size_t)&((TYPE *)0)->MEMBER)

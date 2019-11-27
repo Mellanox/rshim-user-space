@@ -570,7 +570,7 @@ static int rshim_boot_open(struct cuse_dev *cdev, int fflags)
   if (!bd->has_rshim) {
     pthread_mutex_unlock(&bd->mutex);
 #ifdef HAVE_RSHIM_FUSE
-    fuse_reply_err(req, -NODEV);
+    fuse_reply_err(req, -ENODEV);
     return;
 #endif
 #ifdef HAVE_RSHIM_CUSE
@@ -2371,7 +2371,7 @@ static int rshim_misc_read(struct cuse_dev *cdev, int fflags, void *peer_ptr,
   len -= n;
 
   /* Display the driver name. */
-  n = snprintf(p, len, "%-16s%s (ro)\n", "DRV_NAME", bd->dev_name);
+  n = snprintf(p, len, "%-16s%s\n", "DRV_NAME", bd->dev_name);
   p += n;
   len -= n;
 
@@ -3418,7 +3418,7 @@ static void rshim_main(int argc, char *argv[])
 
 static void print_help(void)
 {
-  printf("./rshim [options]\n");
+  printf("./bfrshim [options]\n");
   printf("  -b <usb|pcie|pcie_lf>  driver name (optional)\n");
   printf("  -d <devname> -d ...    device list (optional)\n");
   printf("  -k                     skip sw_reset (optional)\n");

@@ -8,20 +8,25 @@ internal rshim registers.
 
 *) Build
 
-  Type 'make' to generate executable bfrshim.
-  TBD: Use configure to generate platform indepent Makefile.
+  Linux:
+  Make sure autoconf/automake tools are available.
+  Run ./bootstrap.sh for the first time to generate the configure file.
+  Then run ./configure and make which generates binary bfrshim under src.
+
+  FreeBSD:
+
+  Require 12.0+ with packages gmake, libepoll-shim, libpciaccess, libpci.
+  Run gmake -f Makefile.freebsd to build it.
 
 *) Usage
 
-./rshim [options]
-
-    -a                     advanced options
-  
-    -b <usb|pcie|pcie_lf>  driver name
-
-    -k                     skip sw_reset
-  
-    -l <0~4>               debug level
+$ ./src/bfrshim -h
+./bfrshim [options]
+  -b <usb|pcie|pcie_lf>  driver name (optional)
+  -d <devname> -d ...    device list (optional)
+  -k                     skip sw_reset (optional)
+  -l <0~4>               debug level (optional)
+  -m <num>               rshim index base (optional)
 
 *) Device Files
 

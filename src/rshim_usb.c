@@ -11,6 +11,9 @@
 #include <pthread.h>
 
 #include "rshim.h"
+#ifdef __linux__
+#include "config.h"
+#endif
 
 /* Our USB vendor/product IDs. */
 #define USB_TILERA_VENDOR_ID      0x22dc   /* Tilera Corporation */
@@ -483,7 +486,7 @@ static int rshim_usb_probe_one(libusb_context *ctx, libusb_device *usb_dev)
   struct rshim_usb *dev = NULL;
   struct rshim_backend *bd;
   char *usb_dev_name, *p;
-  uint8_t port_numbers[8], bus;
+  uint8_t port_numbers[8] = {0}, bus;
 
   /* Check if already exists. */
   rshim_lock();
@@ -494,7 +497,12 @@ static int rshim_usb_probe_one(libusb_context *ctx, libusb_device *usb_dev)
 
   /* Check bus number and the port path of the rshim device path. */
   bus = libusb_get_bus_number(usb_dev);
+#if HAVE_LIBUSB_GET_PORT_NUMBERS || defined(__FreeBSD__)
   rc = libusb_get_port_numbers(usb_dev, port_numbers, sizeof(port_numbers));
+#elif HAVE_LIBUSB_GET_DEVICE_ADDRESS
+  port_numbers[0] = libusb_get_device_address(usb_dev);
+  rc = 1;
+#endif
   if (rc <= 0) {
     perror("Failed to get USB ports\n");
     return -ENODEV;
@@ -527,23 +535,14 @@ static int rshim_usb_probe_one(libusb_context *ctx, libusb_device *usb_dev)
   }
 
   for (i = 0; i < config->bNumInterfaces; i++) {
-#if TBD
-    if (libusb_kernel_driver_active(handle, i) == 1) {
-      RSHIM_INFO("found kernel driver\n");
-      rc = libusb_detach_kernel_driver(handle, i);
-      if (!rc) {
-        RSHIM_INFO("detach kernel driver\n");
-      } else {
-        RSHIM_ERR("Failed to detach kernel driver\n");
-        libusb_close(handle);
-        return -EBUSY;
-      }
-    }
-#endif
-
     rc = libusb_claim_interface(handle, i);
     if (rc < 0) {
-      perror("Failed to claim interface\n");
+      if (libusb_kernel_driver_active(handle, i) == 1) {
+        perror("Kernel driver is running. Please uninstall it first.\n");
+        exit(rc);
+      }
+      else
+        perror("Failed to claim interface\n");
       libusb_close(handle);
       return rc;
     }
@@ -927,8 +926,10 @@ int rshim_usb_init(int epoll_fd)
     return rc;
   }
 
+#ifdef LIBUSB_LOG_LEVEL_ERROR
   if (rshim_dbg_level > 1)
     libusb_set_debug(ctx, LIBUSB_LOG_LEVEL_ERROR);
+#endif
 
   rshim_usb_ctx = ctx;
   rshim_usb_epoll_fd = epoll_fd;
