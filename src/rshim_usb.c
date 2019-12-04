@@ -9,11 +9,11 @@
 #include <poll.h>
 #include <sys/epoll.h>
 #include <pthread.h>
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
 
 #include "rshim.h"
-#ifdef __linux__
-#include "config.h"
-#endif
 
 /* Our USB vendor/product IDs. */
 #define USB_TILERA_VENDOR_ID      0x22dc   /* Tilera Corporation */

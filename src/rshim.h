@@ -25,19 +25,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <syslog.h>
 #include <termios.h>
 #include <unistd.h>
 
 #include "rshim_regs.h"
 
-/* Debug Macros. */
+/* Global variables. */
 extern int rshim_dbg_level;
-
-#define RSHIM_DEBUG(level, fmt...) \
-do { \
-  if ((level) <= rshim_dbg_level) \
-    printf(fmt); \
-} while (0)
+extern bool rshim_daemon_mode;
 
 #ifndef offsetof
 #define offsetof(TYPE, MEMBER)	((size_t)&((TYPE *)0)->MEMBER)
@@ -49,10 +45,18 @@ do { \
   ((type *)(__mptr - offsetof(type, member))); })
 #endif
 
-#define RSHIM_ERR(fmt...)      RSHIM_DEBUG(1, fmt)
-#define RSHIM_WARN(fmt...)     RSHIM_DEBUG(2, fmt)
-#define RSHIM_INFO(fmt...)     RSHIM_DEBUG(3, fmt)
-#define RSHIM_DBG(fmt...)      RSHIM_DEBUG(4, fmt)
+#define RSHIM_DEBUG(dbg_level, log_level, fmt...) do { \
+  if (rshim_dbg_level >= dbg_level) { \
+    if (rshim_daemon_mode) \
+      syslog(log_level, fmt); \
+    else \
+      printf(fmt); \
+  } \
+} while(0)
+#define RSHIM_ERR(fmt...)      RSHIM_DEBUG(1, LOG_ERR, fmt)
+#define RSHIM_WARN(fmt...)     RSHIM_DEBUG(2, LOG_WARNING, fmt)
+#define RSHIM_INFO(fmt...)     RSHIM_DEBUG(3, LOG_NOTICE, fmt)
+#define RSHIM_DBG(fmt...)      RSHIM_DEBUG(4, LOG_DEBUG, fmt)
 
 /* Spin flag values. */
 #define RSH_SFLG_READING  0x1  /* read is active. */

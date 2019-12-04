@@ -44,9 +44,6 @@
 /* Keepalive period in milliseconds. */
 static int rshim_keepalive_period = 300;
 
-/* Skip SW_RESET during booting. */
-static int rshim_sw_reset_skip;
-
 /* Boot timeout in seconds. */
 static int rshim_boot_timeout = 100;
 
@@ -201,6 +198,7 @@ char *rshim_dev_minor_names[RSH_DEV_TYPES] = {
 };
 
 int rshim_dbg_level = 3;
+bool rshim_daemon_mode = true;
 
 /* FIFO reset. */
 static void rshim_fifo_reset(struct rshim_backend *bd);
@@ -479,7 +477,7 @@ static int wait_for_boot_done(struct rshim_backend *bd)
 {
   int rc;
 
-  if (!bd->has_reprobe || rshim_sw_reset_skip)
+  if (!bd->has_reprobe)
     return 0;
 
   if (!bd->has_rshim || bd->is_booting) {
@@ -613,19 +611,6 @@ static int rshim_boot_open(struct cuse_dev *cdev, int fflags)
 #endif
 #ifdef HAVE_RSHIM_CUSE
     return CUSE_ERR_OTHER;
-#endif
-  }
-
-  if (rshim_sw_reset_skip) {
-    rshim_ref(bd);
-    bd->is_boot_open = 1;
-    pthread_mutex_unlock(&bd->mutex);
-#ifdef HAVE_RSHIM_FUSE
-    fuse_reply_err(req, 0);
-    return;
-#endif
-#ifdef HAVE_RSHIM_CUSE
-    return CUSE_ERR_NONE;
 #endif
   }
 
@@ -3421,7 +3406,7 @@ static void print_help(void)
   printf("./bfrshim [options]\n");
   printf("  -b <usb|pcie|pcie_lf>  driver name (optional)\n");
   printf("  -d <devname> -d ...    device list (optional)\n");
-  printf("  -k                     skip sw_reset (optional)\n");
+  printf("  -f                     run in foreground\n");
   printf("  -l <0~4>               debug level (optional)\n");
   printf("  -m <num>               rshim index base (optional)\n");
 }
@@ -3432,13 +3417,16 @@ int main(int argc, char *argv[])
   int c, i = 0, has_index = 0;
 
   /* Parse arguments. */
-  while ((c = getopt(argc, argv, "b:d:hkl:m:")) != -1) {
+  while ((c = getopt(argc, argv, "b:d:fhl:m:")) != -1) {
     switch (c) {
     case 'b':
       rshim_backend_name = optarg;
       break;
-    case 'k':
-      rshim_sw_reset_skip = 1;
+    case 'd':
+      rshim_allowed_dev_names[i++] = optarg;
+      break;
+    case 'f':
+      rshim_daemon_mode = false;
       break;
     case 'l':
       rshim_dbg_level = atoi(optarg);
@@ -3446,9 +3434,6 @@ int main(int argc, char *argv[])
     case 'm':
       rshim_dev_index_base = atoi(optarg);
       has_index = 1;
-      break;
-    case 'd':
-      rshim_allowed_dev_names[i++] = optarg;
       break;
     case 'h':
     default:
@@ -3462,8 +3447,8 @@ int main(int argc, char *argv[])
     return -1;
   }
 
-  /* Put into daemon mode if no debugging. */
-  if (!rshim_dbg_level) {
+  /* Put into daemon mode. */
+  if (rshim_daemon_mode) {
     int pid = fork();
 
     if (pid < 0) {
@@ -3488,7 +3473,11 @@ int main(int argc, char *argv[])
     close(STDERR_FILENO);
   }
 
+  openlog("rshim", LOG_CONS, LOG_USER);
+
   rshim_main(argc, argv);
+
+  closelog();
 
   return 0;
 }

@@ -24,7 +24,7 @@ $ ./src/bfrshim -h
 ./bfrshim [options]
   -b <usb|pcie|pcie_lf>  driver name (optional)
   -d <devname> -d ...    device list (optional)
-  -k                     skip sw_reset (optional)
+  -f                     run in foreground
   -l <0~4>               debug level (optional)
   -m <num>               rshim index base (optional)
 
