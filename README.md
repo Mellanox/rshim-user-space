@@ -15,8 +15,11 @@ internal rshim registers.
 
   FreeBSD:
 
-  Require 12.0+ with packages gmake, libepoll-shim, libpciaccess, libpci.
-  Run gmake -f Makefile.freebsd to build it.
+  Require FreeBSD 12.0+ with packages autoconf, automake, gmake, libepoll-shim,
+  libpciaccess, libpci.
+
+  Follow the same steps as build in Linux, or use 'gmake -f Makefile.freebsd'
+  to build it.
 
 *) Usage
 
