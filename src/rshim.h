@@ -253,6 +253,10 @@ struct rshim_backend {
   /* Buffers used for boot writes.  Allocated at startup. */
   char *boot_buf[2];
 
+  /* Buffer to store the remaining data when it's not 8B unaligned. */
+  uint8_t boot_rem_cnt;
+  uint64_t boot_rem_data;
+
   /*
    * This mutex is used to prevent the interface pointers and the
    * device pointer from disappearing while a driver entry point

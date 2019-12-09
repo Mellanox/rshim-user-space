@@ -578,6 +578,7 @@ static int rshim_boot_open(struct cuse_dev *cdev, int fflags)
 
   RSHIM_INFO("begin booting\n");
   bd->is_booting = 1;
+  bd->boot_rem_cnt = 0;
 
   /*
    * Before we reset the chip, make sure we don't have any
@@ -699,26 +700,8 @@ static int rshim_boot_write(struct cuse_dev *cdev, int fflags,
 #ifdef HAVE_RSHIM_CUSE
   struct rshim_backend *bd = cuse_dev_get_priv0(cdev);
 #endif
-  size_t bytes_written = 0, bytes_left;
-  int rc = 0, whichbuf = 0;
-
-  /*
-   * Hardware requires that we send multiples of 8 bytes.  Ideally
-   * we'd handle the case where we got unaligned writes by
-   * accumulating the residue somehow, but none of our clients
-   * typically do this, so we just clip the size to prevent any
-   * inadvertent errors from causing hardware problems.
-   */
-  bytes_left = count & (-((size_t)8));
-  if (!bytes_left) {
-#ifdef HAVE_RSHIM_FUSE
-    fuse_reply_write(req, 0);
-    return;
-#endif
-#ifdef HAVE_RSHIM_CUSE
-    return 0;
-#endif
-  }
+  int rc = 0, whichbuf = 0, len;
+  size_t bytes_written = 0;
 
   pthread_mutex_lock(&bd->mutex);
   if (bd->is_in_boot_write) {
@@ -752,25 +735,35 @@ static int rshim_boot_write(struct cuse_dev *cdev, int fflags,
    */
   bd->is_in_boot_write = 1;
 
-  while (bytes_left) {
-    size_t buf_bytes = MIN(BOOT_BUF_SIZE, bytes_left);
+  while (count + bd->boot_rem_cnt >= sizeof(uint64_t)) {
+    size_t buf_bytes = MIN(BOOT_BUF_SIZE,
+                           (count + bd->boot_rem_cnt) & (-((size_t)8)));
     char *buf = bd->boot_buf[whichbuf];
 
     whichbuf ^= 1;
+
+    /* Copy the previous remaining data first. */
+    if (bd->boot_rem_cnt)
+      memcpy(buf, &bd->boot_rem_data, bd->boot_rem_cnt);
+
 #ifdef HAVE_RSHIM_FUSE
-    memcpy(buf, user_buffer, buf_bytes);
+    memcpy(buf + bd->boot_rem_cnt, user_buffer,
+           buf_bytes - bd->boot_rem_cnt);
 #endif
 #ifdef HAVE_RSHIM_CUSE
-   rc = cuse_copy_in(user_buffer, buf, buf_bytes);
+   rc = cuse_copy_in(user_buffer, buf + bd->boot_rem_cnt,
+                     buf_bytes - bd->boot_rem_cnt);
    if (rc < 0)
 	break;
 #endif
 
     rc = bd->write(bd, RSH_DEV_TYPE_BOOT, buf, buf_bytes);
-    if (rc > 0) {
-      bytes_left -= rc;
-      user_buffer += rc;
-      bytes_written += rc;
+    if (rc > bd->boot_rem_cnt) {
+      len = rc - bd->boot_rem_cnt;
+      count -= len;
+      user_buffer += len;
+      bytes_written += len;
+      bd->boot_rem_cnt = 0;
     } else if (rc == 0) {
       /* Wait for some time instead of busy polling. */
       usleep(1000);
@@ -780,23 +773,23 @@ static int rshim_boot_write(struct cuse_dev *cdev, int fflags,
       break;
   }
 
-  bd->is_in_boot_write = 0;
-  pthread_mutex_unlock(&bd->mutex);
-
-  /*
-   * Return an error in case the 'count' is not multiple of 8 bytes.
-   * At this moment, the truncated data has already been sent to
-   * the BOOT fifo and hopefully it could still boot the chip.
-   */
-  if (count % 8 != 0) {
+  /* Buffer the remaining data. */
+  if (count + bd->boot_rem_cnt < sizeof(bd->boot_rem_data)) {
 #ifdef HAVE_RSHIM_FUSE
-    fuse_reply_err(req, -EINVAL);
-    return;
+    memcpy((uint8_t*)&bd->boot_rem_data + bd->boot_rem_cnt,
+           user_buffer, count);
 #endif
 #ifdef HAVE_RSHIM_CUSE
-    return CUSE_ERR_INVALID;
+    rc = cuse_copy_in(user_buffer,
+                      (uint8_t*)&bd->boot_rem_data + bd->boot_rem_cnt,
+                      count);
 #endif
+    bd->boot_rem_cnt += count;
+    bytes_written += count;
   }
+
+  bd->is_in_boot_write = 0;
+  pthread_mutex_unlock(&bd->mutex);
 
 #ifdef HAVE_RSHIM_FUSE
   if (bytes_written > 0 || count == 0)
@@ -835,7 +828,15 @@ static int rshim_boot_release(struct cuse_dev *cdev, int fflags)
     RSHIM_ERR("couldn't set boot_control, err %d\n", rc);
 
   pthread_mutex_lock(&bd->mutex);
+  /* Flush the leftover data with zeros padded. */
+  if (bd->boot_rem_cnt) {
+    memset((uint8_t*)&bd->boot_rem_data + bd->boot_rem_cnt, 0,
+           sizeof(uint64_t) - bd->boot_rem_cnt);
+    bd->write_rshim(bd, RSHIM_CHANNEL, RSH_BOOT_FIFO_DATA,
+           bd->boot_rem_data);
+  }
   bd->is_boot_open = 0;
+  bd->boot_rem_cnt = 0;
   rshim_work_signal(bd);
   pthread_mutex_unlock(&bd->mutex);
 
