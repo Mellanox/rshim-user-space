@@ -482,7 +482,6 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
   struct rshim_backend *bd;
   struct rshim_pcie *dev;
   char *pcie_dev_name;
-  pciaddr_t bar0;
 
   pcie_dev_name = malloc(max_name_len);
   snprintf(pcie_dev_name, max_name_len, "pcie-lf-%02x:%02x.%d",

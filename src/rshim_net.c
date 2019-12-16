@@ -50,9 +50,11 @@ static int rshim_if_set_non_blocking(int fd)
 static int rshim_if_open(char *ifname, int index)
 {
   struct ifreq ifr;
-  int s, fd;
+  int s, fd, rc;
 
-  system("modprobe tun");
+  rc = system("modprobe tun");
+  if (rc == -1)
+    RSHIM_DBG("Failed to load the tun module %m\n");
 
   fd = open("/dev/net/tun", O_RDWR);
   if (fd < 0) {

@@ -1,0 +1,89 @@
+#
+# Copyright (c) 2019 Mellanox Technologies. All rights reserved.
+#
+# This Software is licensed under one of the following licenses:
+#
+# 1) under the terms of the "Common Public License 1.0" a copy of which is
+#    available from the Open Source Initiative, see
+#    http://www.opensource.org/licenses/cpl.php.
+#
+# 2) under the terms of the "The BSD License" a copy of which is
+#    available from the Open Source Initiative, see
+#    http://www.opensource.org/licenses/bsd-license.php.
+#
+# 3) under the terms of the "GNU General Public License (GPL) Version 2" a
+#    copy of which is available from the Open Source Initiative, see
+#    http://www.opensource.org/licenses/gpl-license.php.
+#
+# Licensee has the right to choose one of the above licenses.
+#
+# Redistributions of source code must retain the above copyright
+# notice and one of the license notices.
+#
+# Redistributions in binary form must reproduce both the above copyright
+# notice, one of the license notices in the documentation
+# and/or other materials provided with the distribution.
+#
+#
+
+Name: bfrshim
+Version: @VERSION@
+Release: 1%{?dist}
+Summary: User-space rshim driver for BlueField SoC
+
+%global WITH_SYSTEMD %(if ( test -d "%{_unitdir}" > /dev/null); then echo -n '1'; else echo -n '0'; fi)
+
+Group: Applications/Internet	
+License: GPLv2
+Vendor: Mellanox Technologies
+URL: https://github.com/mellanox/rshim-user-space
+Source0: %{name}-%{version}.tar.gz
+BuildRoot: %(mktemp -ud %{_tmppath}/%{name}-%{version}-%{release}-XXXXXX)
+
+%description
+bfrshim is the user-space driver to access the BlueField SoC via the rshim
+interface. It provides ways to push boot stream, debug the target or login
+into the target via virtual console or network interface.
+
+BuildRequires: pciutils-devel, libusbx-devel
+
+%prep
+%setup -q -n %{name}
+
+%build
+./bootstrap.sh
+%configure
+make
+
+%install
+rm -rf %{buildroot}
+%makeinstall -C src INSTALL_DIR="%{buildroot}%{_bindir}"
+%{__install} -d %{buildroot}%{_sysconfdir}/udev/rules.d/
+%{__install} -m 0644 91-tmfifo_net.rules %{buildroot}%{_sysconfdir}/udev/rules.d/
+%if "%{WITH_SYSTEMD}" == "1"
+%{__install} -d %{buildroot}%{_unitdir}
+%{__install} -m 0644 bfrshim.service %{buildroot}%{_unitdir}
+%endif
+
+%post
+udevadm control --reload-rules 2>/dev/null
+%if "%{WITH_SYSTEMD}" == "1"
+  systemctl daemon-reload
+  systemctl enable bfrshim.service
+%endif
+
+%clean
+rm -rf %{buildroot}
+
+%files
+%defattr(-,root,root,-)
+%%doc README.md
+%{_sysconfdir}/udev/rules.d/91-tmfifo_net.rules
+%if "%{WITH_SYSTEMD}" == "1"
+%{_unitdir}/bfrshim.service
+%endif
+%{_bindir}/bfrshim
+
+%changelog
+* Mon Dec 16 2019 Liming Sun <lsun@mellanox.com>
+- Initial packaging

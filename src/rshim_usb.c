@@ -146,7 +146,6 @@ static int rshim_usb_write_rshim(struct rshim_backend *bd, int chan, int addr,
 static ssize_t rshim_usb_boot_write(struct rshim_usb *dev, const char *buf,
                                     size_t count)
 {
-  struct rshim_backend *bd = &dev->bd;
   int transferred;
   int rc;
 

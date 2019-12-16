@@ -1055,6 +1055,7 @@ static void rshim_fifo_input(struct rshim_backend *bd)
 {
   union rshim_tmfifo_msg_hdr *hdr;
   bool rx_avail = false;
+  int rc;
 
   if (bd->is_boot_open)
     return;
@@ -1188,8 +1189,11 @@ again:
   }
 
   if (rx_avail && bd->rx_chan == TMFIFO_NET_CHAN) {
-    if (__sync_bool_compare_and_swap(&bd->net_rx_pending, false, true))
-      write(bd->net_notify_fd[1], &rx_avail, 1);
+    if (__sync_bool_compare_and_swap(&bd->net_rx_pending, false, true)) {
+      do {
+        rc = write(bd->net_notify_fd[1], &rx_avail, 1);
+      } while (rc == -1 && errno == EINTR);
+    }
   }
 }
 
@@ -1890,7 +1894,6 @@ static int rshim_fifo_release(struct cuse_dev *cdev, int fflags, int chan)
 #ifdef HAVE_RSHIM_CUSE
   struct rshim_backend *bd = cuse_dev_get_priv0(cdev);
 #endif
-  int i;
 
   pthread_mutex_lock(&bd->mutex);
 
@@ -2402,7 +2405,6 @@ static int rshim_misc_read(struct cuse_dev *cdev, int fflags, void *peer_ptr,
 
   rm->len = p - rm->buffer;
 
-ready:
 #ifdef HAVE_RSHIM_FUSE
   if (size > (int)(rm->len - off))
     size = rm->len - off;
@@ -2411,6 +2413,7 @@ ready:
   return;
 #endif
 #ifdef HAVE_RSHIM_CUSE
+ready:
   if (size > (int)(rm->len - rm->offset))
     size = rm->len - rm->offset;
   off = rm->offset;
@@ -2551,7 +2554,10 @@ invalid:
 #endif
   }
 #ifdef HAVE_RSHIM_FUSE
-  fuse_reply_write(req, size);
+  if (!rc)
+    fuse_reply_write(req, size);
+  else
+    fuse_reply_err(req, -rc);
 #endif
 #ifdef HAVE_RSHIM_CUSE
   return size;
@@ -2777,7 +2783,6 @@ static void *cuse_worker(void *arg)
 static int rshim_fs_init(struct rshim_backend *bd)
 {
   char buf[128], *name;
-  pthread_t thread;
   const char *bufp[] = {buf};
 #ifdef HAVE_RSHIM_FUSE
   struct cuse_info ci = {.dev_info_argc = 1,
@@ -2876,7 +2881,7 @@ static int rshim_fs_del(struct rshim_backend *bd)
 
 int rshim_notify(struct rshim_backend *bd, int event, int code)
 {
-  int i, rc = 0;
+  int rc = 0;
 
   switch (event) {
   case RSH_EVENT_FIFO_INPUT:
@@ -3279,18 +3284,20 @@ static void rshim_main(int argc, char *argv[])
   struct epoll_event event;
   struct rshim_backend *bd;
   struct itimerspec ts;
-  uint32_t len;
 
   memset(&event, 0, sizeof(event));
   memset(events, 0, sizeof(events));
 
 #ifdef __linux__
-  system("modprobe cuse");
+  rc = system("modprobe cuse");
+  if (rc == -1)
+    RSHIM_DBG("Failed the load cuse: %m\n");
 #endif
 
 #ifdef __FreeBSD__
   if (feature_present("cuse") == 0)
-    system("kldload cuse");
+    if (system("kldload cuse") == -1)
+      RSHIM_DBG("Failed the load cuse\n");
 #endif
 
   /* Create the epoll fd */
@@ -3407,7 +3414,7 @@ static void rshim_main(int argc, char *argv[])
 
 static void print_help(void)
 {
-  printf("./bfrshim [options]\n");
+  printf("Usage: bfrshim [options]\n");
   printf("  -b <usb|pcie|pcie_lf>  driver name (optional)\n");
   printf("  -d <devname> -d ...    device list (optional)\n");
   printf("  -f                     run in foreground\n");
@@ -3417,7 +3424,6 @@ static void print_help(void)
 
 int main(int argc, char *argv[])
 {
-  pthread_t thread;
   int c, i = 0, has_index = 0;
 
   /* Parse arguments. */
@@ -3471,7 +3477,8 @@ int main(int argc, char *argv[])
 #ifdef HAVE_RSHIM_CUSE
     signal(SIGHUP, &cuse_hup);
 #endif
-    chdir("/");
+    if (chdir("/") == -1)
+      perror("chdir failed: %m\n");
     close(STDIN_FILENO);
     close(STDOUT_FILENO);
     close(STDERR_FILENO);

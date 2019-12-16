@@ -5,6 +5,7 @@ AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_FILES([
   Makefile
   src/Makefile
+  bfrshim.spec
 ])
 AC_CANONICAL_HOST
 

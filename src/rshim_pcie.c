@@ -426,7 +426,6 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
   return 0;
 
  rshim_map_failed:
- enable_failed:
    rshim_lock();
    rshim_deref(bd);
    rshim_unlock();
