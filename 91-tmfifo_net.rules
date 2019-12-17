@@ -1,7 +1,0 @@
-SUBSYSTEM=="net", ACTION=="add", ATTR{address}=="00:1a:ca:ff:ff:02", ATTR{type}=="1", NAME="tmfifo_net0", RUN+="/bin/sh -c '/usr/sbin/ifup tmfifo_net0 2>/dev/null || /sbin/ip link set dev tmfifo_net0 up'"
-
-SUBSYSTEM=="net", ACTION=="add", ATTR{address}=="00:1a:ca:ff:ff:04", ATTR{type}=="1", NAME="tmfifo_net1", RUN+="/bin/sh -c '/usr/sbin/ifup tmfifo_net1 2>/dev/null || /sbin/ip link set dev tmfifo_net1 up'"
-
-SUBSYSTEM=="net", ACTION=="add", ATTR{address}=="00:1a:ca:ff:ff:06", ATTR{type}=="1", NAME="tmfifo_net2", RUN+="/bin/sh -c '/usr/sbin/ifup tmfifo_net2 2>/dev/null || /sbin/ip link set dev tmfifo_net2 up'"
-
-SUBSYSTEM=="net", ACTION=="add", ATTR{address}=="00:1a:ca:ff:ff:08", ATTR{type}=="1", NAME="tmfifo_net3", RUN+="/bin/sh -c '/usr/sbin/ifup tmfifo_net3 2>/dev/null || /sbin/ip link set dev tmfifo_net3 up'"

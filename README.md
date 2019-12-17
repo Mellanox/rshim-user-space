@@ -9,9 +9,10 @@ internal rshim registers.
 *) Build
 
   Linux:
-  Make sure autoconf/automake tools are available.
-  Run ./bootstrap.sh for the first time to generate the configure file.
-  Then run ./configure and make which generates binary bfrshim under src.
+
+  Make sure autoconf/automake tools are available. Run ./bootstrap.sh for the
+  first time to generate the configure file. Then run ./configure and make to
+  generate the bfrshim and 'make install' to install it.
 
   FreeBSD:
 
@@ -19,17 +20,14 @@ internal rshim registers.
   libpciaccess, libpci.
 
   Follow the same steps as build in Linux, or use 'gmake -f Makefile.freebsd'
-  to build it.
+  to build it. Use 'gmake install' to install it.
 
 *) Usage
 
-$ ./src/bfrshim -h
-./bfrshim [options]
-  -b <usb|pcie|pcie_lf>  driver name (optional)
-  -d <devname> -d ...    device list (optional)
-  -f                     run in foreground
-  -l <0~4>               debug level (optional)
-  -m <num>               rshim index base (optional)
+bfrshim -h
+syntax: bfrshim [--help|-h] [--backend|-b usb|pcie|pcie_lf]
+                [--device|-d device-name] [--foreground|-f]
+                [--debug-level|-l <0~4>]
 
 *) Device Files
 
@@ -38,7 +36,7 @@ $ ./src/bfrshim -h
 
   - /dev/rshim\<N\>/boot
   
-  Boot device file used to send boot stream to the ARM side, for example,
+  Boot device file used to push boot stream to the ARM side, for example,
   
     cat install.bfb > /dev/rshim<N>/boot
 

@@ -510,7 +510,7 @@ static int rshim_usb_probe_one(libusb_context *ctx, libusb_device *usb_dev)
   sprintf(usb_dev_name, "usb-%x", bus);
   p = usb_dev_name + strlen(usb_dev_name);
   for (i = 0; i < rc; i++) {
-    sprintf(p, "-%x", port_numbers[i]);
+    sprintf(p, "%c%x", (i == rc - 1) ? '.' : '-', port_numbers[i]);
     p += strlen(p);
   }
 

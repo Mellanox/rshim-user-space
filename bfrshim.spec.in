@@ -45,7 +45,7 @@ bfrshim is the user-space driver to access the BlueField SoC via the rshim
 interface. It provides ways to push boot stream, debug the target or login
 into the target via virtual console or network interface.
 
-BuildRequires: pciutils-devel, libusbx-devel
+BuildRequires: pciutils-devel, libusbx-devel, fuse-devel
 
 %prep
 %setup -q -n %{name}
@@ -58,15 +58,13 @@ make
 %install
 rm -rf %{buildroot}
 %makeinstall -C src INSTALL_DIR="%{buildroot}%{_bindir}"
-%{__install} -d %{buildroot}%{_sysconfdir}/udev/rules.d/
-%{__install} -m 0644 91-tmfifo_net.rules %{buildroot}%{_sysconfdir}/udev/rules.d/
 %if "%{WITH_SYSTEMD}" == "1"
 %{__install} -d %{buildroot}%{_unitdir}
 %{__install} -m 0644 bfrshim.service %{buildroot}%{_unitdir}
 %endif
+%{__install} -d %{buildroot}%{_mandir}/man1
 
 %post
-udevadm control --reload-rules 2>/dev/null
 %if "%{WITH_SYSTEMD}" == "1"
   systemctl daemon-reload
   systemctl enable bfrshim.service
@@ -78,11 +76,11 @@ rm -rf %{buildroot}
 %files
 %defattr(-,root,root,-)
 %%doc README.md
-%{_sysconfdir}/udev/rules.d/91-tmfifo_net.rules
 %if "%{WITH_SYSTEMD}" == "1"
 %{_unitdir}/bfrshim.service
 %endif
 %{_bindir}/bfrshim
+%{_mandir}/man1/bfrshim.1.gz
 
 %changelog
 * Mon Dec 16 2019 Liming Sun <lsun@mellanox.com>

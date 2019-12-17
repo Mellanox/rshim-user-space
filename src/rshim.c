@@ -5,6 +5,7 @@
  */
 
 #include <arpa/inet.h>
+#include <getopt.h>
 #include <libusb.h>
 #include <pthread.h>
 #include <signal.h>
@@ -187,7 +188,7 @@ int rshim_dev_index_base;
 /* Array of devices and device names. */
 struct rshim_backend *rshim_devs[RSHIM_MAX_DEV];
 char *rshim_dev_names[RSHIM_MAX_DEV];
-char *rshim_allowed_dev_names[RSHIM_MAX_DEV];
+char *rshim_device_filter;
 
 /* Name of the sub-device types. */
 char *rshim_dev_minor_names[RSH_DEV_TYPES] = {
@@ -3255,21 +3256,8 @@ void rshim_deref(struct rshim_backend *bd)
 
 bool rshim_allow_device(const char *devname)
 {
-  int i;
-  char *name;
-
-  if (!rshim_allowed_dev_names[0])
-    return true;
-
-  for (i = 0; i < RSHIM_MAX_DEV; i++) {
-    name = rshim_allowed_dev_names[i];
-    if (!name)
-      break;
-    if (!strcmp(name, devname))
-      return true;
-  }
-
-  return false;
+  return !rshim_device_filter ||
+      !strcmp(rshim_device_filter, devname);
 }
 
 static void rshim_main(int argc, char *argv[])
@@ -3385,6 +3373,7 @@ static void rshim_main(int argc, char *argv[])
         rc = rshim_fd_full_read(rshim_work_fd[0], &bd, sizeof(bd));
         if (rc == sizeof(bd))
           rshim_work_handler(bd);
+        continue;
       } else {
         int index, tmp;
 
@@ -3405,35 +3394,42 @@ static void rshim_main(int argc, char *argv[])
             break;
           }
         }
+        if (index != RSHIM_MAX_DEV)
+          continue;
       }
 
+      /* Check USB for timeout or unhandled fd. */
       rshim_usb_poll();
     }
   }
 }
 
-static void print_help(void)
-{
-  printf("Usage: bfrshim [options]\n");
-  printf("  -b <usb|pcie|pcie_lf>  driver name (optional)\n");
-  printf("  -d <devname> -d ...    device list (optional)\n");
-  printf("  -f                     run in foreground\n");
-  printf("  -l <0~4>               debug level (optional)\n");
-  printf("  -m <num>               rshim index base (optional)\n");
-}
-
 int main(int argc, char *argv[])
 {
-  int c, i = 0, has_index = 0;
+  int c;
+
+  static struct option long_options[] = {
+    { "backend", required_argument, NULL, 'b' },
+    { "device", required_argument, NULL, 'd' },
+    { "foreground", no_argument, NULL, 'f' },
+    { "help", no_argument, NULL, 'h' },
+    { "debug-level", required_argument, NULL, 'l' },
+  };
+  static const char short_options[] = "b:d:fhl:m:";
+  static const char help_text[] =
+    "syntax: bfrshim [--help|-h] [--backend|-b usb|pcie|pcie_lf]\n"
+    "                [--device|-d device-name] [--foreground|-f]\n"
+    "                [--debug-level|-l <0~4>]";
 
   /* Parse arguments. */
-  while ((c = getopt(argc, argv, "b:d:fhl:m:")) != -1) {
+  while ((c = getopt_long(argc, argv, short_options, long_options, NULL))
+         != -1) {
     switch (c) {
     case 'b':
       rshim_backend_name = optarg;
       break;
     case 'd':
-      rshim_allowed_dev_names[i++] = optarg;
+      rshim_device_filter = optarg;
       break;
     case 'f':
       rshim_daemon_mode = false;
@@ -3443,18 +3439,12 @@ int main(int argc, char *argv[])
       break;
     case 'm':
       rshim_dev_index_base = atoi(optarg);
-      has_index = 1;
       break;
     case 'h':
     default:
-      print_help();
-      return -1;
+      printf("%s\n", help_text);
+      return 0;
     }
-  }
-
-  if (rshim_allowed_dev_names[0] && !has_index) {
-    printf("rshim index base ('-m <base>' option) is needed\n");
-    return -1;
   }
 
   /* Put into daemon mode. */
