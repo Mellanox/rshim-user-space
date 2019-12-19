@@ -1,6 +1,6 @@
-// SPDX-License-Identifier: (BSD-3-Clause OR GPL-2.0)
+// SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright 2019 Mellanox Technologies. All Rights Reserved.
+ * Copyright (C) 2019 Mellanox Technologies. All Rights Reserved.
  *
  */
 
@@ -9,9 +9,6 @@
 #include <poll.h>
 #include <sys/epoll.h>
 #include <pthread.h>
-#ifdef HAVE_CONFIG_H
-#include <config.h>
-#endif
 
 #include "rshim.h"
 
@@ -24,9 +21,9 @@
 #define RSHIM_USB_TIMEOUT  2000
 
 /* Structure to hold all of our device specific stuff. */
-struct rshim_usb {
+typedef struct {
   /* RShim backend structure. */
-  struct rshim_backend bd;
+  rshim_backend_t bd;
 
   libusb_device_handle *handle;
 
@@ -53,15 +50,15 @@ struct rshim_usb {
   uint8_t tm_fifo_in_ep;
   /* The address of the tile-monitor FIFO output endpoint. */
   uint8_t tm_fifo_out_ep;
-};
+} rshim_usb_t;
 
 static libusb_context *rshim_usb_ctx;
 static int rshim_usb_epoll_fd;
 static bool rshim_usb_need_probe;
 
-static void rshim_usb_delete(struct rshim_backend *bd)
+static void rshim_usb_delete(rshim_backend_t *bd)
 {
-  struct rshim_usb *dev = container_of(bd, struct rshim_usb, bd);
+  rshim_usb_t *dev = container_of(bd, rshim_usb_t, bd);
 
   rshim_deregister(bd);
   RSHIM_INFO("rshim %s deleted\n", bd->dev_name);
@@ -74,10 +71,10 @@ static void rshim_usb_delete(struct rshim_backend *bd)
 
 /* Rshim read/write routines */
 
-static int rshim_usb_read_rshim(struct rshim_backend *bd, int chan, int addr,
+static int rshim_usb_read_rshim(rshim_backend_t *bd, int chan, int addr,
                                 uint64_t *result)
 {
-  struct rshim_usb *dev = container_of(bd, struct rshim_usb, bd);
+  rshim_usb_t *dev = container_of(bd, rshim_usb_t, bd);
   int rc;
 
   if (!bd->has_rshim)
@@ -110,10 +107,10 @@ static int rshim_usb_read_rshim(struct rshim_backend *bd, int chan, int addr,
   return rc >= 0 ? (rc > sizeof(dev->ctrl_data) ? -EINVAL : -ENXIO) : rc;
 }
 
-static int rshim_usb_write_rshim(struct rshim_backend *bd, int chan, int addr,
+static int rshim_usb_write_rshim(rshim_backend_t *bd, int chan, int addr,
                                  uint64_t value)
 {
-  struct rshim_usb *dev = container_of(bd, struct rshim_usb, bd);
+  rshim_usb_t *dev = container_of(bd, rshim_usb_t, bd);
   int rc;
 
   if (!bd->has_rshim)
@@ -143,7 +140,7 @@ static int rshim_usb_write_rshim(struct rshim_backend *bd, int chan, int addr,
 
 /* Boot routines */
 
-static ssize_t rshim_usb_boot_write(struct rshim_usb *dev, const char *buf,
+static ssize_t rshim_usb_boot_write(rshim_usb_t *dev, const char *buf,
                                     size_t count)
 {
   int transferred;
@@ -164,8 +161,8 @@ static ssize_t rshim_usb_boot_write(struct rshim_usb *dev, const char *buf,
 
 static void rshim_usb_fifo_read_callback(struct libusb_transfer *urb)
 {
-  struct rshim_usb *dev = urb->user_data;
-  struct rshim_backend *bd = &dev->bd;
+  rshim_usb_t *dev = urb->user_data;
+  rshim_backend_t *bd = &dev->bd;
 
   RSHIM_DBG("fifo_read_callback: %s urb completed, status %d, "
             "actual length %d, intr buf 0x%x\n",
@@ -251,10 +248,9 @@ static void rshim_usb_fifo_read_callback(struct libusb_transfer *urb)
   pthread_mutex_unlock(&bd->ringlock);
 }
 
-static void rshim_usb_fifo_read(struct rshim_usb *dev, char *buffer,
-                                size_t count)
+static void rshim_usb_fifo_read(rshim_usb_t *dev, char *buffer, size_t count)
 {
-  struct rshim_backend *bd = &dev->bd;
+  rshim_backend_t *bd = &dev->bd;
   struct libusb_transfer *urb;
   int rc;
 
@@ -305,8 +301,8 @@ static void rshim_usb_fifo_read(struct rshim_usb *dev, char *buffer,
 
 static void rshim_usb_fifo_write_callback(struct libusb_transfer *urb)
 {
-  struct rshim_usb *dev = urb->user_data;
-  struct rshim_backend *bd = &dev->bd;
+  rshim_usb_t *dev = urb->user_data;
+  rshim_backend_t *bd = &dev->bd;
 
   RSHIM_DBG("usb_fifo_write_callback: urb completed, status %d, "
             "actual length %d, intr buf %d\n",
@@ -379,10 +375,10 @@ static void rshim_usb_fifo_write_callback(struct libusb_transfer *urb)
   pthread_mutex_unlock(&bd->ringlock);
 }
 
-static int rshim_usb_fifo_write(struct rshim_usb *dev, const char *buffer,
+static int rshim_usb_fifo_write(rshim_usb_t *dev, const char *buffer,
                                 size_t count)
 {
-  struct rshim_backend *bd = &dev->bd;
+  rshim_backend_t *bd = &dev->bd;
   int rc;
 
   if (count % 8)
@@ -421,10 +417,10 @@ static int rshim_usb_fifo_write(struct rshim_usb *dev, const char *buffer,
 #define max_pkt(ep)    le16_to_cpu(ep->wMaxPacketSize)
 #define ep_addr(ep)    (ep->bEndpointAddress)
 
-static ssize_t rshim_usb_backend_read(struct rshim_backend *bd, int devtype,
+static ssize_t rshim_usb_backend_read(rshim_backend_t *bd, int devtype,
                                       char *buf, size_t count)
 {
-  struct rshim_usb *dev = container_of(bd, struct rshim_usb, bd);
+  rshim_usb_t *dev = container_of(bd, rshim_usb_t, bd);
 
   switch (devtype) {
   case RSH_DEV_TYPE_TMFIFO:
@@ -437,10 +433,10 @@ static ssize_t rshim_usb_backend_read(struct rshim_backend *bd, int devtype,
   }
 }
 
-static ssize_t rshim_usb_backend_write(struct rshim_backend *bd, int devtype,
-             const char *buf, size_t count)
+static ssize_t rshim_usb_backend_write(rshim_backend_t *bd, int devtype,
+                                       const char *buf, size_t count)
 {
-  struct rshim_usb *dev = container_of(bd, struct rshim_usb, bd);
+  rshim_usb_t *dev = container_of(bd, rshim_usb_t, bd);
 
   switch (devtype) {
   case RSH_DEV_TYPE_TMFIFO:
@@ -455,10 +451,10 @@ static ssize_t rshim_usb_backend_write(struct rshim_backend *bd, int devtype,
   }
 }
 
-static void rshim_usb_backend_cancel_req(struct rshim_backend *bd, int devtype,
+static void rshim_usb_backend_cancel_req(rshim_backend_t *bd, int devtype,
                                          bool is_write)
 {
-  struct rshim_usb *dev = container_of(bd, struct rshim_usb, bd);
+  rshim_usb_t *dev = container_of(bd, rshim_usb_t, bd);
 
   switch (devtype) {
   case RSH_DEV_TYPE_TMFIFO:
@@ -476,16 +472,16 @@ static void rshim_usb_backend_cancel_req(struct rshim_backend *bd, int devtype,
 
 static int rshim_usb_probe_one(libusb_context *ctx, libusb_device *usb_dev)
 {
-  int i, allocfail = 0, rc = -ENOMEM, dev_name_len = 64;
+  int i, rc = -ENOMEM;
   const struct libusb_interface_descriptor *iface_desc;
   const struct libusb_endpoint_descriptor *ep;
   const struct libusb_interface *interface;
   struct libusb_config_descriptor *config;
-  libusb_device_handle *handle;
-  struct rshim_usb *dev = NULL;
-  struct rshim_backend *bd;
-  char *usb_dev_name, *p;
+  char dev_name[RSHIM_DEV_NAME_LEN], *p;
   uint8_t port_numbers[8] = {0}, bus;
+  libusb_device_handle *handle;
+  rshim_usb_t *dev = NULL;
+  rshim_backend_t *bd;
 
   /* Check if already exists. */
   rshim_lock();
@@ -506,20 +502,17 @@ static int rshim_usb_probe_one(libusb_context *ctx, libusb_device *usb_dev)
     perror("Failed to get USB ports\n");
     return -ENODEV;
   }
-  usb_dev_name = calloc(1, dev_name_len);
-  sprintf(usb_dev_name, "usb-%x", bus);
-  p = usb_dev_name + strlen(usb_dev_name);
+  sprintf(dev_name, "usb-%x", bus);
+  p = dev_name + strlen(dev_name);
   for (i = 0; i < rc; i++) {
     sprintf(p, "%c%x", (i == rc - 1) ? '.' : '-', port_numbers[i]);
     p += strlen(p);
   }
 
-  if (!rshim_allow_device(usb_dev_name)) {
-    free(usb_dev_name);
+  if (!rshim_allow_device(dev_name))
     return -EACCES;
-  }
 
-  RSHIM_INFO("Probing %s\n", usb_dev_name);
+  RSHIM_INFO("Probing %s\n", dev_name);
 
   rc = libusb_get_active_config_descriptor(usb_dev, &config);
   if (rc) {
@@ -539,9 +532,9 @@ static int rshim_usb_probe_one(libusb_context *ctx, libusb_device *usb_dev)
       if (libusb_kernel_driver_active(handle, i) == 1) {
         perror("Kernel driver is running. Please uninstall it first.\n");
         exit(rc);
-      }
-      else
+      } else {
         perror("Failed to claim interface\n");
+      }
       libusb_close(handle);
       return rc;
     }
@@ -554,14 +547,12 @@ static int rshim_usb_probe_one(libusb_context *ctx, libusb_device *usb_dev)
   rshim_lock();
 
   /* Find the backend. */
-  bd = rshim_find_by_name(usb_dev_name);
+  bd = rshim_find_by_name(dev_name);
   if (bd) {
-    RSHIM_INFO("found %s\n", usb_dev_name);
-    dev = container_of(bd, struct rshim_usb, bd);
-    free(usb_dev_name);
-    usb_dev_name = NULL;
+    RSHIM_INFO("found %s\n", dev_name);
+    dev = container_of(bd, rshim_usb_t, bd);
   } else {
-    RSHIM_INFO("create rshim %s\n", usb_dev_name);
+    RSHIM_INFO("create rshim %s\n", dev_name);
     dev = calloc(1, sizeof(*dev));
     if (dev == NULL) {
       RSHIM_ERR("couldn't get memory for new device");
@@ -570,8 +561,7 @@ static int rshim_usb_probe_one(libusb_context *ctx, libusb_device *usb_dev)
     }
 
     bd = &dev->bd;
-    bd->dev_name = usb_dev_name;
-    bd->drv_name = "rshim_usb";
+    strncpy(bd->dev_name, dev_name, sizeof(bd->dev_name) - 1);
     bd->read = rshim_usb_backend_read;
     bd->write = rshim_usb_backend_write;
     bd->cancel = rshim_usb_backend_cancel_req;
@@ -594,13 +584,11 @@ static int rshim_usb_probe_one(libusb_context *ctx, libusb_device *usb_dev)
 
   if (!dev->read_or_intr_urb)
     dev->read_or_intr_urb = libusb_alloc_transfer(0);
-  allocfail |= dev->read_or_intr_urb == 0;
 
   if (!dev->write_urb)
     dev->write_urb = libusb_alloc_transfer(0);
-  allocfail |= dev->write_urb == 0;
 
-  if (allocfail) {
+  if (!dev->read_or_intr_urb || !dev->write_urb) {
     RSHIM_ERR("can't allocate buffers or urbs\n");
     rshim_unlock();
     goto error;
@@ -726,14 +714,13 @@ error:
     rshim_unlock();
   }
 
-  free(usb_dev_name);
   return rc;
 }
 
 static void rshim_usb_disconnect(struct libusb_device *usb_dev)
 {
-  struct rshim_usb *dev;
-  struct rshim_backend *bd;
+  rshim_backend_t *bd;
+  rshim_usb_t *dev;
 
   rshim_lock();
   bd = rshim_find_by_dev(usb_dev);
@@ -741,7 +728,7 @@ static void rshim_usb_disconnect(struct libusb_device *usb_dev)
   if (!bd)
     return;
 
-  dev = container_of(bd, struct rshim_usb, bd);
+  dev = container_of(bd, rshim_usb_t, bd);
 
   rshim_notify(bd, RSH_EVENT_DETACH, 0);
 
@@ -926,7 +913,7 @@ int rshim_usb_init(int epoll_fd)
   }
 
 #ifdef LIBUSB_LOG_LEVEL_ERROR
-  if (rshim_dbg_level > 1)
+  if (rshim_log_level > LOG_ERR)
     libusb_set_debug(ctx, LIBUSB_LOG_LEVEL_ERROR);
 #endif
 

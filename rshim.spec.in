@@ -1,32 +1,8 @@
-#
-# Copyright (c) 2019 Mellanox Technologies. All rights reserved.
-#
-# This Software is licensed under one of the following licenses:
-#
-# 1) under the terms of the "Common Public License 1.0" a copy of which is
-#    available from the Open Source Initiative, see
-#    http://www.opensource.org/licenses/cpl.php.
-#
-# 2) under the terms of the "The BSD License" a copy of which is
-#    available from the Open Source Initiative, see
-#    http://www.opensource.org/licenses/bsd-license.php.
-#
-# 3) under the terms of the "GNU General Public License (GPL) Version 2" a
-#    copy of which is available from the Open Source Initiative, see
-#    http://www.opensource.org/licenses/gpl-license.php.
-#
-# Licensee has the right to choose one of the above licenses.
-#
-# Redistributions of source code must retain the above copyright
-# notice and one of the license notices.
-#
-# Redistributions in binary form must reproduce both the above copyright
-# notice, one of the license notices in the documentation
-# and/or other materials provided with the distribution.
-#
+# SPDX-License-Identifier: GPL-2.0-only
+# Copyright (C) 2019 Mellanox Technologies. All Rights Reserved.
 #
 
-Name: bfrshim
+Name: rshim
 Version: @VERSION@
 Release: 1%{?dist}
 Summary: User-space rshim driver for BlueField SoC
@@ -40,12 +16,13 @@ URL: https://github.com/mellanox/rshim-user-space
 Source0: %{name}-%{version}.tar.gz
 BuildRoot: %(mktemp -ud %{_tmppath}/%{name}-%{version}-%{release}-XXXXXX)
 
+Obsoletes: %{name} < %{version}
+BuildRequires: pciutils-devel, libusbx-devel, fuse-devel
+
 %description
-bfrshim is the user-space driver to access the BlueField SoC via the rshim
+This is the user-space driver to access the BlueField SoC via the rshim
 interface. It provides ways to push boot stream, debug the target or login
 into the target via virtual console or network interface.
-
-BuildRequires: pciutils-devel, libusbx-devel, fuse-devel
 
 %prep
 %setup -q -n %{name}

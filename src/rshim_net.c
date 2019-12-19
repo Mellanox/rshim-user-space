@@ -1,6 +1,6 @@
-// SPDX-License-Identifier: (BSD-3-Clause OR GPL-2.0)
+// SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright 2019 Mellanox Technologies. All Rights Reserved.
+ * Copyright (C) 2019 Mellanox Technologies. All Rights Reserved.
  *
  */
 
@@ -49,6 +49,7 @@ static int rshim_if_set_non_blocking(int fd)
 /* Open tun/tap interface. */
 static int rshim_if_open(char *ifname, int index)
 {
+  char cmd[128];
   struct ifreq ifr;
   int s, fd, rc;
 
@@ -95,6 +96,8 @@ static int rshim_if_open(char *ifname, int index)
   close(s);
 
   rshim_if_set_non_blocking(fd);
+  sprintf(cmd, "ifup %s 2>/dev/null&", ifname);
+  system(cmd);
   return fd;
 }
 #elif defined(__FreeBSD__)
@@ -240,15 +243,15 @@ static void rshim_if_close(int fd)
 #error "Platform not supported"
 #endif
 
-int rshim_net_init(struct rshim_backend *bd)
+int rshim_net_init(rshim_backend_t *bd)
 {
   struct epoll_event event;
   char ifname[64];
   int rc;
 
   snprintf(ifname, sizeof(ifname), "tmfifo_net%d",
-           bd->dev_index + rshim_dev_index_base);
-  bd->net_fd = rshim_if_open(ifname, bd->dev_index + rshim_dev_index_base);
+           bd->index + rshim_index_base);
+  bd->net_fd = rshim_if_open(ifname, bd->index + rshim_index_base);
 
   if (bd->net_fd < 0)
     return bd->net_fd;
@@ -282,7 +285,7 @@ int rshim_net_init(struct rshim_backend *bd)
   return 0;
 }
 
-int rshim_net_del(struct rshim_backend *bd)
+int rshim_net_del(rshim_backend_t *bd)
 {
   struct epoll_event event;
 
@@ -303,7 +306,7 @@ int rshim_net_del(struct rshim_backend *bd)
   return 0;
 }
 
-void rshim_net_rx(struct rshim_backend *bd)
+void rshim_net_rx(rshim_backend_t *bd)
 {
   rshim_net_pkt_t *pkt = &bd->net_rx_pkt;
   int len, total_len;
@@ -340,7 +343,7 @@ void rshim_net_rx(struct rshim_backend *bd)
   }
 }
 
-void rshim_net_tx(struct rshim_backend *bd)
+void rshim_net_tx(rshim_backend_t *bd)
 {
   rshim_net_pkt_t *pkt = &bd->net_tx_pkt;
   int len, written;

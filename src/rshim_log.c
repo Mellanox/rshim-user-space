@@ -1,6 +1,6 @@
-// SPDX-License-Identifier: (BSD-3-Clause OR GPL-2.0)
+// SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright 2019 Mellanox Technologies. All Rights Reserved.
+ * Copyright (C) 2019 Mellanox Technologies. All Rights Reserved.
  *
  */
 
@@ -35,12 +35,12 @@ const char * const rshim_log_mod[] = {
 #define AARCH64_MRS_REG_SHIFT 5
 #define AARCH64_MRS_REG_MASK  0xffff
 
-struct rshim_log_reg {
+typedef struct {
   char *name;
   uint32_t opcode;
-};
+} rshim_log_reg_t;
 
-static struct rshim_log_reg rshim_log_regs[] = {
+static rshim_log_reg_t rshim_log_regs[] = {
   {"actlr_el1", 0b1100000010000001},
   {"actlr_el2", 0b1110000010000001},
   {"actlr_el3", 0b1111000010000001},
@@ -153,7 +153,7 @@ static struct rshim_log_reg rshim_log_regs[] = {
 
 static char *rshim_log_get_reg_name(uint64_t opcode)
 {
-  struct rshim_log_reg *reg = rshim_log_regs;
+  rshim_log_reg_t *reg = rshim_log_regs;
 
   while (reg->name) {
     if (reg->opcode == opcode)
@@ -164,8 +164,8 @@ static char *rshim_log_get_reg_name(uint64_t opcode)
   return "unknown";
 }
 
-static int rshim_log_show_crash(struct rshim_backend *bd, uint64_t hdr,
-                                char *buf, int size)
+static int rshim_log_show_crash(rshim_backend_t *bd, uint64_t hdr, char *buf,
+                                int size)
 {
   int rc = 0, i, module, type, len, n = 0;
   uint64_t opcode, data;
@@ -173,7 +173,7 @@ static int rshim_log_show_crash(struct rshim_backend *bd, uint64_t hdr,
   uint32_t pc;
 
   module = BF_RSH_LOG_HEADER_GET(MOD, hdr);
-  if (module >= sizeof(rshim_log_mod)/sizeof(rshim_log_mod[0]))
+  if (module >= sizeof(rshim_log_mod) / sizeof(rshim_log_mod[0]))
     module = 0;
   type = BF_RSH_LOG_HEADER_GET(TYPE, hdr);
   len = BF_RSH_LOG_HEADER_GET(LEN, hdr);
@@ -207,8 +207,8 @@ static int rshim_log_show_crash(struct rshim_backend *bd, uint64_t hdr,
   return p - buf;
 }
 
-static int rshim_log_show_msg(struct rshim_backend *bd, uint64_t hdr,
-                              char *buf, int size)
+static int rshim_log_show_msg(rshim_backend_t *bd, uint64_t hdr, char *buf,
+                              int size)
 {
   int rc, len = BF_RSH_LOG_HEADER_GET(LEN, hdr);
   uint64_t data;
@@ -236,7 +236,7 @@ static int rshim_log_show_msg(struct rshim_backend *bd, uint64_t hdr,
   return len;
 }
 
-int rshim_log_show(struct rshim_backend *bd, char *buf, int size)
+int rshim_log_show(rshim_backend_t *bd, char *buf, int size)
 {
   uint64_t data, idx, hdr;
   int i, n, rc, type, len;

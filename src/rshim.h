@@ -1,6 +1,6 @@
-/* SPDX-License-Identifier: (BSD-3-Clause OR GPL-2.0) */
+/* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright 2019 Mellanox Technologies. All Rights Reserved.
+ * Copyright (C) 2019 Mellanox Technologies. All Rights Reserved.
  *
  */
 
@@ -28,11 +28,14 @@
 #include <syslog.h>
 #include <termios.h>
 #include <unistd.h>
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
 
 #include "rshim_regs.h"
 
 /* Global variables. */
-extern int rshim_dbg_level;
+extern int rshim_log_level;
 extern bool rshim_daemon_mode;
 
 #ifndef offsetof
@@ -45,22 +48,22 @@ extern bool rshim_daemon_mode;
   ((type *)(__mptr - offsetof(type, member))); })
 #endif
 
-#define RSHIM_DEBUG(dbg_level, log_level, fmt...) do { \
-  if (rshim_dbg_level >= dbg_level) { \
+#define RSHIM_LOG(log_level, fmt...) do { \
+  if (rshim_log_level >= log_level) { \
     if (rshim_daemon_mode) \
       syslog(log_level, fmt); \
     else \
       printf(fmt); \
   } \
-} while(0)
-#define RSHIM_ERR(fmt...)      RSHIM_DEBUG(1, LOG_ERR, fmt)
-#define RSHIM_WARN(fmt...)     RSHIM_DEBUG(2, LOG_WARNING, fmt)
-#define RSHIM_INFO(fmt...)     RSHIM_DEBUG(3, LOG_NOTICE, fmt)
-#define RSHIM_DBG(fmt...)      RSHIM_DEBUG(4, LOG_DEBUG, fmt)
+} while (0)
+#define RSHIM_ERR(fmt...)      RSHIM_LOG(LOG_ERR, fmt)
+#define RSHIM_WARN(fmt...)     RSHIM_LOG(LOG_WARNING, fmt)
+#define RSHIM_INFO(fmt...)     RSHIM_LOG(LOG_NOTICE, fmt)
+#define RSHIM_DBG(fmt...)      RSHIM_LOG(LOG_DEBUG, fmt)
 
 /* Spin flag values. */
-#define RSH_SFLG_READING  0x1  /* read is active. */
-#define RSH_SFLG_WRITING  0x2  /* write_urb is active. */
+#define RSH_SFLG_READING    0x1  /* read is active. */
+#define RSH_SFLG_WRITING    0x2  /* write_urb is active. */
 #define RSH_SFLG_CONS_OPEN  0x4  /* console stream is open. */
 
 /*
@@ -102,7 +105,7 @@ enum {
 };
 
 /* TMFIFO message header. */
-typedef union rshim_tmfifo_msg_hdr {
+typedef union {
   struct {
     uint8_t type;   /* message type */
     uint16_t len;   /* payload length in network order */
@@ -144,12 +147,12 @@ enum {
 #define LOCK_RETRY_CNT       100000
 
 /* FIFO structure. */
-struct rshim_fifo {
+typedef struct {
   unsigned char *data;
   unsigned int head;
   unsigned int tail;
   pthread_cond_t operable;
-};
+} rshim_fifo_t;
 
 /* RShim network packet. */
 #define ETH_PKT_SIZE 1536
@@ -158,13 +161,13 @@ typedef struct {
   char buf[ETH_PKT_SIZE];       /* packet buffer */
 } rshim_net_pkt_t;
 
+#define RSHIM_DEV_NAME_LEN   64
+
 /* RShim backend. */
+typedef struct rshim_backend rshim_backend_t;
 struct rshim_backend {
   /* Device name. */
-  char *dev_name;
-
-  /* Driver name. */
-  char *drv_name;
+  char dev_name[RSHIM_DEV_NAME_LEN];
 
   /* Backend device. */
   void *dev;
@@ -227,13 +230,13 @@ struct rshim_backend {
   int write_buf_pkt_rem;
 
   /* Current message header. */
-  union rshim_tmfifo_msg_hdr msg_hdr;
+  rshim_tmfifo_msg_hdr_t msg_hdr;
 
   /* Read FIFOs. */
-  struct rshim_fifo read_fifo[TMFIFO_MAX_CHAN];
+  rshim_fifo_t read_fifo[TMFIFO_MAX_CHAN];
 
   /* Write FIFOs. */
-  struct rshim_fifo write_fifo[TMFIFO_MAX_CHAN];
+  rshim_fifo_t write_fifo[TMFIFO_MAX_CHAN];
 
   /* Read buffer. */
   unsigned char *read_buf;
@@ -307,11 +310,8 @@ struct rshim_backend {
   void *rx_poll_handle[TMFIFO_MAX_CHAN];
 #endif
 
-  /*
-   * Our index in rshim_devs, which is also the high bits of our
-   * minor number.
-   */
-  int dev_index;
+  /* Index in rshim_devs[]. */
+  int index;
 
   /* Configured MAC address of the peer-side. */
   uint8_t peer_mac[6];
@@ -325,66 +325,50 @@ struct rshim_backend {
   /* APIs provided by backend. */
 
   /* API to write bulk data to RShim via the backend. */
-  ssize_t (*write)(struct rshim_backend *bd, int devtype,
+  ssize_t (*write)(rshim_backend_t *bd, int devtype,
        const char *buf, size_t count);
 
   /* API to read bulk data from RShim via the backend. */
-  ssize_t (*read)(struct rshim_backend *bd, int devtype,
-      char *buf, size_t count);
+  ssize_t (*read)(rshim_backend_t *bd, int devtype, char *buf, size_t count);
 
   /* API to cancel a read / write request (optional). */
-  void (*cancel)(struct rshim_backend *bd, int devtype, bool is_write);
+  void (*cancel)(rshim_backend_t *bd, int devtype, bool is_write);
 
   /* API to destroy the backend. */
-  void (*destroy)(struct rshim_backend *bd);
+  void (*destroy)(rshim_backend_t *bd);
 
   /* API to read 8 bytes from RShim. */
-  int (*read_rshim)(struct rshim_backend *bd, int chan, int addr,
+  int (*read_rshim)(rshim_backend_t *bd, int chan, int addr,
                     uint64_t *value);
 
   /* API to write 8 bytes to RShim. */
-  int (*write_rshim)(struct rshim_backend *bd, int chan, int addr,
+  int (*write_rshim)(rshim_backend_t *bd, int chan, int addr,
                      uint64_t value);
-};
-
-/* RShim service. */
-struct rshim_service {
-  /* Service type RSH_SVC_xxx. */
-  int type;
-
-  /* Create service. */
-  int (*create)(struct rshim_backend *bd);
-
-  /* Delete service. */
-  int (*delete)(struct rshim_backend *bd);
-
-  /* Notify service Rx is ready. */
-  void (*rx_notify)(struct rshim_backend *bd);
 };
 
 /* Global variables. */
 
 extern int rshim_epoll_fd;
-extern int rshim_dev_index_base;
+extern int rshim_index_base;
 
 /* Common APIs. */
 
 /* Register/unregister backend. */
-int rshim_register(struct rshim_backend *bd);
-void rshim_deregister(struct rshim_backend *bd);
+int rshim_register(rshim_backend_t *bd);
+void rshim_deregister(rshim_backend_t *bd);
 
 /* Find backend by name. */
-struct rshim_backend *rshim_find_by_name(char *dev_name);
+rshim_backend_t *rshim_find_by_name(char *dev_name);
 
 /* Find backend by device. */
-struct rshim_backend *rshim_find_by_dev(void *dev);
+rshim_backend_t *rshim_find_by_dev(void *dev);
 
 /* RShim global lock. */
 void rshim_lock(void);
 void rshim_unlock(void);
 
 /* Event notification. */
-int rshim_notify(struct rshim_backend *bd, int event, int code);
+int rshim_notify(rshim_backend_t *bd, int event, int code);
 
 /*
  * FIFO APIs.
@@ -394,48 +378,48 @@ int rshim_notify(struct rshim_backend *bd, int event, int code);
  */
 
 /* Write / read some bytes to / from the FIFO via the backend. */
-ssize_t rshim_fifo_read(struct rshim_backend *bd, char *buffer,
+ssize_t rshim_fifo_read(rshim_backend_t *bd, char *buffer,
                         size_t count, int chan, bool nonblock);
-ssize_t rshim_fifo_write(struct rshim_backend *bd, const char *buffer,
+ssize_t rshim_fifo_write(rshim_backend_t *bd, const char *buffer,
                          size_t count, int chan, bool nonblock);
 
 /* Alloc/free the FIFO. */
-int rshim_fifo_alloc(struct rshim_backend *bd);
-void rshim_fifo_free(struct rshim_backend *bd);
+int rshim_fifo_alloc(rshim_backend_t *bd);
+void rshim_fifo_free(rshim_backend_t *bd);
 
 /* Console APIs. */
 /* Enable early console. */
-int rshim_cons_early_enable(struct rshim_backend *bd);
+int rshim_cons_early_enable(rshim_backend_t *bd);
 
 /* Network APIs. */
 #ifdef HAVE_RSHIM_NET
-int rshim_net_init(struct rshim_backend *bd);
-int rshim_net_del(struct rshim_backend *bd);
-void rshim_net_rx(struct rshim_backend *bd);
-void rshim_net_tx(struct rshim_backend *bd);
+int rshim_net_init(rshim_backend_t *bd);
+int rshim_net_del(rshim_backend_t *bd);
+void rshim_net_rx(rshim_backend_t *bd);
+void rshim_net_tx(rshim_backend_t *bd);
 #else
-static inline int rshim_net_init(struct rshim_backend *bd)
+static inline int rshim_net_init(rshim_backend_t *bd)
 {
   return 0;
 }
-static inline int rshim_net_del(struct rshim_backend *bd)
+static inline int rshim_net_del(rshim_backend_t *bd)
 {
   return 0;
 }
-static inline void rshim_net_rx(struct rshim_backend *bd)
+static inline void rshim_net_rx(rshim_backend_t *bd)
 {
 }
-static inline void rshim_net_tx(struct rshim_backend *bd)
+static inline void rshim_net_tx(rshim_backend_t *bd)
 {
 }
 #endif
 
-void rshim_ref(struct rshim_backend *bd);
+void rshim_ref(rshim_backend_t *bd);
 
-void rshim_deref(struct rshim_backend *bd);
+void rshim_deref(rshim_backend_t *bd);
 
 /* Display the rshim logging buffer. */
-int rshim_log_show(struct rshim_backend *bd, char *buf, int len);
+int rshim_log_show(rshim_backend_t *bd, char *buf, int len);
 
 bool rshim_allow_device(const char *devname);
 
@@ -446,28 +430,20 @@ void rshim_usb_poll(void);
 /* PCIe backend APIs. */
 #ifdef HAVE_RSHIM_PCIE
 int rshim_pcie_init(void);
-void rshim_pcie_exit(void);
 #else
 static inline int rshim_pcie_init(void)
 {
   return -1;
-}
-static void rshim_pcie_exit(void)
-{
 }
 #endif
 
 /* PCIe livefish backend APIs. */
 #ifdef HAVE_RSHIM_PCIE_LF
 int rshim_pcie_lf_init(void);
-void rshim_pcie_lf_exit(void);
 #else
 static inline int rshim_pcie_lf_init(void)
 {
   return -1;
-}
-static inline void rshim_pcie_lf_exit(void)
-{
 }
 #endif
 

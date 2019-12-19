@@ -1,9 +1,9 @@
 .\" Manpage for bfrshim.
-.TH man 1 "18 Dec 2019" "1.0" "bfrshim man page"
+.TH man 1 "18 Dec 2019" "2.0" "bfrshim man page"
 .SH NAME
 bfrshim \- user-space rshim driver for BlueField SoC
 .SH SYNOPSIS
-bfrshim [ options ]
+bfrshim [options]
 .SH DESCRIPTION
 bfrshim is the user-space rshim driver for BlueField SoC. It provides ways to access the rshim resources on the BlueField target via USB or PCIe from external host machine. The current version implements virtual console, virtual network interface, boot stream push, register access and some utility commands.
 
@@ -34,11 +34,11 @@ Display the output
 .in +4n
 .nf
 cat /dev/rshim0/misc
-        DISPLAY_LEVEL   0 (0:basic, 1:advanced, 2:log)
-        BOOT_MODE       1 (0:rshim, 1:emmc, 2:emmc-boot-swap)
-        BOOT_TIMEOUT    100 (seconds)
-        SW_RESET        0 (1: reset)
-        DRV_NAME        pcie-04:00.2
+    DISPLAY_LEVEL   0 (0:basic, 1:advanced, 2:log)
+    BOOT_MODE       1 (0:rshim, 1:emmc, 2:emmc-boot-swap)
+    BOOT_TIMEOUT    100 (seconds)
+    SW_RESET        0 (1: reset)
+    DRV_NAME        pcie-04:00.2
 .fi
 .in
 
@@ -87,7 +87,8 @@ cat /dev/rshim0/misc
         Devices can be found under /sys/bus/usb/devices/.
 
 -f, --foreground
-    Run in forground
+    Run in forground.
 
--l, --debug-level
-    Debug level
+-l, --log-level
+    Log level (0:none, 1:error, 2:warning, 3:notice, 4:debug)
+    Log messages will be printed to standard output when running in foreground, or in syslog when running as a daemon.

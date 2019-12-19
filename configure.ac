@@ -1,4 +1,8 @@
-AC_INIT([bfrshim], [1.0])
+# SPDX-License-Identifier: GPL-2.0-only
+# Copyright (C) 2019 Mellanox Technologies. All Rights Reserved.
+#
+
+AC_INIT([Rshim Driver for BlueField SoC], [2.0])
 AM_INIT_AUTOMAKE([-Wall -Werror foreign])
 AC_PROG_CC
 AC_CONFIG_HEADERS([config.h])
@@ -6,7 +10,7 @@ AC_CONFIG_FILES([
   Makefile
   src/Makefile
   man/Makefile
-  bfrshim.spec
+  rshim.spec
 ])
 AC_CANONICAL_HOST
 

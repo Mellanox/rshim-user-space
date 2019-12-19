@@ -1,6 +1,6 @@
-// SPDX-License-Identifier: (BSD-3-Clause OR GPL-2.0)
+// SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright 2019 Mellanox Technologies. All Rights Reserved.
+ * Copyright (C) 2019 Mellanox Technologies. All Rights Reserved.
  *
  */
 
@@ -44,7 +44,7 @@
 
 #define CRSPACE_RSH_CHANNEL1_BASE   0x310000
 
-struct rshim_pcie {
+typedef struct {
   /* RShim backend structure. */
   struct rshim_backend bd;
 
@@ -52,7 +52,7 @@ struct rshim_pcie {
 
   /* Keep track of number of 8-byte word writes */
   u8 write_count;
-};
+} rshim_pcie_lf_t;
 
 /* Mechanism to access the CR space using hidden PCI capabilities */
 static int pci_cap_read(struct pci_dev *pci_dev, int offset, uint32_t *result)
@@ -415,7 +415,7 @@ static int rshim_boot_fifo_write(struct pci_dev *pci_dev, int addr,
 static int rshim_pcie_read(struct rshim_backend *bd, int chan, int addr,
                            uint64_t *result)
 {
-  struct rshim_pcie *dev = container_of(bd, struct rshim_pcie, bd);
+  rshim_pcie_lf_t *dev = container_of(bd, rshim_pcie_lf_t, bd);
   struct pci_dev *pci_dev = dev->pci_dev;
   int rc = 0;
 
@@ -432,7 +432,7 @@ static int rshim_pcie_read(struct rshim_backend *bd, int chan, int addr,
 static int rshim_pcie_write(struct rshim_backend *bd, int chan, int addr,
                             uint64_t value)
 {
-  struct rshim_pcie *dev = container_of(bd, struct rshim_pcie, bd);
+  rshim_pcie_lf_t *dev = container_of(bd, rshim_pcie_lf_t, bd);
   struct pci_dev *pci_dev = dev->pci_dev;
   bool is_boot_stream = (addr == RSH_BOOT_FIFO_DATA);
   uint64_t result;
@@ -468,7 +468,7 @@ static int rshim_pcie_write(struct rshim_backend *bd, int chan, int addr,
 
 static void rshim_pcie_delete(struct rshim_backend *bd)
 {
-  struct rshim_pcie *dev = container_of(bd, struct rshim_pcie, bd);
+  rshim_pcie_lf_t *dev = container_of(bd, rshim_pcie_lf_t, bd);
 
   rshim_deregister(bd);
   free(dev);
@@ -477,28 +477,24 @@ static void rshim_pcie_delete(struct rshim_backend *bd)
 /* Probe routine */
 static int rshim_pcie_probe(struct pci_dev *pci_dev)
 {
-  const int max_name_len = 64;
-  int ret;
+  char dev_name[RSHIM_DEV_NAME_LEN];
   struct rshim_backend *bd;
-  struct rshim_pcie *dev;
-  char *pcie_dev_name;
+  rshim_pcie_lf_t *dev;
+  int ret;
 
-  pcie_dev_name = malloc(max_name_len);
-  snprintf(pcie_dev_name, max_name_len, "pcie-lf-%02x:%02x.%d",
+  snprintf(dev_name, sizeof(dev_name) - 1, "pcie-lf-%02x:%02x.%d",
            pci_dev->bus, pci_dev->dev, pci_dev->func);
 
-  if (!rshim_allow_device(pcie_dev_name)) {
-    free(pcie_dev_name);
+  if (!rshim_allow_device(dev_name))
     return -EACCES;
-  }
 
-  RSHIM_INFO("Probing %s\n", pcie_dev_name);
+  RSHIM_INFO("Probing %s\n", dev_name);
 
   rshim_lock();
 
-  bd = rshim_find_by_name(pcie_dev_name);
+  bd = rshim_find_by_name(dev_name);
   if (bd) {
-    dev = container_of(bd, struct rshim_pcie, bd);
+    dev = container_of(bd, rshim_pcie_lf_t, bd);
   } else {
     dev = calloc(1, sizeof(*dev));
     if (dev == NULL) {
@@ -510,8 +506,7 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
     bd = &dev->bd;
     bd->has_rshim = 1;
     bd->has_tm = 1;
-    bd->dev_name = pcie_dev_name;
-    bd->drv_name = "rshim_pcie_lf";
+    strncpy(bd->dev_name, dev_name, sizeof(bd->dev_name) - 1);
     bd->read_rshim = rshim_pcie_read;
     bd->write_rshim = rshim_pcie_write;
     bd->destroy = rshim_pcie_delete;
@@ -537,8 +532,6 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
     if (ret) {
       rshim_unlock();
       goto rshim_map_failed;
-    } else {
-      pcie_dev_name = NULL;
     }
   }
   rshim_unlock();
@@ -557,7 +550,6 @@ rshim_map_failed:
   rshim_deref(bd);
   rshim_unlock();
 error:
-   free(pcie_dev_name);
    return ret;
 }
 
@@ -589,8 +581,4 @@ int rshim_pcie_lf_init(void)
   //pci_cleanup(pci);
 
   return 0;
-}
-
-void rshim_pcie_lf_exit(void)
-{
 }
