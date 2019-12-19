@@ -63,6 +63,8 @@ rm -rf %{buildroot}
 %{__install} -m 0644 bfrshim.service %{buildroot}%{_unitdir}
 %endif
 %{__install} -d %{buildroot}%{_mandir}/man1
+%{__install} -m 0644 man/bfrshim.1 %{buildroot}%{_mandir}/man1
+%__spec_install_post
 
 %post
 %if "%{WITH_SYSTEMD}" == "1"

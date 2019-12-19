@@ -1,0 +1,93 @@
+.\" Manpage for bfrshim.
+.TH man 1 "18 Dec 2019" "1.0" "bfrshim man page"
+.SH NAME
+bfrshim \- user-space rshim driver for BlueField SoC
+.SH SYNOPSIS
+bfrshim [ options ]
+.SH DESCRIPTION
+bfrshim is the user-space rshim driver for BlueField SoC. It provides ways to access the rshim resources on the BlueField target via USB or PCIe from external host machine. The current version implements virtual console, virtual network interface, boot stream push, register access and some utility commands.
+
+This driver will probe the rshim backend and create directory /dev/rshim<N> for each of them with the following device files.
+
+.SS /dev/rshim<N>/boot
+Boot device file used to push boot stream to the target, for example,
+
+.in +4n
+.nf
+cat install.bfb > /dev/rshim<N>/boot
+
+.SS /dev/rshim<N>/console
+Console device file, which can be used by console tools to connect to the target, such as
+
+.in +4n
+.nf
+screen /dev/rshim<N>/console
+
+.SS /dev/rshim<N>/rshim
+Device file used to access rshim register space. When reading/writing to this file, the offset is encoded as "((rshim_channel << 16) | register_offset)". This file can be used by tools like openocd to do CoreSight debugging.
+
+.SS /dev/rshim<N>/misc
+Key/Value pairs used to read/write misc information. For example
+
+Display the output
+
+.in +4n
+.nf
+cat /dev/rshim0/misc
+        DISPLAY_LEVEL   0 (0:basic, 1:advanced, 2:log)
+        BOOT_MODE       1 (0:rshim, 1:emmc, 2:emmc-boot-swap)
+        BOOT_TIMEOUT    100 (seconds)
+        SW_RESET        0 (1: reset)
+        DRV_NAME        pcie-04:00.2
+.fi
+.in
+
+Initiate SW reset
+
+.in +4n
+.nf
+echo "SW_RESET 1" > /dev/rshim<N>/misc
+.fi
+.in
+
+Enable the advanced options
+
+.in +4n
+.nf
+echo "DISPLAY_LEVEL 1" > /dev/rshim<N>/misc
+
+cat /dev/rshim0/misc
+    DISPLAY_LEVEL   1 (0:basic, 1:advanced, 2:log)
+    BOOT_MODE       1 (0:rshim, 1:emmc, 2:emmc-boot-swap)
+    BOOT_TIMEOUT    100 (seconds)
+    SW_RESET        0 (1: reset)
+    DRV_NAME        pcie-04:00.2
+    PEER_MAC        00:1a:ca:ff:ff:01 (rw)
+    PXE_ID          0x00000000 (rw)
+    VLAN_ID         0 0 (rw)
+.fi
+.in
+.SH OPTIONS
+-b, --backend
+    Specify the backend to attach, which can be one of usb, pcie or pcie_lf
+
+-d, --device
+    Specify the device name to attach with the format below
+
+    PCIe backend:
+        pcie-<bus>:<device>.<function>. Example: pcie-04:00.2
+        Devices can be found with command 'lspci -n'.
+
+    PCIe backend in livefish mode:
+        pcie-lf-<bus>:<device>.<function>. Example: pcie-04:00.2
+        Devices can be found with command 'lspci -n'.
+
+    USB backend:
+        usb-<bus>-xx.xx. Example: usb-2-1.7
+        Devices can be found under /sys/bus/usb/devices/.
+
+-f, --foreground
+    Run in forground
+
+-l, --debug-level
+    Debug level
