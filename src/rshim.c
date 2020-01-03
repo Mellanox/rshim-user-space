@@ -3329,8 +3329,8 @@ static void rshim_main(int argc, char *argv[])
   /* Scan rshim backends. */
   rc = 0;
   if (!rshim_backend_name) {
-    rshim_usb_init(epoll_fd);
     rshim_pcie_init();
+    rshim_usb_init(epoll_fd);
     rshim_pcie_lf_init();
   } else {
     if (!strcmp(rshim_backend_name, "usb"))
@@ -3458,8 +3458,10 @@ int main(int argc, char *argv[])
     case 'v':
 #if defined(PACKAGE_NAME) && defined(VERSION)
       printf(PACKAGE_NAME " " VERSION "\n");
+#else
+      printf("Rshim Driver for BlueField SoC 2.0\n");
 #endif
-      break;
+      return 0;
     case 'h':
     default:
       print_help();

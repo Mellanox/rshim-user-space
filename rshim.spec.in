@@ -20,7 +20,7 @@ Source: %{name}-%{version}.tar.gz
 BuildRoot: %{?build_root:%{build_root}}%{!?build_root:/var/tmp/OFED}
 Vendor: Mellanox Technologies
 
-Obsoletes: %{name} < %{version}
+Obsoletes: %{name} < 2.0
 
 %if "%{_vendor}" == "suse"
 BuildRequires: libpci-dev, libusb-dev, libfuse-dev
@@ -60,6 +60,13 @@ rm -rf %{buildroot}
 
 %clean
 rm -rf %{buildroot}
+
+%preun
+%if "%{WITH_SYSTEMD}" == "1"
+systemctl stop bfrshim
+%else
+killall -9 bfrshim
+%endif
 
 %files
 %defattr(-,root,root,-)
