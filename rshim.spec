@@ -3,7 +3,7 @@
 #
 
 %{!?_name: %define _name rshim}
-%{!?_version: %define _version @VERSION@}
+%{!?_version: %define _version 2.0}
 %{!?_release: %define _release 0}
 
 Name: %{_name}

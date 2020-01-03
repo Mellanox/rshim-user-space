@@ -97,7 +97,8 @@ static int rshim_if_open(char *ifname, int index)
 
   rshim_if_set_non_blocking(fd);
   sprintf(cmd, "ifup %s 2>/dev/null&", ifname);
-  system(cmd);
+  if (system(cmd) == -1)
+    RSHIM_DBG("Failed to call ifup\n");
   return fd;
 }
 #elif defined(__FreeBSD__)
