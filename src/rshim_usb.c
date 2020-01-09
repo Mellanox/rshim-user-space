@@ -283,7 +283,13 @@ static void rshim_usb_fifo_read(rshim_usb_t *dev, char *buffer, size_t count)
                                    (unsigned char *)dev->intr_buf,
                                    sizeof(*dev->intr_buf),
                                    rshim_usb_fifo_read_callback,
-                                   dev, 0);
+                                   dev,
+#ifdef __linux__
+                                   -1
+#else
+                                   0
+#endif
+                                   );
 
     dev->bd.spin_flags |= RSH_SFLG_READING;
     dev->read_urb_is_intr = 1;
