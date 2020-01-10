@@ -6,6 +6,7 @@
 %{!?_version: %define _version 2.0}
 %{!?_release: %define _release 0}
 
+%define debug_package %{nil}
 %global _release1 %{_release}
 
 Name: %{_name}
