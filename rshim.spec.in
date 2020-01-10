@@ -6,9 +6,11 @@
 %{!?_version: %define _version @VERSION@}
 %{!?_release: %define _release 0}
 
+%global _release1 %{_release}
+
 Name: %{_name}
 Version: %{_version}
-Release: %{_release}%{?_dist}
+Release: %{_release1}%{?_dist}
 Summary: User-space rshim driver for BlueField SoC
 
 %global WITH_SYSTEMD %(if ( test -d "%{_unitdir}" > /dev/null); then echo -n '1'; else echo -n '0'; fi)
