@@ -69,10 +69,13 @@ cat /dev/rshim0/misc
 .in
 .SH OPTIONS
 -b, --backend
-    Specify the backend to attach, which can be one of usb, pcie or pcie_lf
+    Specify the backend to attach, which can be one of usb, pcie or pcie_lf.
+    If not specified, the driver will scan all rshim backends unless the '-d'
+    option is given with a device name specified.
 
 -d, --device
-    Specify the device name to attach with the format below
+    Specify the device name to attach with the format below. The backend driver
+    can be deduced from the device name, thus the '-b' option is not needed.
 
     PCIe backend:
         pcie-<bus>:<device>.<function>. Example: pcie-04:00.2

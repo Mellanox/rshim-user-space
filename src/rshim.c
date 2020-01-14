@@ -3328,6 +3328,14 @@ static void rshim_main(int argc, char *argv[])
 
   /* Scan rshim backends. */
   rc = 0;
+  if (!rshim_backend_name && rshim_device_filter) {
+    if (!strncmp(rshim_device_filter, "usb", 3))
+      rshim_backend_name = "usb";
+    else if (!strncmp(rshim_device_filter, "pcie", 4))
+      rshim_backend_name = "pcie";
+    else if (!strncmp(rshim_device_filter, "pcie_lf", 7))
+      rshim_backend_name = "pcie_lf";
+  }
   if (!rshim_backend_name) {
     rshim_pcie_init();
     rshim_usb_init(epoll_fd);
