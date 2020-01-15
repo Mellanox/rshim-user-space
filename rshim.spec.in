@@ -26,7 +26,7 @@ Vendor: Mellanox Technologies
 Obsoletes: %{name} < 2.0
 
 %if "%{_vendor}" == "suse"
-BuildRequires: libpci-dev, libusb-dev, libfuse-dev
+BuildRequires: pciutils-devel, libusb-devel, fuse-devel
 %else
 BuildRequires: pciutils-devel, libusbx-devel, fuse-devel
 %endif
