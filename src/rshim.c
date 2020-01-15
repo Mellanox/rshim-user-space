@@ -2625,6 +2625,7 @@ static void rshim_rshim_ioctl(fuse_req_t req, int cmd, void *arg,
   rshim_backend_t *bd = fuse_req_userdata(req);
   rshim_ioctl_msg msg;
   struct iovec iov;
+  uint64_t data = 0;
   int rc = 0;
 
   switch (cmd) {
@@ -2662,7 +2663,8 @@ static void rshim_rshim_ioctl(fuse_req_t req, int cmd, void *arg,
       rc = bd->read_rshim(bd,
                            (msg.addr >> 16) & 0xF, /* channel # */
                            msg.addr & 0xFFFF, /* addr */
-                           &msg.data);
+                           &data);
+      msg.data = data;
       pthread_mutex_unlock(&bd->mutex);
     }
 
