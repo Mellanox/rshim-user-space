@@ -59,7 +59,7 @@ syntax: bfrshim [--help|-h] [--backend|-b usb|pcie|pcie_lf]
     cat /dev/rshim<N>/misc
       BOOT_MODE 1                   # eMMC boot mode (0:USB/PCIe, 1: eMMC)
       SW_RESET  0                   # Set to 1 to initiate SW RESET
-      DRV_NAME  rshim_usb           # Backend driver name (display-only)
+      DEV_NAME  rshim_usb           # Backend driver name (display-only)
 
     Turning on the 'rshim_adv_cfg' flag with the '-a' command line argument
     could display more parameters.

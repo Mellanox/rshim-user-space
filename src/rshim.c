@@ -2363,7 +2363,7 @@ static int rshim_misc_read(struct cuse_dev *cdev, int fflags, void *peer_ptr,
   len -= n;
 
   /* Display the driver name. */
-  n = snprintf(p, len, "%-16s%s\n", "DRV_NAME", bd->dev_name);
+  n = snprintf(p, len, "%-16s%s\n", "DEV_NAME", bd->dev_name);
   p += n;
   len -= n;
 
@@ -3412,6 +3412,22 @@ static void rshim_main(int argc, char *argv[])
   }
 }
 
+static void rshim_signal_handler(int sig)
+{
+}
+
+static void set_signals(void)
+{
+  struct sigaction sa;
+
+  memset(&sa, 0, sizeof(struct sigaction));
+  sa.sa_handler = rshim_signal_handler;
+  sigaction(SIGHUP, &sa, NULL);
+  sigaction(SIGINT, &sa, NULL);
+  sigaction(SIGTERM, &sa, NULL);
+  sigaction(SIGPIPE, &sa, NULL);
+}
+
 static void print_help(void)
 {
   printf("Usage: bfrshim [options]\n");
@@ -3507,6 +3523,8 @@ int main(int argc, char *argv[])
   }
 
   openlog("rshim", LOG_CONS, LOG_USER);
+
+  set_signals();
 
   rshim_main(argc, argv);
 
