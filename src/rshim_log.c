@@ -12,6 +12,9 @@ const char * const rshim_log_mod[] = {
   "others", "BL1", "BL2", "BL2R", "BL31", "UEFI"
 };
 
+/* Log level */
+const char * const rshim_log_levels[] = { "INFO", "WARN", "ERR" };
+
 /* Log type. */
 #define BF_RSH_LOG_TYPE_UNKNOWN         0x00ULL
 #define BF_RSH_LOG_TYPE_PANIC           0x01ULL
@@ -20,14 +23,22 @@ const char * const rshim_log_mod[] = {
 #define BF_RSH_LOG_TYPE_MSG             0x04ULL
 
 /* Utility macro. */
-#define BF_RSH_LOG_MOD_MASK     0x0FULL
-#define BF_RSH_LOG_MOD_SHIFT    60
-#define BF_RSH_LOG_TYPE_MASK    0x0FULL
-#define BF_RSH_LOG_TYPE_SHIFT   56
-#define BF_RSH_LOG_LEN_MASK     0x7FULL
-#define BF_RSH_LOG_LEN_SHIFT    48
-#define BF_RSH_LOG_PC_MASK      0xFFFFFFFFULL
-#define BF_RSH_LOG_PC_SHIFT     0
+#define BF_RSH_LOG_MOD_MASK             0x0FULL
+#define BF_RSH_LOG_MOD_SHIFT            60
+#define BF_RSH_LOG_TYPE_MASK            0x0FULL
+#define BF_RSH_LOG_TYPE_SHIFT           56
+#define BF_RSH_LOG_LEN_MASK             0x7FULL
+#define BF_RSH_LOG_LEN_SHIFT            48
+#define BF_RSH_LOG_ARG_MASK             0xFFFFFFFFULL
+#define BF_RSH_LOG_ARG_SHIFT            16
+#define BF_RSH_LOG_HAS_ARG_MASK         0xFFULL
+#define BF_RSH_LOG_HAS_ARG_SHIFT        8
+#define BF_RSH_LOG_LEVEL_MASK           0xFFULL
+#define BF_RSH_LOG_LEVEL_SHIFT          0
+#define BF_RSH_LOG_PC_MASK              0xFFFFFFFFULL
+#define BF_RSH_LOG_PC_SHIFT             0
+#define BF_RSH_LOG_SYNDROME_MASK        0xFFFFFFFFULL
+#define BF_RSH_LOG_SYNDROME_SHIFT       0
 
 #define BF_RSH_LOG_HEADER_GET(f, h) \
   (((h) >> BF_RSH_LOG_##f##_SHIFT) & BF_RSH_LOG_##f##_MASK)
@@ -170,7 +181,7 @@ static int rshim_log_show_crash(rshim_backend_t *bd, uint64_t hdr, char *buf,
   int rc = 0, i, module, type, len, n = 0;
   uint64_t opcode, data;
   char *p = buf;
-  uint32_t pc;
+  uint32_t pc, syndrome, ec;
 
   module = BF_RSH_LOG_HEADER_GET(MOD, hdr);
   if (module >= sizeof(rshim_log_mod) / sizeof(rshim_log_mod[0]))
@@ -178,11 +189,17 @@ static int rshim_log_show_crash(rshim_backend_t *bd, uint64_t hdr, char *buf,
   type = BF_RSH_LOG_HEADER_GET(TYPE, hdr);
   len = BF_RSH_LOG_HEADER_GET(LEN, hdr);
 
-  if (type == BF_RSH_LOG_TYPE_EXCEPTION)
-    n = snprintf(p, size, "Exception(%s):\n", rshim_log_mod[module]);
+  if (type == BF_RSH_LOG_TYPE_EXCEPTION) {
+    syndrome = BF_RSH_LOG_HEADER_GET(SYNDROME, hdr);
+    ec = syndrome >> 26;
+    n = snprintf(p, size, " Exception(%s): syndrome = 0x%x%s\n",
+                 rshim_log_mod[module], syndrome,
+                 (ec == 0x24 || ec == 0x25) ? "(Data Abort)" :
+                 (ec == 0x2f) ? "(SError)" : "");
+  }
   else if (type == BF_RSH_LOG_TYPE_PANIC) {
     pc = BF_RSH_LOG_HEADER_GET(PC, hdr);
-    n = snprintf(p, size, "PANIC(%s): PC = 0x%x\n", rshim_log_mod[module], pc);
+    n = snprintf(p, size, " PANIC(%s): PC = 0x%x\n", rshim_log_mod[module], pc);
   }
   p += n;
   size -= n;
@@ -198,7 +215,7 @@ static int rshim_log_show_crash(rshim_backend_t *bd, uint64_t hdr, char *buf,
 
     opcode = (le64toh(opcode) >> AARCH64_MRS_REG_SHIFT) &
              AARCH64_MRS_REG_MASK;
-    n = snprintf(p, size, " %-16s0x%llx\n", rshim_log_get_reg_name(opcode),
+    n = snprintf(p, size, "   %-16s0x%llx\n", rshim_log_get_reg_name(opcode),
                  (unsigned long long)data);
     p += n;
     size -= n;
@@ -210,12 +227,22 @@ static int rshim_log_show_crash(rshim_backend_t *bd, uint64_t hdr, char *buf,
 static int rshim_log_show_msg(rshim_backend_t *bd, uint64_t hdr, char *buf,
                               int size)
 {
-  int rc, len = BF_RSH_LOG_HEADER_GET(LEN, hdr);
+  int rc;
+  int module = BF_RSH_LOG_HEADER_GET(MOD, hdr);
+  int len = BF_RSH_LOG_HEADER_GET(LEN, hdr);
+  int level = BF_RSH_LOG_HEADER_GET(LEVEL, hdr);
+  int has_arg = BF_RSH_LOG_HEADER_GET(HAS_ARG, hdr);
+  uint32_t arg = BF_RSH_LOG_HEADER_GET(ARG, hdr);
   uint64_t data;
   char *tmp, *p;
 
   if (len <= 0)
     return -EINVAL;
+
+  if (module >= sizeof(rshim_log_mod) / sizeof(rshim_log_mod[0]))
+    module = 0;
+  if (level >= sizeof(rshim_log_levels) / sizeof(rshim_log_levels[0]))
+    level = 0;
 
   tmp = malloc(len * sizeof(uint64_t) + 1);
   if (!tmp)
@@ -230,7 +257,15 @@ static int rshim_log_show_msg(rshim_backend_t *bd, uint64_t hdr, char *buf,
     p += sizeof(data);
   }
   *p = '\0';
-  len = snprintf(buf, size, " %s\n", tmp);
+  if (!has_arg) {
+    len = snprintf(buf, size, " %s[%s]: %s\n", rshim_log_levels[level],
+                   rshim_log_mod[module], tmp);
+  } else {
+    len = snprintf(buf, size, " %s[%s]: ", rshim_log_levels[level],
+                   rshim_log_mod[module]);
+    len += snprintf(buf + len, size - len, tmp, arg);
+    len += snprintf(buf + len, size - len, "\n");
+  }
 
   free(tmp);
   return len;
