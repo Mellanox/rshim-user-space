@@ -92,6 +92,11 @@ cat /dev/rshim0/misc
 -f, --foreground
     Run in forground.
 
+-i, --index
+    Specify the index to create device path /dev/rshim<index>. It's also used
+    to create network interface name tmfifo_net<index>. This option is needed
+    when multiple bfrshim instances are running.
+
 -l, --log-level
     Log level (0:none, 1:error, 2:warning, 3:notice, 4:debug)
     Log messages will be printed to standard output when running in foreground, or in syslog when running as a daemon.

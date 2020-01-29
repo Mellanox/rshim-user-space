@@ -3443,12 +3443,13 @@ static void print_help(void)
 
 int main(int argc, char *argv[])
 {
-  static const char short_options[] = "b:d:fhl:m:v";
+  static const char short_options[] = "b:d:fhi:l:v";
   static struct option long_options[] = {
     { "backend", required_argument, NULL, 'b' },
     { "device", required_argument, NULL, 'd' },
     { "foreground", no_argument, NULL, 'f' },
     { "help", no_argument, NULL, 'h' },
+    { "index", required_argument, NULL, 'h' },
     { "log-level", required_argument, NULL, 'l' },
     { NULL, 0, NULL, 0 }
   };
@@ -3467,6 +3468,9 @@ int main(int argc, char *argv[])
     case 'f':
       rshim_daemon_mode = false;
       break;
+    case 'i':
+      rshim_index_base = atoi(optarg);
+      break;
     case 'l':
       rshim_log_level = atoi(optarg);
       if (rshim_log_level == 1)
@@ -3477,9 +3481,6 @@ int main(int argc, char *argv[])
         rshim_log_level = LOG_NOTICE;
       else if (rshim_log_level >= 4)
         rshim_log_level = LOG_DEBUG;
-      break;
-    case 'm':
-      rshim_index_base = atoi(optarg);
       break;
     case 'v':
 #if defined(PACKAGE_NAME) && defined(VERSION)
