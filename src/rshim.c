@@ -48,6 +48,9 @@ static int rshim_keepalive_period = 300;
 /* Boot timeout in seconds. */
 static int rshim_boot_timeout = 100;
 
+/* Skip SW_RESET while pushing boot stream. */
+static int rshim_skip_boot_reset;
+
 #define RSH_KEEPALIVE_MAGIC_NUM 0x5089836482ULL
 
 /* Circular buffer macros. */
@@ -478,7 +481,7 @@ static int wait_for_boot_done(rshim_backend_t *bd)
 {
   int rc;
 
-  if (!bd->has_reprobe)
+  if (!bd->has_reprobe || rshim_skip_boot_reset)
     return 0;
 
   if (!bd->has_rshim || bd->is_booting) {
@@ -625,6 +628,9 @@ static int rshim_boot_open(struct cuse_dev *cdev, int fflags)
   bd->write_rshim(bd, RSH_MMIO_ADDRESS_SPACE__CHANNEL_VAL_WDOG1,
                   RSH_ARM_WDG_CONTROL_WCS, 0);
 
+  if (rshim_skip_boot_reset)
+    goto boot_open_done;
+
   /* SW reset. */
   rc = rshim_write_reset_control(bd);
 
@@ -671,6 +677,7 @@ static int rshim_boot_open(struct cuse_dev *cdev, int fflags)
   if (rc)
     RSHIM_ERR("boot_open: got error %d on reset write\n", rc);
 
+boot_open_done:
   pthread_mutex_unlock(&bd->mutex);
 
   if (!bd->has_reprobe)
@@ -2370,6 +2377,12 @@ static int rshim_misc_read(struct cuse_dev *cdev, int fflags, void *peer_ptr,
   if (rshim_misc_level == 1) {
     gettimeofday(&tp, NULL);
 
+    /* Skip SW_RESET while pushing boot stream. */
+    n = snprintf(p, len, "%-16s%d (1: skip)\n", "BOOT_RESET_SKIP",
+                 rshim_skip_boot_reset);
+    p += n;
+    len -= n;
+
     /*
      * Display the target-side information. Send a request and wait for
      * some time for the response.
@@ -2513,6 +2526,10 @@ static int rshim_misc_write(struct cuse_dev *cdev, int fflags,
         pthread_mutex_unlock(&bd->mutex);
       }
     }
+  } else if (strcmp(key, "BOOT_RESET_SKIP") == 0) {
+    if (sscanf(p, "%x", &value) != 1)
+      goto invalid;
+    rshim_skip_boot_reset = value;
   } else if (strcmp(key, "PEER_MAC") == 0) {
     if (sscanf(p, "%x:%x:%x:%x:%x:%x",
                &mac[0], &mac[1], &mac[2], &mac[3], &mac[4], &mac[5]) != 6)

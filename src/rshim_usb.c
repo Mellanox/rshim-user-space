@@ -13,8 +13,9 @@
 #include "rshim.h"
 
 /* Our USB vendor/product IDs. */
-#define USB_TILERA_VENDOR_ID      0x22dc   /* Tilera Corporation */
-#define USB_BLUEFIELD_PRODUCT_ID  0x0004   /* Mellanox Bluefield-1 */
+#define USB_TILERA_VENDOR_ID        0x22dc   /* Tilera Corporation */
+#define USB_BLUEFIELD_1_PRODUCT_ID  0x0004   /* Mellanox Bluefield-1 */
+#define USB_BLUEFIELD_2_PRODUCT_ID  0x0214   /* Mellanox Bluefield-2 */
 
 #define READ_RETRIES       5
 #define WRITE_RETRIES      5
@@ -55,6 +56,11 @@ typedef struct {
 static libusb_context *rshim_usb_ctx;
 static int rshim_usb_epoll_fd;
 static bool rshim_usb_need_probe;
+
+static int rshim_usb_product_ids[] = {
+  USB_BLUEFIELD_1_PRODUCT_ID,
+  USB_BLUEFIELD_2_PRODUCT_ID
+};
 
 static void rshim_usb_delete(rshim_backend_t *bd)
 {
@@ -880,7 +886,7 @@ static bool rshim_usb_probe(void)
 {
   libusb_context *ctx = rshim_usb_ctx;
   libusb_device **devs, *dev;
-  int rc, i = 0;
+  int rc, i = 0, j, num;
 
   rc = libusb_get_device_list(ctx, &devs);
   if (rc < 0) {
@@ -895,9 +901,14 @@ static bool rshim_usb_probe(void)
     if (rc)
       continue;
 
-    if (desc.idVendor == USB_TILERA_VENDOR_ID &&
-        desc.idProduct == USB_BLUEFIELD_PRODUCT_ID)
-      rshim_usb_probe_one(ctx, dev);
+    if (desc.idVendor != USB_TILERA_VENDOR_ID)
+      continue;
+
+    num = sizeof(rshim_usb_product_ids) / sizeof(rshim_usb_product_ids[0]);
+    for (j = 0; j < num; j++) {
+      if (desc.idProduct == rshim_usb_product_ids[j])
+        rshim_usb_probe_one(ctx, dev);
+    }
   }
 
   rc = rshim_usb_add_poll(ctx);
@@ -910,7 +921,7 @@ static bool rshim_usb_probe(void)
 int rshim_usb_init(int epoll_fd)
 {
   libusb_context *ctx = NULL;
-  int rc;
+  int rc, i, num;
 
   rc = libusb_init(&ctx);
   if (rc < 0) {
@@ -927,21 +938,24 @@ int rshim_usb_init(int epoll_fd)
   rshim_usb_epoll_fd = epoll_fd;
 
 #if LIBUSB_API_VERSION >= 0x01000102
-  rc = libusb_hotplug_register_callback(ctx,
-                                        LIBUSB_HOTPLUG_EVENT_DEVICE_ARRIVED |
-                                        LIBUSB_HOTPLUG_EVENT_DEVICE_LEFT,
-                                        LIBUSB_HOTPLUG_ENUMERATE,
-                                        USB_TILERA_VENDOR_ID,
-                                        USB_BLUEFIELD_PRODUCT_ID,
-                                        LIBUSB_HOTPLUG_MATCH_ANY,
-                                        rshim_hotplug_callback,
-                                        NULL,
-                                        &rshim_hotplug_handle);
-  if (rc != LIBUSB_SUCCESS) {
-    RSHIM_ERR("failed to register hotplug callback\n");
-    libusb_exit(ctx);
-    rshim_usb_ctx = NULL;
-    return rc;
+  num = sizeof(rshim_usb_product_ids) / sizeof(rshim_usb_product_ids[0]);
+  for (i = 0; i < num; i++) {
+    rc = libusb_hotplug_register_callback(ctx,
+                                          LIBUSB_HOTPLUG_EVENT_DEVICE_ARRIVED |
+                                          LIBUSB_HOTPLUG_EVENT_DEVICE_LEFT,
+                                          LIBUSB_HOTPLUG_ENUMERATE,
+                                          USB_TILERA_VENDOR_ID,
+                                          rshim_usb_product_ids[i],
+                                          LIBUSB_HOTPLUG_MATCH_ANY,
+                                          rshim_hotplug_callback,
+                                          NULL,
+                                          &rshim_hotplug_handle);
+    if (rc != LIBUSB_SUCCESS) {
+      RSHIM_ERR("failed to register hotplug callback\n");
+      libusb_exit(ctx);
+      rshim_usb_ctx = NULL;
+      return rc;
+    }
   }
 #else
   rshim_usb_probe();
