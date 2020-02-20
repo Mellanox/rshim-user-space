@@ -773,9 +773,8 @@ static int rshim_boot_write(struct cuse_dev *cdev, int fflags,
       bytes_written += len;
       bd->boot_rem_cnt = 0;
     } else if (rc == 0) {
-      /* Wait for some time instead of busy polling. */
-      usleep(1000);
-      continue;
+      rc = -EINTR;
+      break;
     }
     if (rc != buf_bytes)
       break;
