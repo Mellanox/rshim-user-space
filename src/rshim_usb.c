@@ -19,7 +19,7 @@
 
 #define READ_RETRIES       5
 #define WRITE_RETRIES      5
-#define RSHIM_USB_TIMEOUT  2000
+#define RSHIM_USB_TIMEOUT  20000
 
 /* Structure to hold all of our device specific stuff. */
 typedef struct {
