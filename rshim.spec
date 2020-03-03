@@ -25,6 +25,8 @@ Vendor: Mellanox Technologies
 
 Obsoletes: %{name} < 2.0
 
+BuildRequires: gcc, autoconf, automake
+
 %if "%{_vendor}" == "suse"
 BuildRequires: pciutils-devel, libusb-devel, fuse-devel
 %else
