@@ -3,7 +3,9 @@
 #
 
 AC_INIT([Rshim Driver for BlueField SoC], [2.0])
+AC_CONFIG_AUX_DIR(config)
 AM_INIT_AUTOMAKE([-Wall -Werror foreign])
+AC_LANG(C)
 AC_PROG_CC
 AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_FILES([
