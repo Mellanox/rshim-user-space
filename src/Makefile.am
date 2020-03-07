@@ -3,4 +3,13 @@
 #
 
 bin_PROGRAMS = bfrshim
-bfrshim_SOURCES = rshim.c rshim_log.c rshim_net.c rshim_pcie.c rshim_pcie_lf.c rshim_usb.c
+
+bfrshim_SOURCES = rshim.c rshim_log.c rshim_net.c
+
+if BUILD_RSHIM_USB
+bfrshim_SOURCES += rshim_usb.c
+endif
+
+if BUILD_RSHIM_PCIE
+bfrshim_SOURCES += rshim_pcie.c rshim_pcie_lf.c
+endif
