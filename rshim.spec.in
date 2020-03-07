@@ -74,6 +74,7 @@ killall -9 bfrshim
 %endif
 
 %files
+%license LICENSE
 %defattr(-,root,root,-)
 %%doc README.md
 %if "%{WITH_SYSTEMD}" == "1"
