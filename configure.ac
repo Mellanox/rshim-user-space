@@ -7,6 +7,7 @@ AC_CONFIG_AUX_DIR(config)
 AM_INIT_AUTOMAKE([-Wall -Werror foreign])
 AC_LANG(C)
 AC_PROG_CC
+AM_PROG_CC_C_O
 AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_FILES([
   Makefile
@@ -41,37 +42,27 @@ case $host in
   AC_MSG_ERROR([unsupported operating system $host])
 esac
 
-AC_SUBST(CPPFLAGS, "$CPPFLAGS -D_FILE_OFFSET_BITS=64")
-AC_SUBST(CPPFLAGS, "$CPPFLAGS -DHAVE_RSHIM_NET")
-AC_SUBST(CPPFLAGS, "$CPPFLAGS -I/usr/local/include")
-
 AS_IF([test "x$build_pcie" = "xyes"], [
-  AC_CHECK_HEADERS([pci/pci.h],[],[AC_MSG_ERROR([Missing pciutils header files])])
-  AC_SUBST(CPPFLAGS, "$CPPFLAGS -DHAVE_RSHIM_PCIE")
-  AC_CHECK_LIB(pci, pci_init, [], [AC_MSG_ERROR([Missing libpci])])
+  PKG_CHECK_MODULES(libpci, libpci, [], [AC_MSG_ERROR([Can't find libpci])])
 ])
 
 AS_IF([test "x$build_usb" = "xyes"], [
+  PKG_CHECK_MODULES(libusb, libusb-1.0 >= 1.0, [], [AC_MSG_ERROR([Can't find libusb-1.0])])
   if test $backend = freebsd; then
-    AC_CHECK_HEADERS([libusb.h],[],[AC_MSG_ERROR([Missing libusb header files])])
-    AC_CHECK_LIB(usb, libusb_init, [], [AC_MSG_ERROR([Missing libusb])])
+    AC_CHECK_LIB(usb, libusb_init, [], [AC_MSG_ERROR([Missing libusb_init in libusb])])
   else
-    AC_CHECK_HEADERS([libusb-1.0/libusb.h],[],[AC_MSG_ERROR([Missing libusb header files])])
-    AC_SUBST(CPPFLAGS, "$CPPFLAGS -DHAVE_RSHIM_USB")
-    AC_SUBST(CPPFLAGS, "$CPPFLAGS -I/usr/include/libusb-1.0 -I/usr/local/include/libusb-1.0")
-    AC_CHECK_LIB(usb-1.0, libusb_init, [], [AC_MSG_ERROR([Missing libusb-1.0])])
+    AC_CHECK_LIB(usb-1.0, libusb_init, [], [AC_MSG_ERROR([Missing libusb_init in libusb-1.0])])
   fi
   AC_CHECK_FUNCS([libusb_get_port_numbers libusb_get_device_address])
 ])
 
-AC_CHECK_HEADERS([fuse/cuse_lowlevel.h],[],[AC_MSG_ERROR([Missing fuse header files])])
+PKG_CHECK_MODULES(fuse, fuse, [], [AC_MSG_ERROR([Can't find fuse])])
 if test $backend = freebsd; then
-AC_SUBST(CPPFLAGS, "$CPPFLAGS -DHAVE_RSHIM_CUSE")
-AC_CHECK_LIB(cuse, cuse_dev_create)
+  AC_SUBST(CPPFLAGS, "$CPPFLAGS -DHAVE_RSHIM_CUSE")
+  AC_CHECK_LIB(cuse, cuse_dev_create)
 else
-AC_SUBST(CPPFLAGS, "$CPPFLAGS -DFUSE_USE_VERSION=30 -DHAVE_RSHIM_FUSE")
+  AC_SUBST(CPPFLAGS, "$CPPFLAGS -DFUSE_USE_VERSION=30 -DHAVE_RSHIM_FUSE")
 fi
-AC_CHECK_LIB(fuse, cuse_lowlevel_setup, [], [AC_MSG_ERROR([Missing fuse library])])
 
 if test $backend = freebsd; then
 AC_CHECK_HEADERS([libepoll-shim/sys/epoll.h],[],[AC_MSG_ERROR([Missing libepoll-shim])])
