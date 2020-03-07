@@ -6,7 +6,6 @@
 
 #include <arpa/inet.h>
 #include <getopt.h>
-#include <libusb.h>
 #include <pthread.h>
 #include <signal.h>
 #include <stdio.h>

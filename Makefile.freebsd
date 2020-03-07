@@ -21,8 +21,8 @@ CFLAGS = \
        -D_FILE_OFFSET_BITS=64 \
        -DHAVE_RSHIM_NET \
        -DHAVE_RSHIM_CUSE \
+       -DHAVE_RSHIM_USB \
        -DHAVE_RSHIM_PCIE \
-       -DHAVE_RSHIM_PCIE_LF \
        -g
 
 LIBS = -L$(LOCALBASE)/lib \

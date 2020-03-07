@@ -424,23 +424,29 @@ int rshim_log_show(rshim_backend_t *bd, char *buf, int len);
 bool rshim_allow_device(const char *devname);
 
 /* USB backend APIs. */
+#ifdef HAVE_RSHIM_USB
 int rshim_usb_init(int epoll_fd);
 void rshim_usb_poll(void);
+#else
+static inline int rshim_usb_init(int epoll_fd)
+{
+  return -1;
+}
+static inline void rshim_usb_poll(void)
+{
+}
+#endif
 
-/* PCIe backend APIs. */
+/* PCIe & PCIe livefish backend APIs. */
 #ifdef HAVE_RSHIM_PCIE
 int rshim_pcie_init(void);
+int rshim_pcie_lf_init(void);
 #else
 static inline int rshim_pcie_init(void)
 {
   return -1;
 }
-#endif
 
-/* PCIe livefish backend APIs. */
-#ifdef HAVE_RSHIM_PCIE_LF
-int rshim_pcie_lf_init(void);
-#else
 static inline int rshim_pcie_lf_init(void)
 {
   return -1;

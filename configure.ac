@@ -16,6 +16,18 @@ AC_CONFIG_FILES([
 ])
 AC_CANONICAL_HOST
 
+AC_ARG_ENABLE([usb],
+  AS_HELP_STRING([--enable-usb], [Enable rshim over USB (default is yes) ]),
+  [build_usb=$enableval], [build_usb=yes])
+
+AM_CONDITIONAL([BUILD_RSHIM_USB], [test "x$build_usb" = "xyes"])
+
+AC_ARG_ENABLE([pcie],
+  AS_HELP_STRING([--enable-pcie], [Enable rshim over PCIe (default is yes) ]),
+  [build_pcie=$enableval], [build_pcie=yes])
+
+AM_CONDITIONAL([BUILD_RSHIM_PCIE], [test "x$build_pcie" = "xyes"])
+
 case $host in
 *-linux*)
   AC_MSG_RESULT([Linux])
@@ -33,19 +45,24 @@ AC_SUBST(CPPFLAGS, "$CPPFLAGS -D_FILE_OFFSET_BITS=64")
 AC_SUBST(CPPFLAGS, "$CPPFLAGS -DHAVE_RSHIM_NET")
 AC_SUBST(CPPFLAGS, "$CPPFLAGS -I/usr/local/include")
 
-AC_CHECK_HEADERS([pci/pci.h],[],[AC_MSG_ERROR([Missing pciutils header files])])
-AC_SUBST(CPPFLAGS, "$CPPFLAGS -DHAVE_RSHIM_PCIE -DHAVE_RSHIM_PCIE_LF")
-AC_CHECK_LIB(pci, pci_init, [], [AC_MSG_ERROR([Missing libpci])])
+AS_IF([test "x$build_pcie" = "xyes"], [
+  AC_CHECK_HEADERS([pci/pci.h],[],[AC_MSG_ERROR([Missing pciutils header files])])
+  AC_SUBST(CPPFLAGS, "$CPPFLAGS -DHAVE_RSHIM_PCIE")
+  AC_CHECK_LIB(pci, pci_init, [], [AC_MSG_ERROR([Missing libpci])])
+])
 
-if test $backend = freebsd; then
-AC_CHECK_HEADERS([libusb.h],[],[AC_MSG_ERROR([Missing libusb header files])])
-AC_CHECK_LIB(usb, libusb_init, [], [AC_MSG_ERROR([Missing libusb])])
-else
-AC_CHECK_HEADERS([libusb-1.0/libusb.h],[],[AC_MSG_ERROR([Missing libusb header files])])
-AC_SUBST(CPPFLAGS, "$CPPFLAGS -I/usr/include/libusb-1.0 -I/usr/local/include/libusb-1.0")
-AC_CHECK_LIB(usb-1.0, libusb_init, [], [AC_MSG_ERROR([Missing libusb-1.0])])
-fi
-AC_CHECK_FUNCS_ONCE([libusb_get_port_numbers libusb_get_device_address])
+AS_IF([test "x$build_usb" = "xyes"], [
+  if test $backend = freebsd; then
+    AC_CHECK_HEADERS([libusb.h],[],[AC_MSG_ERROR([Missing libusb header files])])
+    AC_CHECK_LIB(usb, libusb_init, [], [AC_MSG_ERROR([Missing libusb])])
+  else
+    AC_CHECK_HEADERS([libusb-1.0/libusb.h],[],[AC_MSG_ERROR([Missing libusb header files])])
+    AC_SUBST(CPPFLAGS, "$CPPFLAGS -DHAVE_RSHIM_USB")
+    AC_SUBST(CPPFLAGS, "$CPPFLAGS -I/usr/include/libusb-1.0 -I/usr/local/include/libusb-1.0")
+    AC_CHECK_LIB(usb-1.0, libusb_init, [], [AC_MSG_ERROR([Missing libusb-1.0])])
+  fi
+  AC_CHECK_FUNCS([libusb_get_port_numbers libusb_get_device_address])
+])
 
 AC_CHECK_HEADERS([fuse/cuse_lowlevel.h],[],[AC_MSG_ERROR([Missing fuse header files])])
 if test $backend = freebsd; then
