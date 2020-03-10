@@ -3187,10 +3187,9 @@ int rshim_register(rshim_backend_t *bd)
          sizeof(init_console_termios));
 
   bd->index = index;
-  if (rshim_dev_names[index] != bd->dev_name) {
+  if (rshim_dev_names[index])
     free(rshim_dev_names[index]);
-    rshim_dev_names[index] = bd->dev_name;
-  }
+  rshim_dev_names[index] = strdup(bd->dev_name);
   rshim_devs[index] = bd;
 
   for (i = 0; i < 2; i++) {
