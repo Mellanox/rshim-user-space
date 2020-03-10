@@ -51,7 +51,7 @@ static int rshim_if_open(char *ifname, int index)
 {
   char cmd[128];
   struct ifreq ifr;
-  int s, fd, rc;
+  int s, fd, rc, retry;
 
   rc = system("modprobe tun");
   if (rc == -1)
@@ -67,8 +67,14 @@ static int rshim_if_open(char *ifname, int index)
   ifr.ifr_flags = IFF_TAP | IFF_NO_PI;
   strncpy(ifr.ifr_name, ifname, IFNAMSIZ);
 
-  if (ioctl(fd, TUNSETIFF, (void *) &ifr) < 0) {
-    RSHIM_ERR("ioctl failed: %m\n");
+  retry = 16;
+  do {
+    rc = ioctl(fd, TUNSETIFF, (void *) &ifr);
+    if (rc == -1 && retry)
+      sleep(1);
+  } while (rc == -1 && errno == EBUSY && retry--);
+  if (rc < 0) {
+    RSHIM_ERR("ioctl failed: %m, errno=%d\n", errno);
     close(fd);
     return -1;
   }
