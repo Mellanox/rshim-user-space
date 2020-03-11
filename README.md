@@ -57,26 +57,29 @@ syntax: bfrshim [--help|-h] [--backend|-b usb|pcie|pcie_lf]
   Key/Value pairs used to read/write misc information. For example,
 
     cat /dev/rshim<N>/misc
-      BOOT_MODE 1                   # eMMC boot mode (0:USB/PCIe, 1: eMMC)
-      SW_RESET  0                   # Set to 1 to initiate SW RESET
-      DEV_NAME  rshim_usb           # Backend driver name (display-only)
+      DISPLAY_LEVEL   0 (0:basic, 1:advanced, 2:log)
+      BOOT_MODE       1 (0:rshim, 1:emmc, 2:emmc-boot-swap)
+      BOOT_TIMEOUT    100 (seconds)
+      SW_RESET        0 (1: reset)
+      DEV_NAME        usb-3.3
 
-    Turning on the 'rshim_adv_cfg' flag with the '-a' command line argument
-    could display more parameters.
+  Set display level to advanced will show more information.
+
+    echo "DISPLAY_LEVEL 1" > cat /dev/rshim<N>/misc
     
     cat /dev/rshim<N>/misc
       ...
       PEER_MAC  00:1a:ca:ff:ff:01   # Target-side MAC address
       PXE_ID    0x01020304          # PXE DHCP-client-identifier
 
-    Initiate a SW reset.
-    
-    echo "SW_RESET 1" > /dev/rshim<N>/misc
-
     The 'PEER_MAC' attribute can be used to display/set the target-side MAC
     address of the rshim network interface. It works when the target-side is in
     UEFI BootManager or in Linux where the tmfifo has been loaded. The new MAC
     address will take effect in next boot.
+
+  Initiate a SW reset.
+    
+    echo "SW_RESET 1" > /dev/rshim<N>/misc
 
 *) Multiple Boards Support
 
