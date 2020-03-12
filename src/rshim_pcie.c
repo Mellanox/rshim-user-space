@@ -17,13 +17,10 @@
 #include <sys/pciio.h>
 #include <sys/ioctl.h>
 #include <vm/vm.h>
+#include <cuse.h>
 #endif
 
 #include "rshim.h"
-
-#ifdef HAVE_RSHIM_CUSE
-#include <cuse.h>
-#endif
 
 /* Our Vendor/Device IDs. */
 #define TILERA_VENDOR_ID            0x15b3

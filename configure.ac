@@ -29,6 +29,12 @@ AC_ARG_ENABLE([pcie],
 
 AM_CONDITIONAL([BUILD_RSHIM_PCIE], [test "x$build_pcie" = "xyes"])
 
+AC_ARG_ENABLE([fuse],
+  AS_HELP_STRING([--enable-fuse], [Enable fuse / cuse (default is yes) ]),
+  [build_fuse=$enableval], [build_fuse=yes])
+
+AM_CONDITIONAL([BUILD_RSHIM_FUSE], [test "x$build_fuse" = "xyes"])
+
 case $host in
 *-linux*)
   AC_MSG_RESULT([Linux])
@@ -56,13 +62,14 @@ AS_IF([test "x$build_usb" = "xyes"], [
   AC_CHECK_FUNCS([libusb_get_port_numbers libusb_get_device_address])
 ])
 
-PKG_CHECK_MODULES(fuse, fuse, [], [AC_MSG_ERROR([Can't find fuse])])
-if test $backend = freebsd; then
-  AC_SUBST(CPPFLAGS, "$CPPFLAGS -DHAVE_RSHIM_CUSE")
-  AC_CHECK_LIB(cuse, cuse_dev_create)
-else
-  AC_SUBST(CPPFLAGS, "$CPPFLAGS -DFUSE_USE_VERSION=30 -DHAVE_RSHIM_FUSE")
+AS_IF([test "x$build_usb" = "xyes"], [
+  PKG_CHECK_MODULES(fuse, fuse, [], [AC_MSG_ERROR([Can't find fuse])])
+  if test $backend = freebsd; then
+    AC_CHECK_LIB(cuse, cuse_dev_create)
+  else
+    AC_SUBST(CPPFLAGS, "$CPPFLAGS -DFUSE_USE_VERSION=30")
 fi
+])
 
 if test $backend = freebsd; then
 AC_CHECK_HEADERS([libepoll-shim/sys/epoll.h],[],[AC_MSG_ERROR([Missing libepoll-shim])])

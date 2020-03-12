@@ -37,6 +37,8 @@
 /* Global variables. */
 extern int rshim_log_level;
 extern bool rshim_daemon_mode;
+extern int rshim_skip_boot_reset;
+extern int rshim_boot_timeout;
 
 #ifndef offsetof
 #define offsetof(TYPE, MEMBER)	((size_t)&((TYPE *)0)->MEMBER)
@@ -172,9 +174,10 @@ struct rshim_backend {
   /* Backend device. */
   void *dev;
 
-  /* FUSE sessions. */
+  /* FUSE sessions & poll handles. */
   void *fuse_session[RSH_DEV_TYPES];
-  pthread_t thread[RSH_DEV_TYPES];
+  pthread_t fuse_thread[RSH_DEV_TYPES];
+  void *fuse_poll_handle[TMFIFO_MAX_CHAN];
 
   /* Networking handler and packets. */
   int net_fd, net_notify_fd[2];
@@ -187,7 +190,7 @@ struct rshim_backend {
   /* State flags. */
   uint32_t is_booting : 1;        /* Waiting for device to come back. */
   uint32_t is_boot_open : 1;      /* Boot device is open. */
-  uint32_t is_tm_open : 1;        /* TM FIFO device is open. */
+  uint32_t is_net_open : 1;       /* Network device is open. */
   uint32_t is_cons_open : 1;      /* Console device is open. */
   uint32_t is_in_boot_write : 1;  /* A thread is in boot_write(). */
   uint32_t has_cons_work : 1;     /* Console worker thread running. */
@@ -305,11 +308,6 @@ struct rshim_backend {
   /* Number of open console files. */
   long console_opens;
 
-#ifdef HAVE_RSHIM_FUSE
-  /* Rx poll handle. */
-  void *rx_poll_handle[TMFIFO_MAX_CHAN];
-#endif
-
   /* Index in rshim_devs[]. */
   int index;
 
@@ -415,8 +413,25 @@ static inline void rshim_net_tx(rshim_backend_t *bd)
 #endif
 
 void rshim_ref(rshim_backend_t *bd);
-
 void rshim_deref(rshim_backend_t *bd);
+int rshim_boot_open(rshim_backend_t *bd);
+int rshim_boot_write(rshim_backend_t *bd, const char *user_buffer, size_t count,
+                     int (*copy_in)(void *dest, const void *src, int count));
+void rshim_boot_release(rshim_backend_t *bd);
+int rshim_console_open(rshim_backend_t *bd);
+int rshim_console_release(rshim_backend_t *bd,
+                void (*poll_handle_destroy)(rshim_backend_t *bd, int chan));
+void rshim_fifo_check_poll(rshim_backend_t *bd, int chan, bool *poll_rx,
+                           bool *poll_tx, bool *poll_err);
+int rshim_fifo_size(rshim_backend_t *bd, int chan, bool is_rx);
+void rshim_sig_hup(int sig);
+void rshim_fifo_reset(rshim_backend_t *bd);
+int rshim_reset_control(rshim_backend_t *bd);
+void rshim_work_signal(rshim_backend_t *bd);
+int rshim_fifo_fsync(rshim_backend_t *bd, int chan);
+
+void rshim_fuse_input_notify(rshim_backend_t *bd);
+int rshim_fuse_got_peer_signal(void);
 
 /* Display the rshim logging buffer. */
 int rshim_log_show(rshim_backend_t *bd, char *buf, int len);
@@ -452,5 +467,8 @@ static inline int rshim_pcie_lf_init(void)
   return -1;
 }
 #endif
+
+int rshim_fuse_init(rshim_backend_t *bd);
+int rshim_fuse_del(rshim_backend_t *bd);
 
 #endif /* _RSHIM_H */
