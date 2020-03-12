@@ -1,0 +1,1150 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ * Copyright (C) 2019 Mellanox Technologies. All Rights Reserved.
+ *
+ */
+
+#include <arpa/inet.h>
+#include <getopt.h>
+#include <pthread.h>
+#include <signal.h>
+#include <stdio.h>
+#include <sys/epoll.h>
+#include <sys/mount.h>
+#include <sys/param.h>
+#include <sys/poll.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <sys/timerfd.h>
+
+#ifdef __linux__
+#include <fuse/cuse_lowlevel.h>
+#include <fuse/fuse_opt.h>
+#elif defined(__FreeBSD__)
+#include <termios.h>
+#include <sys/stat.h>
+#include <sys/filio.h>
+#include <cuse.h>
+#else
+#error "Unsupport OS for fuse"
+#endif
+
+#include "rshim.h"
+
+/* Display level of the misc device file. */
+static int rshim_misc_level;
+
+/* Name of the sub-device types. */
+char *rshim_dev_minor_names[RSH_DEV_TYPES] = {
+    [RSH_DEV_TYPE_RSHIM] = "rshim",
+    [RSH_DEV_TYPE_BOOT] = "boot",
+    [RSH_DEV_TYPE_TMFIFO] = "console",
+    [RSH_DEV_TYPE_MISC] = "misc",
+};
+
+#ifdef __linux__
+static void rshim_fuse_boot_open(fuse_req_t req, struct fuse_file_info *fi)
+{
+  rshim_backend_t *bd = fuse_req_userdata(req);
+  int rc;
+
+  rc = rshim_boot_open(bd);
+
+  if (rc)
+    fuse_reply_err(req, -rc);
+  else
+    fuse_reply_open(req, fi);
+}
+#elif defined(__FreeBSD__)
+static int rshim_fuse_boot_open(struct cuse_dev *cdev, int fflags)
+{
+  rshim_backend_t *bd = cuse_dev_get_priv0(cdev);
+  int rc;
+
+  rc = rshim_boot_open(bd);
+
+  switch (rc) {
+  case 0:
+    return CUSE_ERR_NONE;
+  case -EBUSY:
+    return CUSE_ERR_BUSY;
+  case -ENODEV:
+    return CUSE_ERR_INVALID;
+  default:
+    return CUSE_ERR_OTHER;
+  }
+}
+#endif
+
+#ifdef __linux__
+static int rshim_fuse_copy_in(void *dest, const void *src, int count)
+{
+  memcpy(dest, src, count);
+  return 0;
+}
+
+static void rshim_fuse_boot_write(fuse_req_t req, const char *user_buffer,
+                                  size_t count, off_t off,
+                                  struct fuse_file_info *fi)
+{
+  rshim_backend_t *bd = fuse_req_userdata(req);
+  int rc;
+
+  rc = rshim_boot_write(bd, user_buffer, count, rshim_fuse_copy_in);
+
+  if (rc >= 0)
+    fuse_reply_write(req, rc);
+  else
+    fuse_reply_err(req, -rc);
+}
+#elif defined(__FreeBSD__)
+static int rshim_fuse_copy_in(void *dest, const void *src, int count)
+{
+  return cuse_copy_in(src, dest, count);
+}
+
+static int rshim_fuse_boot_write(struct cuse_dev *cdev, int fflags,
+                                 const void *user_buffer, int count)
+{
+  rshim_backend_t *bd = cuse_dev_get_priv0(cdev);
+  int rc;
+
+  rc = rshim_boot_write(bd, user_buffer, count, rshim_fuse_copy_in);
+
+  switch (rc) {
+  case 0:
+    return CUSE_ERR_NONE;
+  case -EBUSY:
+    return CUSE_ERR_BUSY;
+  case -ENODEV:
+    return CUSE_ERR_INVALID;
+  default:
+    return CUSE_ERR_OTHER;
+  }
+}
+#endif
+
+#ifdef __linux__
+static void rshim_fuse_boot_release(fuse_req_t req, struct fuse_file_info *fi)
+{
+  rshim_backend_t *bd = fuse_req_userdata(req);
+
+  rshim_boot_release(bd);
+  fuse_reply_err(req, 0);
+}
+#elif defined(__FreeBSD__)
+static int rshim_fuse_boot_release(struct cuse_dev *cdev, int fflags)
+{
+  rshim_backend_t *bd = cuse_dev_get_priv0(cdev);
+
+  rshim_boot_release(bd);
+  return CUSE_ERR_NONE;
+}
+#endif
+
+#ifdef __linux__
+static const struct cuse_lowlevel_ops rshim_boot_fops = {
+  .open = rshim_fuse_boot_open,
+  .write = rshim_fuse_boot_write,
+  .release = rshim_fuse_boot_release,
+};
+#elif defined(__FreeBSD__)
+static const struct cuse_methods rshim_boot_fops = {
+  .cm_open = rshim_fuse_boot_open,
+  .cm_write = rshim_fuse_boot_write,
+  .cm_close = rshim_fuse_boot_release,
+};
+#endif
+
+void rshim_fuse_input_notify(rshim_backend_t *bd)
+{
+  int chan = bd->rx_chan;
+
+  RSHIM_DBG("rshim_fifo_input: woke up readable chan %d\n", chan);
+
+#ifdef __linux__
+  if (bd->fuse_poll_handle[chan])
+    fuse_lowlevel_notify_poll(bd->fuse_poll_handle[chan]);
+#elif defined(__FreeBSD__)
+  cuse_poll_wakeup();
+#endif
+}
+
+/* Console operations */
+
+#ifdef __linux__
+static void rshim_fuse_console_open(fuse_req_t req, struct fuse_file_info *fi)
+{
+  rshim_backend_t *bd = fuse_req_userdata(req);
+  int rc;
+
+  rc = rshim_console_open(bd);
+
+  if (!rc)
+    fuse_reply_open(req, fi);
+  else
+    fuse_reply_err(req, -rc);
+}
+#elif defined(__FreeBSD__)
+static int rshim_fuse_console_open(struct cuse_dev *cdev, int fflags)
+{
+  rshim_backend_t *bd = cuse_dev_get_priv0(cdev);
+  int rc;
+
+  rc = rshim_console_open(bd);
+  switch (rc) {
+  case CUSE_ERR_NONE:
+    return CUSE_ERR_NONE;
+  case -EBUSY:
+    return CUSE_ERR_BUSY;
+  default:
+    return CUSE_ERR_OTHER;
+  }
+}
+#endif
+
+#ifdef __linux__
+static void rshim_fuse_console_read(fuse_req_t req, size_t size, off_t off,
+                                    struct fuse_file_info *fi)
+{
+  rshim_backend_t *bd = fuse_req_userdata(req);
+  char buf[512];
+  int rc;
+
+  if (off) {
+    fuse_reply_err(req, EINVAL);
+    return;
+  }
+
+  if (size > sizeof(buf))
+    size = sizeof(buf);
+
+  rc = rshim_fifo_read(bd, buf, size, TMFIFO_CONS_CHAN,
+                       fi->flags & O_NONBLOCK);
+  if (rc < 0)
+    fuse_reply_err(req, -rc);
+  else
+    fuse_reply_buf(req, buf, rc);
+}
+#elif defined(__FreeBSD__)
+static int rshim_fuse_console_read(struct cuse_dev *cdev, int fflags,
+                                   void *peer_ptr, int size)
+{
+  rshim_backend_t *bd = cuse_dev_get_priv0(cdev);
+  bool nonblock = fflags & CUSE_FFLAG_NONBLOCK;
+  char buf[4096];
+  int len = 0;
+  int delta;
+  int err;
+  int rc;
+
+  while (size > 0) {
+    delta = sizeof(buf);
+    if (delta > size)
+      delta = size;
+    err = rshim_fifo_read(bd, buf, delta, TMFIFO_CONS_CHAN, nonblock);
+    if (err < 0) {
+      if (err == -EAGAIN) {
+        if (len != 0)
+          return len;
+        else
+          return CUSE_ERR_WOULDBLOCK;
+      } else if (err == -EINTR) {
+        if (len != 0)
+          return len;
+        else
+          return CUSE_ERR_SIGNAL;
+      } else {
+        return CUSE_ERR_OTHER;
+      }
+    }
+    rc = cuse_copy_out(buf, peer_ptr, err);
+    if (rc != CUSE_ERR_NONE)
+      return rc;
+
+    size -= err;
+    peer_ptr = (char *)peer_ptr + err;
+    len += err;
+
+    /* return on short read */
+    if (err != delta)
+      break;
+  }
+  return len;
+}
+#endif
+
+#ifdef __linux__
+static void rshim_fuse_console_write(fuse_req_t req, const char *buf,
+                                     size_t size, off_t off,
+                                     struct fuse_file_info *fi)
+{
+  rshim_backend_t *bd = fuse_req_userdata(req);
+  int rc;
+
+  if (off) {
+    fuse_reply_err(req, EINVAL);
+    return;
+  }
+
+  rc = rshim_fifo_write(bd, buf, size, TMFIFO_CONS_CHAN,
+                        fi->flags & O_NONBLOCK);
+  if (rc >= 0)
+    fuse_reply_write(req, rc);
+  else
+    fuse_reply_err(req, -rc);
+}
+#elif defined(__FreeBSD__)
+static int rshim_fuse_console_write(struct cuse_dev *cdev, int fflags,
+                                    const void *peer_ptr, int size)
+{
+  rshim_backend_t *bd = cuse_dev_get_priv0(cdev);
+  char buf[4096];
+  bool nonblock = fflags & CUSE_FFLAG_NONBLOCK;
+  int len = 0;
+  int rc;
+  int err;
+
+  while (size > 0) {
+    rc = sizeof(buf);
+    if (rc > size)
+	rc = size;
+    err = cuse_copy_in(peer_ptr, buf, rc);
+    if (err != CUSE_ERR_NONE)
+      return err;
+    rc = rshim_fifo_write(bd, buf, rc, TMFIFO_CONS_CHAN, nonblock);
+    if (rc < 0) {
+      if (rc == -EAGAIN) {
+        if (len != 0)
+          return len;
+        else
+          return CUSE_ERR_WOULDBLOCK;
+      } else if (rc == -EINTR) {
+        if (len != 0)
+          return len;
+        else
+         return CUSE_ERR_SIGNAL;
+      } else {
+        return CUSE_ERR_OTHER;
+      }
+    }
+    size -= rc;
+    peer_ptr = (char *)peer_ptr + rc;
+    len += rc;
+  }
+  return len;
+}
+#endif
+
+#ifdef __linux__
+static void rshim_fuse_console_fsync(fuse_req_t req, int datasync,
+                                     struct fuse_file_info *fi)
+{
+  rshim_backend_t *bd = fuse_req_userdata(req);
+  int rc;
+
+  rc = rshim_fifo_fsync(bd, TMFIFO_CONS_CHAN);
+
+  fuse_reply_err(req, -rc);
+}
+
+static void rshim_fuse_console_ioctl(fuse_req_t req, int cmd, void *arg,
+                                     struct fuse_file_info *fi,
+                                     unsigned int flags, const void *in_buf,
+                                     size_t in_bufsz, size_t out_bufsz)
+{
+  rshim_backend_t *bd = fuse_req_userdata(req);
+
+  pthread_mutex_lock(&bd->mutex);
+
+  switch (cmd) {
+  case TCGETS:
+    if (!out_bufsz) {
+      struct iovec iov = { arg, sizeof(struct termio) };
+
+      fuse_reply_ioctl_retry(req, NULL, 0, &iov, 1);
+    } else {
+      fuse_reply_ioctl(req, 0, &bd->cons_termios, sizeof(struct termio));
+    }
+    break;
+
+  case TCSETS:
+  case TCSETSW:
+  case TCSETSF:
+    if (!in_bufsz) {
+      struct iovec iov = {arg, sizeof(bd->cons_termios)};
+
+      fuse_reply_ioctl_retry(req, &iov, 1, NULL, 0);
+    } else {
+      memcpy(&bd->cons_termios, in_buf, sizeof(bd->cons_termios));
+      fuse_reply_ioctl(req, 0, NULL, 0);
+    }
+    break;
+
+  default:
+    fuse_reply_err(req, ENOSYS);
+    break;
+  }
+
+  pthread_mutex_unlock(&bd->mutex);
+}
+#elif defined(__FreeBSD__)
+static int rshim_fuse_console_ioctl(struct cuse_dev *cdev, int fflags,
+                                    unsigned long cmd, void *peer_data)
+{
+  rshim_backend_t *bd = cuse_dev_get_priv0(cdev);
+  int rc = CUSE_ERR_INVALID;
+  int value;
+
+  pthread_mutex_lock(&bd->mutex);
+
+  switch (cmd) {
+  case TIOCGETA:
+    rc = cuse_copy_out(&bd->cons_termios, peer_data,
+                           sizeof(struct termios));
+    break;
+
+  case TIOCSETA:
+  case TIOCSETAW:
+  case TIOCSETAF:
+    rc = cuse_copy_in(peer_data, &bd->cons_termios,
+                          sizeof(struct termios));
+    break;
+
+  case TIOCEXCL:
+  case TIOCNXCL:
+  case FIONBIO:
+  case FIOASYNC:
+    rc = 0;
+    break;
+
+  case FIONREAD:
+    pthread_mutex_lock(&bd->ringlock);
+    value = rshim_fifo_size(bd, TMFIFO_CONS_CHAN, true) ? 1 : 0;
+    pthread_mutex_unlock(&bd->ringlock);
+    rc = cuse_copy_out(&value, peer_data, sizeof(value));
+    break;
+
+  default:
+    break;
+  }
+
+  pthread_mutex_unlock(&bd->mutex);
+  return rc;
+}
+#endif
+
+#ifdef __linux__
+static void rshim_fuse_console_poll(fuse_req_t req, struct fuse_file_info *fi,
+                                    struct fuse_pollhandle *ph)
+{
+  rshim_backend_t *bd = fuse_req_userdata(req);
+  unsigned int revents = 0;
+  bool poll_rx = false, poll_tx = false, poll_err = false;
+
+  rshim_fifo_check_poll(bd, TMFIFO_CONS_CHAN, &poll_rx, &poll_tx, &poll_err);
+
+  if (poll_rx)
+    revents |= POLLIN | POLLRDNORM;
+
+  if (poll_tx)
+    revents |= POLLOUT | POLLWRNORM;
+
+  if (poll_err)
+    revents |= POLLERR;
+
+  if (ph) {
+    if (!bd->fuse_poll_handle[TMFIFO_CONS_CHAN])
+      bd->fuse_poll_handle[TMFIFO_CONS_CHAN] = ph;
+    else if (ph != bd->fuse_poll_handle[TMFIFO_CONS_CHAN])
+      fuse_pollhandle_destroy(ph);
+  }
+  fuse_reply_poll(req, revents);
+}
+#elif defined(__FreeBSD__)
+static int rshim_fuse_console_poll(struct cuse_dev *cdev, int fflags,
+                                   int events)
+{
+  rshim_backend_t *bd = cuse_dev_get_priv0(cdev);
+  unsigned int revents = 0;
+  bool poll_rx = false, poll_tx = false, poll_err = false;
+
+  rshim_fifo_check_poll(bd, TMFIFO_CONS_CHAN, &poll_rx, &poll_tx, &poll_err);
+
+  if (poll_rx)
+    revents |= CUSE_POLL_READ;
+
+  if (poll_tx)
+    revents |= CUSE_POLL_WRITE;
+
+  if (poll_err)
+    revents |= CUSE_POLL_ERROR;
+
+  return revents;
+}
+#endif
+
+#ifdef __linux__
+static void rshim_fuse_poll_handle_destroy(rshim_backend_t *bd, int chan)
+{
+  if (bd->fuse_poll_handle[chan]) {
+    fuse_pollhandle_destroy(bd->fuse_poll_handle[chan]);
+    bd->fuse_poll_handle[chan] = NULL;
+  }
+}
+
+static void rshim_fuse_console_release(fuse_req_t req,
+                                       struct fuse_file_info *fi)
+{
+  rshim_backend_t *bd = fuse_req_userdata(req);
+
+  rshim_console_release(bd, rshim_fuse_poll_handle_destroy);
+  fuse_reply_err(req, 0);
+}
+#elif defined(__FreeBSD__)
+static int rshim_fuse_console_release(struct cuse_dev *cdev, int fflags)
+{
+  rshim_backend_t *bd = cuse_dev_get_priv0(cdev);
+
+  rshim_console_release(bd, NULL);
+  return CUSE_ERR_NONE;
+}
+#endif
+
+#ifdef __linux__
+static const struct cuse_lowlevel_ops rshim_console_fops = {
+  .open = rshim_fuse_console_open,
+  .read = rshim_fuse_console_read,
+  .write = rshim_fuse_console_write,
+  .fsync = rshim_fuse_console_fsync,
+  .ioctl = rshim_fuse_console_ioctl,
+  .poll = rshim_fuse_console_poll,
+  .release = rshim_fuse_console_release,
+};
+#elif defined(__FreeBSD__)
+static const struct cuse_methods rshim_console_fops = {
+    .cm_open = rshim_fuse_console_open,
+    .cm_read = rshim_fuse_console_read,
+    .cm_write = rshim_fuse_console_write,
+    .cm_ioctl = rshim_fuse_console_ioctl,
+    .cm_poll = rshim_fuse_console_poll,
+    .cm_close = rshim_fuse_console_release,
+};
+#endif
+
+/* Misc file operations routines */
+
+struct rshim_misc {
+  char buffer[4069];
+  off_t len;
+  off_t offset;
+  int ready;
+};
+
+#ifdef __linux__
+static void rshim_fuse_misc_open(fuse_req_t req, struct fuse_file_info *fi)
+{
+  rshim_backend_t *bd = fuse_req_userdata(req);
+
+  if (bd) {
+    struct rshim_misc *ptr = calloc(1, sizeof(*ptr));
+
+    fi->fh = (uintptr_t)ptr;
+    fuse_reply_open(req, fi);
+    rshim_ref(bd);
+  } else {
+    fuse_reply_err(req, ENODEV);
+  }
+}
+#elif defined(__FreeBSD__)
+static int rshim_fuse_misc_open(struct cuse_dev *cdev, int fflags)
+{
+  rshim_backend_t *bd = cuse_dev_get_priv0(cdev);
+  struct rshim_misc *ptr = calloc(1, sizeof(*ptr));
+
+  if (ptr == NULL)
+    return CUSE_ERR_NO_MEMORY;
+  cuse_dev_set_per_file_handle(cdev, ptr);
+  rshim_ref(bd);
+  return CUSE_ERR_NONE;
+}
+#endif
+
+#ifdef __linux__
+static void rshim_fuse_misc_read(fuse_req_t req, size_t size, off_t off,
+                                 struct fuse_file_info *fi)
+#elif defined(__FreeBSD__)
+static int rshim_fuse_misc_read(struct cuse_dev *cdev, int fflags,
+                                void *peer_ptr, int size)
+#endif
+{
+#ifdef __linux__
+  rshim_backend_t *bd = fuse_req_userdata(req);
+  struct rshim_misc *rm = (void *)(uintptr_t)fi->fh;
+#elif defined(__FreeBSD__)
+  rshim_backend_t *bd = cuse_dev_get_priv0(cdev);
+  struct rshim_misc *rm = cuse_dev_get_per_file_handle(cdev);
+  off_t off;
+#endif
+  uint8_t *mac = bd->peer_mac;
+  int rc, len = sizeof(rm->buffer), n;
+  struct timespec ts;
+  struct timeval tp;
+  uint64_t value;
+  char *p;
+
+  if (rm->ready) {
+#ifdef __linux__
+    fuse_reply_buf(req, NULL, 0);
+    return;
+#elif defined(__FreeBSD__)
+    goto ready;
+#endif
+  }
+  rm->ready = 1;
+
+  pthread_mutex_lock(&bd->mutex);
+
+  /* Boot mode. */
+  rc = bd->read_rshim(bd, RSHIM_CHANNEL, RSH_BOOT_CONTROL, &value);
+  if (rc) {
+    pthread_mutex_unlock(&bd->mutex);
+    RSHIM_ERR("couldn't read rshim register\n");
+#ifdef __linux__
+    fuse_reply_err(req, -rc);
+    return;
+#elif defined(__FreeBSD__)
+    return CUSE_ERR_INVALID;
+#endif
+  }
+
+  p = rm->buffer;
+
+  n = snprintf(p, len, "%-16s%d (0:basic, 1:advanced, 2:log)\n",
+                 "DISPLAY_LEVEL", rshim_misc_level);
+  p += n;
+  len -= n;
+
+  n = snprintf(p, len, "%-16s%lld (0:rshim, 1:emmc, 2:emmc-boot-swap)\n",
+                 "BOOT_MODE",
+                 (unsigned long long)value & RSH_BOOT_CONTROL__BOOT_MODE_MASK);
+  p += n;
+  len -= n;
+
+  n = snprintf(p, len, "%-16s%d (seconds)\n", "BOOT_TIMEOUT",
+                 rshim_boot_timeout);
+  p += n;
+  len -= n;
+
+  /* SW reset flag is always 0. */
+  n = snprintf(p, len, "%-16s%d (1: reset)\n", "SW_RESET", 0);
+  p += n;
+  len -= n;
+
+  /* Display the driver name. */
+  n = snprintf(p, len, "%-16s%s\n", "DEV_NAME", bd->dev_name);
+  p += n;
+  len -= n;
+
+  if (rshim_misc_level == 1) {
+    gettimeofday(&tp, NULL);
+
+    /* Skip SW_RESET while pushing boot stream. */
+    n = snprintf(p, len, "%-16s%d (1: skip)\n", "BOOT_RESET_SKIP",
+                 rshim_skip_boot_reset);
+    p += n;
+    len -= n;
+
+    /*
+     * Display the target-side information. Send a request and wait for
+     * some time for the response.
+     */
+    bd->peer_ctrl_req = 1;
+    bd->peer_ctrl_resp = 0;
+    memset(mac, 0, 6);
+    bd->has_cons_work = 1;
+    rshim_work_signal(bd);
+
+    ts.tv_sec  = tp.tv_sec + 1;
+    ts.tv_nsec = tp.tv_usec * 1000;
+    pthread_cond_timedwait(&bd->ctrl_wait_cond, &bd->mutex, &ts);
+    n = snprintf(p, len, "%-16s%02x:%02x:%02x:%02x:%02x:%02x (rw)\n",
+                   "PEER_MAC", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+    p += n;
+    len -= n;
+
+    n = snprintf(p, len, "%-16s0x%08x (rw)\n",
+                   "PXE_ID", htonl(bd->pxe_client_id));
+    p += n;
+    len -= n;
+
+    n = snprintf(p, len, "%-16s%d %d (rw)\n",
+                   "VLAN_ID", bd->vlan[0], bd->vlan[1]);
+    p += n;
+    len -= n;
+  } else if (rshim_misc_level == 2) {
+    n = rshim_log_show(bd, p, len);
+    p += n;
+    len -= n;
+  }
+
+  rm->len = p - rm->buffer;
+
+#ifdef __linux__
+  if (size > (int)(rm->len - off))
+    size = rm->len - off;
+  pthread_mutex_unlock(&bd->mutex);
+  fuse_reply_buf(req, rm->buffer + off, size);
+  return;
+#elif defined(__FreeBSD__)
+ready:
+  if (size > (int)(rm->len - rm->offset))
+    size = rm->len - rm->offset;
+  off = rm->offset;
+  rm->offset += size;
+  pthread_mutex_unlock(&bd->mutex);
+  rc = cuse_copy_out(rm->buffer + off, peer_ptr, size);
+  if (rc != CUSE_ERR_NONE)
+    return rc;
+  else
+    return size;
+#endif
+}
+
+#ifdef __linux__
+static void rshim_fuse_misc_write(fuse_req_t req, const char *user_buffer,
+                                  size_t size, off_t off,
+                                  struct fuse_file_info *fi)
+#elif defined(__FreeBSD__)
+static int rshim_fuse_misc_write(struct cuse_dev *cdev, int fflags,
+                                 const void *user_buffer, int size)
+#endif
+{
+  char buf[4096];
+#ifdef __linux__
+  rshim_backend_t *bd = fuse_req_userdata(req);
+  const char *p = buf;
+#elif defined(__FreeBSD__)
+  rshim_backend_t *bd = cuse_dev_get_priv0(cdev);
+  const char *p = buf;
+#endif
+  int i, rc = 0, value = 0, mac[6], vlan[2] = {0};
+  char key[32];
+
+  if (size >= sizeof(buf))
+    size = sizeof(buf) - 1;
+#ifdef __linux__
+  if (off)
+    goto invalid;
+  memcpy(buf, user_buffer, size);
+#elif defined(__FreeBSD__)
+  rc = cuse_copy_in(user_buffer, buf, size);
+  if (rc != CUSE_ERR_NONE)
+    return rc;
+#endif
+  buf[size] = 0;
+
+  if (sscanf(buf, "%s", key) != 1)
+    goto invalid;
+
+  p += strlen(key);
+
+  if (strcmp(key, "DISPLAY_LEVEL") == 0) {
+    if (sscanf(p, "%d", &value) != 1)
+      goto invalid;
+    rshim_misc_level = value;
+  } else if (strcmp(key, "BOOT_TIMEOUT") == 0) {
+    if (sscanf(p, "%d", &value) != 1)
+      goto invalid;
+    rshim_boot_timeout = value;
+  } else if (strcmp(key, "BOOT_MODE") == 0) {
+    if (sscanf(p, "%x", &value) != 1)
+      goto invalid;
+
+    pthread_mutex_lock(&bd->mutex);
+    rc = bd->write_rshim(bd, RSHIM_CHANNEL, RSH_BOOT_CONTROL,
+                         value & RSH_BOOT_CONTROL__BOOT_MODE_MASK);
+    pthread_mutex_unlock(&bd->mutex);
+  } else if (strcmp(key, "SW_RESET") == 0) {
+    if (sscanf(p, "%x", &value) != 1)
+      goto invalid;
+
+    if (value) {
+      if (!bd->has_reprobe) {
+        /* Detach, which shouldn't hold bd->mutex. */
+        rshim_notify(bd, RSH_EVENT_DETACH, 0);
+
+        pthread_mutex_lock(&bd->mutex);
+        /* Reset the TmFifo. */
+        rshim_fifo_reset(bd);
+        bd->is_booting = 1;
+        pthread_mutex_unlock(&bd->mutex);
+      }
+
+      /* SW reset. */
+      pthread_mutex_lock(&bd->mutex);
+      rc = rshim_reset_control(bd);
+      pthread_mutex_unlock(&bd->mutex);
+
+      if (!bd->has_reprobe) {
+        /* Attach. */
+        sleep(bd->has_reprobe ? 1 : 10);
+        pthread_mutex_lock(&bd->mutex);
+        bd->is_booting = 0;
+        rshim_notify(bd, RSH_EVENT_ATTACH, 0);
+        pthread_mutex_unlock(&bd->mutex);
+      }
+    }
+  } else if (strcmp(key, "BOOT_RESET_SKIP") == 0) {
+    if (sscanf(p, "%x", &value) != 1)
+      goto invalid;
+    rshim_skip_boot_reset = value;
+  } else if (strcmp(key, "PEER_MAC") == 0) {
+    if (sscanf(p, "%x:%x:%x:%x:%x:%x",
+               &mac[0], &mac[1], &mac[2], &mac[3], &mac[4], &mac[5]) != 6)
+      goto invalid;
+    pthread_mutex_lock(&bd->mutex);
+    for (i = 0; i < 6; i++)
+      bd->peer_mac[i] = mac[i];
+    bd->peer_mac_set = 1;
+    bd->has_cons_work = 1;
+    rshim_work_signal(bd);
+    pthread_mutex_unlock(&bd->mutex);
+  } else if (strcmp(key, "PXE_ID") == 0) {
+    if (sscanf(p, "%x", &value) != 1)
+      goto invalid;
+    pthread_mutex_lock(&bd->mutex);
+    bd->pxe_client_id = ntohl(value);
+    bd->peer_pxe_id_set = 1;
+    bd->has_cons_work = 1;
+    rshim_work_signal(bd);
+    pthread_mutex_unlock(&bd->mutex);
+  } else if (strcmp(key, "VLAN_ID") == 0) {
+    if (sscanf(p, "%d %d", &vlan[0], &vlan[1]) == EOF)
+      goto invalid;
+    pthread_mutex_lock(&bd->mutex);
+    bd->vlan[0] = vlan[0];
+    bd->vlan[1] = vlan[1];
+    bd->peer_vlan_set = 1;
+    bd->has_cons_work = 1;
+    rshim_work_signal(bd);
+    pthread_mutex_unlock(&bd->mutex);
+  } else {
+invalid:
+#ifdef __linux__
+    fuse_reply_err(req, EINVAL);
+    return;
+#elif defined(__FreeBSD__)
+    return CUSE_ERR_INVALID;
+#endif
+  }
+
+#ifdef __linux__
+  if (!rc)
+    fuse_reply_write(req, size);
+  else
+    fuse_reply_err(req, -rc);
+#elif defined(__FreeBSD__)
+  return size;
+#endif
+}
+
+#ifdef __linux__
+static void rshim_fuse_misc_release(fuse_req_t req, struct fuse_file_info *fi)
+{
+  rshim_backend_t *bd = fuse_req_userdata(req);
+
+  free((void *)(uintptr_t)fi->fh);
+  fuse_reply_err(req, 0);
+  rshim_deref(bd);
+}
+#elif defined(__FreeBSD__)
+static int rshim_fuse_misc_release(struct cuse_dev *cdev, int fflags)
+{
+  rshim_backend_t *bd = cuse_dev_get_priv0(cdev);
+  struct rshim_misc *rm = cuse_dev_get_per_file_handle(cdev);
+
+  free(rm);
+  rshim_deref(bd);
+  return CUSE_ERR_NONE;
+}
+#endif
+
+#ifdef __linux__
+static const struct cuse_lowlevel_ops rshim_misc_fops = {
+  .open = rshim_fuse_misc_open,
+  .read = rshim_fuse_misc_read,
+  .write = rshim_fuse_misc_write,
+  .release = rshim_fuse_misc_release,
+};
+#elif defined(__FreeBSD__)
+static const struct cuse_methods rshim_misc_fops = {
+  .cm_open = rshim_fuse_misc_open,
+  .cm_read = rshim_fuse_misc_read,
+  .cm_write = rshim_fuse_misc_write,
+  .cm_close = rshim_fuse_misc_release,
+};
+#endif
+
+/* Rshim file operations routines */
+
+/* ioctl message header. */
+typedef struct {
+  uint32_t addr;
+  uint64_t data;
+} __attribute__((packed)) rshim_ioctl_msg;
+
+enum {
+  RSHIM_IOC_READ = _IOWR('R', 0, rshim_ioctl_msg),
+  RSHIM_IOC_WRITE = _IOWR('R', 1, rshim_ioctl_msg),
+};
+
+#ifdef __linux__
+static void rshim_fuse_rshim_ioctl(fuse_req_t req, int cmd, void *arg,
+                                   struct fuse_file_info *fi,
+                                   unsigned int flags, const void *in_buf,
+                                   size_t in_bufsz, size_t out_bufsz)
+{
+  rshim_backend_t *bd = fuse_req_userdata(req);
+  rshim_ioctl_msg msg;
+  struct iovec iov;
+  uint64_t data = 0;
+  int rc = 0;
+
+  switch (cmd) {
+  case RSHIM_IOC_READ:
+  case RSHIM_IOC_WRITE:
+    iov.iov_base = arg;
+    iov.iov_len = sizeof(msg);
+
+    if (!in_bufsz) {
+      fuse_reply_ioctl_retry(req, &iov, 1, NULL, 0);
+      return;
+    }
+
+    if (in_bufsz != sizeof(msg)) {
+      fuse_reply_err(req, EINVAL);
+      return;
+    }
+
+    if (!out_bufsz) {
+      fuse_reply_ioctl_retry(req, &iov, 1, &iov, 1);
+      return;
+    }
+
+    memcpy(&msg, in_buf, sizeof(msg));
+
+    if (cmd == RSHIM_IOC_WRITE) {
+      pthread_mutex_lock(&bd->mutex);
+      rc = bd->write_rshim(bd,
+                           (msg.addr >> 16) & 0xF, /* channel # */
+                           msg.addr & 0xFFFF, /* addr */
+                           msg.data);
+      pthread_mutex_unlock(&bd->mutex);
+    } else {
+      pthread_mutex_lock(&bd->mutex);
+      rc = bd->read_rshim(bd,
+                           (msg.addr >> 16) & 0xF, /* channel # */
+                           msg.addr & 0xFFFF, /* addr */
+                           &data);
+      msg.data = data;
+      pthread_mutex_unlock(&bd->mutex);
+    }
+
+    if (!rc)
+      fuse_reply_ioctl(req, 0, &msg, sizeof(msg));
+    else
+      fuse_reply_err(req, -rc);
+    break;
+
+  default:
+    fuse_reply_err(req, ENOSYS);
+    break;
+  }
+}
+#elif defined(__FreeBSD__)
+static int rshim_fuse_rshim_ioctl(struct cuse_dev *cdev, int fflags,
+                                  unsigned long cmd, void *peer_data)
+{
+  rshim_backend_t *bd = cuse_dev_get_priv0(cdev);
+  int rc = CUSE_ERR_INVALID;
+  rshim_ioctl_msg msg;
+  uint64_t data;
+
+  pthread_mutex_lock(&bd->mutex);
+
+  switch (cmd) {
+  case RSHIM_IOC_READ:
+    rc = cuse_copy_in(peer_data, &msg, sizeof(msg));
+    if (rc == CUSE_ERR_NONE) {
+      data = msg.data;
+      rc = bd->read_rshim(bd,
+                           (msg.addr >> 16) & 0xF, /* channel # */
+                           msg.addr & 0xFFFF, /* addr */
+                           &data);
+      if (!rc)
+        rc = cuse_copy_out(&msg, peer_data, sizeof(msg));
+      else
+        rc = CUSE_ERR_INVALID;
+    }
+    break;
+
+  case RSHIM_IOC_WRITE:
+    rc = cuse_copy_in(peer_data, &msg, sizeof(msg));
+
+    rc = bd->write_rshim(bd,
+                         (msg.addr >> 16) & 0xF, /* channel # */
+                         msg.addr & 0xFFFF, /* addr */
+                         msg.data);
+    if (rc)
+      rc = CUSE_ERR_INVALID;
+    break;
+
+  default:
+    break;
+  }
+
+  pthread_mutex_unlock(&bd->mutex);
+  return rc;
+}
+#endif
+
+int rshim_fuse_got_peer_signal(void)
+{
+#if defined(__FreeBSD__)
+  return cuse_got_peer_signal();
+#else
+  return -1;
+#endif
+}
+
+#ifdef __linux__
+static const struct cuse_lowlevel_ops rshim_rshim_fops = {
+  .open = rshim_fuse_misc_open,
+  .ioctl = rshim_fuse_rshim_ioctl,
+  .release = rshim_fuse_misc_release,
+};
+#elif defined(__FreeBSD__)
+static const struct cuse_methods rshim_rshim_fops = {
+  .cm_open = rshim_fuse_misc_open,
+  .cm_ioctl = rshim_fuse_rshim_ioctl,
+  .cm_close = rshim_fuse_misc_release,
+};
+#endif
+
+static void *cuse_worker(void *arg)
+{
+#ifdef __linux__
+  struct fuse_session *se = arg;
+  int rc;
+
+  rc = fuse_session_loop(se);
+  fuse_session_destroy(se);
+
+  return (void *)(unsigned long)rc;
+#elif defined(__FreeBSD__)
+  signal(SIGHUP, &rshim_sig_hup);
+
+  while (cuse_wait_and_process() == CUSE_ERR_NONE)
+    ;
+  return NULL;
+#endif
+}
+
+int rshim_fuse_init(rshim_backend_t *bd)
+{
+  char buf[128], *name;
+#ifdef __linux__
+  const char *bufp[] = {buf};
+  struct cuse_info ci = {.dev_info_argc = 1,
+                         .dev_info_argv = bufp,
+                         .flags = CUSE_UNRESTRICTED_IOCTL};
+  static const struct cuse_lowlevel_ops *ops[RSH_DEV_TYPES] =
+#elif defined(__FreeBSD__)
+  static const struct cuse_methods *ops[RSH_DEV_TYPES] =
+#endif
+  {
+                          [RSH_DEV_TYPE_BOOT] = &rshim_boot_fops,
+                          [RSH_DEV_TYPE_TMFIFO] = &rshim_console_fops,
+                          [RSH_DEV_TYPE_RSHIM] = &rshim_rshim_fops,
+                          [RSH_DEV_TYPE_MISC] = &rshim_misc_fops,
+                          };
+  static const char * const argv[] = {"./bfrshim", "-f"};
+  int i, rc;
+
+#if defined(__FreeBSD__)
+  if (cuse_init() != CUSE_ERR_NONE)
+    return -1;
+#endif
+
+  for (i = 0; i < RSH_DEV_TYPES; i++) {
+#ifdef __linux__
+    name = rshim_dev_minor_names[i];
+    snprintf(buf, sizeof(buf), "DEVNAME=rshim%d/%s",
+             bd->index + rshim_index_base, name);
+    if (!ops[i])
+      continue;
+    bd->fuse_session[i] = cuse_lowlevel_setup(sizeof(argv)/sizeof(char *),
+                                      (char **)argv,
+                                      &ci, ops[i], NULL, bd);
+    if (!bd->fuse_session[i]) {
+      RSHIM_ERR("Failed to setup CUSE %s\n", name);
+      return -1;
+    }
+    fuse_remove_signal_handlers(bd->fuse_session[i]);
+    rc = pthread_create(&bd->fuse_thread[i], NULL, cuse_worker,
+                        bd->fuse_session[i]);
+    if (rc) {
+      RSHIM_ERR("Failed to create cuse thread %m\n");
+      return rc;
+    }
+#elif defined(__FreeBSD__)
+    name = rshim_dev_minor_names[i];
+    snprintf(buf, sizeof(buf), "rshim%d/%s",
+             bd->index + rshim_index_base, name);
+    if (!ops[i])
+      continue;
+    bd->fuse_session[i] =
+      cuse_dev_create(ops[i], bd, NULL, 0 /* UID_ROOT */, 0 /* GID_WHEEL */,
+                      0600, "rshim%d/%s", bd->index + rshim_index_base,
+                      name);
+    if (!bd->fuse_session[i]) {
+      RSHIM_ERR("Failed to setup CUSE %s\n", name);
+      return -1;
+    }
+    rc = pthread_create(&bd->fuse_thread[i], NULL, cuse_worker,
+                        bd->fuse_session[i]);
+    if (rc) {
+      RSHIM_ERR("Failed to create cuse thread %m");
+      return rc;
+    }
+#endif
+  }
+
+  return 0;
+}
+
+int rshim_fuse_del(rshim_backend_t *bd)
+{
+  int i;
+
+  for (i = 0; i < RSH_DEV_TYPES; i++) {
+    if (bd->fuse_session[i]) {
+#ifdef __linux__
+      fuse_session_exit(bd->fuse_session[i]);
+#elif defined(__FreeBSD__)
+      cuse_dev_destroy(bd->fuse_session[i]);
+#endif
+      bd->fuse_session[i] = NULL;
+    }
+  }
+
+  for (i = 0; i < RSH_DEV_TYPES; i++) {
+    if (bd->fuse_thread[i]) {
+      pthread_kill(bd->fuse_thread[i], SIGINT);
+      pthread_join(bd->fuse_thread[i], NULL);
+      bd->fuse_thread[i] = 0;
+    }
+  }
+  return 0;
+}

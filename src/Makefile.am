@@ -23,5 +23,8 @@ bfrshim_LDFLAGS += $(libpci_LIBS)
 endif
 
 # FUSE / CUSE
+if BUILD_RSHIM_FUSE
+bfrshim_SOURCES += rshim_fuse.c
 bfrshim_CPPFLAGS += $(fuse_CFLAGS)
 bfrshim_LDFLAGS += $(fuse_LIBS)
+endif
