@@ -25,7 +25,7 @@
 /* Our Vendor/Device IDs. */
 #define TILERA_VENDOR_ID            0x15b3
 #define BLUEFIELD1_DEVICE_ID        0xc2d2
-#define BLUEFIELD2_DEVICE_ID        0xc2d6
+#define BLUEFIELD2_DEVICE_ID        0xc2d3
 
 /* The offset in BAR2 of the RShim region. */
 #define PCI_RSHIM_WINDOW_OFFSET     0x0
