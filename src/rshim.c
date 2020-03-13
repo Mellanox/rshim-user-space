@@ -6,6 +6,7 @@
 
 #include <arpa/inet.h>
 #include <getopt.h>
+#include <netinet/in.h>
 #include <pthread.h>
 #include <signal.h>
 #include <stdio.h>
@@ -19,10 +20,6 @@
 #include <sys/timerfd.h>
 #include <sys/time.h>
 #include <unistd.h>
-
-#ifdef __FreeBSD__
-#include <netinet/in.h>
-#endif
 
 #include "rshim.h"
 
