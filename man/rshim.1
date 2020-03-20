@@ -1,11 +1,11 @@
-.\" Manpage for bfrshim.
-.TH man 1 "18 Dec 2019" "2.0" "bfrshim man page"
+.\" Manpage for rshim.
+.TH man 1 "18 Dec 2019" "2.0" "rshim man page"
 .SH NAME
-bfrshim \- user-space rshim driver for BlueField SoC
+rshim \- user-space rshim driver for BlueField SoC
 .SH SYNOPSIS
-bfrshim [options]
+rshim [options]
 .SH DESCRIPTION
-bfrshim is the user-space rshim driver for BlueField SoC. It provides ways to access the rshim resources on the BlueField target via USB or PCIe from external host machine. The current version implements virtual console, virtual network interface, boot stream push, register access and some utility commands.
+rshim is the user-space rshim driver for BlueField SoC. It provides ways to access the rshim resources on the BlueField target via USB or PCIe from external host machine. The current version implements virtual console, virtual network interface, boot stream push, register access and some utility commands.
 
 This driver will probe the rshim backend and create directory /dev/rshim<N> for each of them with the following device files.
 
@@ -95,7 +95,7 @@ cat /dev/rshim0/misc
 -i, --index
     Specify the index to create device path /dev/rshim<index>. It's also used
     to create network interface name tmfifo_net<index>. This option is needed
-    when multiple bfrshim instances are running.
+    when multiple rshim instances are running.
 
 -l, --log-level
     Log level (0:none, 1:error, 2:warning, 3:notice, 4:debug)

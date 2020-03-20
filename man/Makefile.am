@@ -2,4 +2,4 @@
 # Copyright (C) 2019 Mellanox Technologies. All Rights Reserved.
 #
 
-man1_MANS = bfrshim.1
+man1_MANS = rshim.1

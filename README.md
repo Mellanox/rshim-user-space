@@ -23,8 +23,8 @@ internal rshim registers.
 
 *) Usage
 
-bfrshim -h
-syntax: bfrshim [--help|-h] [--backend|-b usb|pcie|pcie_lf]
+rshim -h
+syntax: rshim [--help|-h] [--backend|-b usb|pcie|pcie_lf]
                 [--device|-d device-name] [--foreground|-f]
                 [--debug-level|-l <0~4>]
 

@@ -3,15 +3,15 @@
 
 [Unit]
 Description=rshim driver for BlueField SoC
-Documentation=man:bfrshim(8)
+Documentation=man:rshim(8)
 After=network.target
 
 [Service]
 Restart=always
 Type=forking
-ExecStart=-/usr/bin/bfrshim $OPTIONS
+ExecStart=-/usr/bin/rshim $OPTIONS
 KillMode=process
-ExecStop=/usr/bin/killall -SIGKILL bfrshim
+ExecStop=/usr/bin/killall -SIGKILL rshim
 
 [Install]
 WantedBy=multi-user.target

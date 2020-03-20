@@ -2269,7 +2269,7 @@ static void set_signals(void)
 
 static void print_help(void)
 {
-  printf("Usage: bfrshim [options]\n");
+  printf("Usage: rshim [options]\n");
   printf("\n");
   printf("OPTIONS:\n");
   printf("  -b, --backend     backend name (usb, pcie or pcie_lf)\n");

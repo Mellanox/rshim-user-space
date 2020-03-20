@@ -4,7 +4,7 @@
 
 Name: rshim
 Version: @VERSION@
-Release: 1%{?dist}
+Release: 2%{?dist}
 Summary: User-space driver for Mellanox BlueField SoC
 
 License: GPLv2
@@ -39,23 +39,23 @@ make
 %makeinstall -C src INSTALL_DIR="%{buildroot}%{_bindir}"
 %if "%{with_systemd}" == "1"
 %{__install} -d %{buildroot}%{_unitdir}
-%{__install} -m 0644 bfrshim.service %{buildroot}%{_unitdir}
+%{__install} -m 0644 rshim.service %{buildroot}%{_unitdir}
 %endif
 %{__install} -d %{buildroot}%{_mandir}/man1
-%{__install} -m 0644 man/bfrshim.1 %{buildroot}%{_mandir}/man1
+%{__install} -m 0644 man/rshim.1 %{buildroot}%{_mandir}/man1
 %__spec_install_post
 
 %post
 %if "%{with_systemd}" == "1"
   systemctl daemon-reload
-  systemctl enable bfrshim.service
+  systemctl enable rshim.service
 %endif
 
 %preun
 %if "%{with_systemd}" == "1"
-systemctl stop bfrshim
+systemctl stop rshim
 %else
-killall -9 bfrshim
+killall -9 rshim
 %endif
 
 %files
@@ -63,12 +63,15 @@ killall -9 bfrshim
 %defattr(-,root,root,-)
 %%doc README.md
 %if "%{with_systemd}" == "1"
-%{_unitdir}/bfrshim.service
+%{_unitdir}/rshim.service
 %endif
-%{_bindir}/bfrshim
-%{_mandir}/man1/bfrshim.1.gz
+%{_bindir}/rshim
+%{_mandir}/man1/rshim.1.gz
 
 %changelog
+* Fri Mar 20 2020 Liming Sun <lsun@mellanox.com> - 2.0-2
+- Rename bfrshim to rshim
+- Remove rshim.spec since it's auto-generated from rshim.spec.in
 * Fri Mar 13 2020 Liming Sun <lsun@mellanox.com> - 2.0-1
 - Update the spec file according to fedora packaging-guidelines
 * Mon Dec 16 2019 Liming Sun <lsun@mellanox.com>
