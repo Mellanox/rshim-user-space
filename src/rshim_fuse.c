@@ -47,9 +47,10 @@ char *rshim_dev_minor_names[RSH_DEV_TYPES] = {
 static void rshim_fuse_boot_open(fuse_req_t req, struct fuse_file_info *fi)
 {
   rshim_backend_t *bd = fuse_req_userdata(req);
-  int rc;
+  int rc = -ENODEV;
 
-  rc = rshim_boot_open(bd);
+  if (bd)
+    rc = rshim_boot_open(bd);
 
   if (rc)
     fuse_reply_err(req, -rc);
@@ -89,9 +90,10 @@ static void rshim_fuse_boot_write(fuse_req_t req, const char *user_buffer,
                                   struct fuse_file_info *fi)
 {
   rshim_backend_t *bd = fuse_req_userdata(req);
-  int rc;
+  int rc = -ENODEV;
 
-  rc = rshim_boot_write(bd, user_buffer, count, rshim_fuse_copy_in);
+  if (bd)
+    rc = rshim_boot_write(bd, user_buffer, count, rshim_fuse_copy_in);
 
   if (rc >= 0)
     fuse_reply_write(req, rc);
@@ -130,7 +132,9 @@ static void rshim_fuse_boot_release(fuse_req_t req, struct fuse_file_info *fi)
 {
   rshim_backend_t *bd = fuse_req_userdata(req);
 
-  rshim_boot_release(bd);
+  if (bd) 
+    rshim_boot_release(bd);
+
   fuse_reply_err(req, 0);
 }
 #elif defined(__FreeBSD__)
@@ -177,9 +181,10 @@ void rshim_fuse_input_notify(rshim_backend_t *bd)
 static void rshim_fuse_console_open(fuse_req_t req, struct fuse_file_info *fi)
 {
   rshim_backend_t *bd = fuse_req_userdata(req);
-  int rc;
+  int rc = -ENODEV;
 
-  rc = rshim_console_open(bd);
+  if (bd)
+    rc = rshim_console_open(bd);
 
   if (!rc)
     fuse_reply_open(req, fi);
@@ -211,6 +216,11 @@ static void rshim_fuse_console_read(fuse_req_t req, size_t size, off_t off,
   rshim_backend_t *bd = fuse_req_userdata(req);
   char buf[512];
   int rc;
+
+  if (!bd) {
+    fuse_reply_err(req, ENODEV);
+    return;
+  }
 
   if (off) {
     fuse_reply_err(req, EINVAL);
@@ -283,6 +293,11 @@ static void rshim_fuse_console_write(fuse_req_t req, const char *buf,
   rshim_backend_t *bd = fuse_req_userdata(req);
   int rc;
 
+  if (!bd) {
+    fuse_reply_err(req, ENODEV);
+    return;
+  }
+
   if (off) {
     fuse_reply_err(req, EINVAL);
     return;
@@ -342,9 +357,10 @@ static void rshim_fuse_console_fsync(fuse_req_t req, int datasync,
                                      struct fuse_file_info *fi)
 {
   rshim_backend_t *bd = fuse_req_userdata(req);
-  int rc;
+  int rc = -ENODEV;
 
-  rc = rshim_fifo_fsync(bd, TMFIFO_CONS_CHAN);
+  if (bd)
+    rc = rshim_fifo_fsync(bd, TMFIFO_CONS_CHAN);
 
   fuse_reply_err(req, -rc);
 }
@@ -355,6 +371,11 @@ static void rshim_fuse_console_ioctl(fuse_req_t req, int cmd, void *arg,
                                      size_t in_bufsz, size_t out_bufsz)
 {
   rshim_backend_t *bd = fuse_req_userdata(req);
+
+  if (!bd) {
+    fuse_reply_err(req, ENODEV);
+    return;
+  }
 
   pthread_mutex_lock(&bd->mutex);
 
@@ -443,6 +464,11 @@ static void rshim_fuse_console_poll(fuse_req_t req, struct fuse_file_info *fi,
   unsigned int revents = 0;
   bool poll_rx = false, poll_tx = false, poll_err = false;
 
+  if (!bd) {
+    fuse_reply_err(req, ENODEV);
+    return;
+  }
+
   rshim_fifo_check_poll(bd, TMFIFO_CONS_CHAN, &poll_rx, &poll_tx, &poll_err);
 
   if (poll_rx)
@@ -499,7 +525,9 @@ static void rshim_fuse_console_release(fuse_req_t req,
 {
   rshim_backend_t *bd = fuse_req_userdata(req);
 
-  rshim_console_release(bd, rshim_fuse_poll_handle_destroy);
+  if (bd)
+    rshim_console_release(bd, rshim_fuse_poll_handle_destroy);
+
   fuse_reply_err(req, 0);
 }
 #elif defined(__FreeBSD__)
@@ -604,6 +632,15 @@ static int rshim_fuse_misc_read(struct cuse_dev *cdev, int fflags,
   }
   rm->ready = 1;
 
+  if (!bd) {
+#ifdef __linux__
+    fuse_reply_err(req, ENODEV);
+    return;
+#elif defined(__FreeBSD__)
+    return CUSE_ERR_INVALID;
+#endif
+  }
+
   pthread_mutex_lock(&bd->mutex);
 
   /* Boot mode. */
@@ -682,11 +719,9 @@ static int rshim_fuse_misc_read(struct cuse_dev *cdev, int fflags,
     n = snprintf(p, len, "%-16s%d %d (rw)\n",
                    "VLAN_ID", bd->vlan[0], bd->vlan[1]);
     p += n;
-    len -= n;
   } else if (rshim_misc_level == 2) {
     n = rshim_log_show(bd, p, len);
     p += n;
-    len -= n;
   }
 
   rm->len = p - rm->buffer;
@@ -857,7 +892,9 @@ static void rshim_fuse_misc_release(fuse_req_t req, struct fuse_file_info *fi)
 
   free((void *)(uintptr_t)fi->fh);
   fuse_reply_err(req, 0);
-  rshim_deref(bd);
+
+  if (bd)
+    rshim_deref(bd);
 }
 #elif defined(__FreeBSD__)
 static int rshim_fuse_misc_release(struct cuse_dev *cdev, int fflags)
@@ -866,7 +903,8 @@ static int rshim_fuse_misc_release(struct cuse_dev *cdev, int fflags)
   struct rshim_misc *rm = cuse_dev_get_per_file_handle(cdev);
 
   free(rm);
-  rshim_deref(bd);
+  if (bd)
+    rshim_deref(bd);
   return CUSE_ERR_NONE;
 }
 #endif
@@ -911,6 +949,11 @@ static void rshim_fuse_rshim_ioctl(fuse_req_t req, int cmd, void *arg,
   struct iovec iov;
   uint64_t data = 0;
   int rc = 0;
+
+  if (!bd) {
+    fuse_reply_err(req, ENODEV);
+    return;
+  }
 
   switch (cmd) {
   case RSHIM_IOC_READ:

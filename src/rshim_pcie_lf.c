@@ -281,7 +281,7 @@ static int rshim_byte_acc_read(struct pci_dev *pci_dev, int addr,
                                uint64_t *result)
 {
   uint64_t read_result;
-  uint32_t read_value;
+  uint32_t read_value = 0;
   int rc;
 
   /* Wait for RSH_BYTE_ACC_CTL pending bit to be cleared */
@@ -521,23 +521,23 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
   /* Initialize object */
   dev->pci_dev = pci_dev;
 
+  pthread_mutex_lock(&bd->mutex);
+
   /*
    * Register rshim here since it needs to detect whether other backend
    * has already registered or not, which involves reading/writting rshim
    * registers and has assumption that the under layer is working.
    */
   rshim_lock();
-  if (!bd->registered) {
-    ret = rshim_register(bd);
-    if (ret) {
-      rshim_unlock();
-      goto rshim_map_failed;
-    }
+  ret = rshim_register(bd);
+  if (ret) {
+    rshim_unlock();
+    pthread_mutex_unlock(&bd->mutex);
+    goto rshim_map_failed;
   }
   rshim_unlock();
 
   /* Notify that the device is attached */
-  pthread_mutex_lock(&bd->mutex);
   ret = rshim_notify(bd, RSH_EVENT_ATTACH, 0);
   pthread_mutex_unlock(&bd->mutex);
   if (ret)

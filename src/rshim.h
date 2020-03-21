@@ -192,6 +192,7 @@ struct rshim_backend {
   uint32_t is_boot_open : 1;      /* Boot device is open. */
   uint32_t is_net_open : 1;       /* Network device is open. */
   uint32_t is_cons_open : 1;      /* Console device is open. */
+  uint32_t is_attach : 1;         /* Service ready to attach. */
   uint32_t is_in_boot_write : 1;  /* A thread is in boot_write(). */
   uint32_t has_cons_work : 1;     /* Console worker thread running. */
   uint32_t has_debug : 1;         /* Debug enabled for this device. */
@@ -213,6 +214,7 @@ struct rshim_backend {
 
   /* Last keepalive time. */
   int last_keepalive;
+  int net_init_time;
 
   /* timer. */
   int timer;

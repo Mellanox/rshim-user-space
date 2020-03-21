@@ -484,7 +484,7 @@ static void rshim_usb_backend_cancel_req(rshim_backend_t *bd, int devtype,
 
 static int rshim_usb_probe_one(libusb_context *ctx, libusb_device *usb_dev)
 {
-  int i, rc = -ENOMEM;
+  int i, rc;
   const struct libusb_interface_descriptor *iface_desc;
   const struct libusb_endpoint_descriptor *ep;
   const struct libusb_interface *interface;
@@ -509,6 +509,8 @@ static int rshim_usb_probe_one(libusb_context *ctx, libusb_device *usb_dev)
 #elif HAVE_LIBUSB_GET_DEVICE_ADDRESS
   port_numbers[0] = libusb_get_device_address(usb_dev);
   rc = 1;
+#else
+  rc = -EINVAL;
 #endif
   if (rc <= 0) {
     perror("Failed to get USB ports\n");
@@ -692,13 +694,11 @@ static int rshim_usb_probe_one(libusb_context *ctx, libusb_device *usb_dev)
    * registers and has assumption that the under layer is working.
    */
   rshim_lock();
-  if (!bd->registered) {
-    rc = rshim_register(bd);
-    if (rc) {
-      rshim_unlock();
-      pthread_mutex_unlock(&bd->mutex);
-      goto error;
-    }
+  rc = rshim_register(bd);
+  if (rc) {
+    rshim_unlock();
+    pthread_mutex_unlock(&bd->mutex);
+    goto error;
   }
   rshim_unlock();
 
@@ -940,8 +940,27 @@ int rshim_usb_init(int epoll_fd)
 #if LIBUSB_API_VERSION >= 0x01000102
   num = sizeof(rshim_usb_product_ids) / sizeof(rshim_usb_product_ids[0]);
   for (i = 0; i < num; i++) {
+    /*
+     * Register ARRIVED and LEFT separately to avoid the coverity 'mixed enum'
+     * warnings.
+     */
     rc = libusb_hotplug_register_callback(ctx,
-                                          LIBUSB_HOTPLUG_EVENT_DEVICE_ARRIVED |
+                                          LIBUSB_HOTPLUG_EVENT_DEVICE_ARRIVED,
+                                          LIBUSB_HOTPLUG_ENUMERATE,
+                                          USB_TILERA_VENDOR_ID,
+                                          rshim_usb_product_ids[i],
+                                          LIBUSB_HOTPLUG_MATCH_ANY,
+                                          rshim_hotplug_callback,
+                                          NULL,
+                                          &rshim_hotplug_handle);
+    if (rc != LIBUSB_SUCCESS) {
+      RSHIM_ERR("failed to register hotplug callback\n");
+      libusb_exit(ctx);
+      rshim_usb_ctx = NULL;
+      return rc;
+    }
+
+    rc = libusb_hotplug_register_callback(ctx,
                                           LIBUSB_HOTPLUG_EVENT_DEVICE_LEFT,
                                           LIBUSB_HOTPLUG_ENUMERATE,
                                           USB_TILERA_VENDOR_ID,

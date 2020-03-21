@@ -29,6 +29,9 @@
 /* RShim timer interval in milliseconds. */
 #define RSHIM_TIMER_INTERVAL 1
 
+/* Cycles to poll the network initialization before timeout. */
+#define RSHIM_NET_INIT_DELAY (30000 / RSHIM_TIMER_INTERVAL)
+
 /* Keepalive period in milliseconds. */
 static int rshim_keepalive_period = 300;
 
@@ -38,7 +41,7 @@ int rshim_boot_timeout = 100;
 /* Skip SW_RESET while pushing boot stream. */
 int rshim_skip_boot_reset;
 
-#define RSH_KEEPALIVE_MAGIC_NUM 0x5089836482ULL
+#define RSHIM_KEEPALIVE_MAGIC_NUM 0x5089836482ULL
 
 /* Circular buffer macros. */
 #define CIRC_SPACE(head, tail, size) CIRC_CNT((tail), ((head)+1), (size))
@@ -391,8 +394,10 @@ static ssize_t rshim_write_delayed(rshim_backend_t *bd, int devtype,
       RSHIM_ERR("write_rshim error %d\n", rc);
       break;
     }
-    buf += sizeof(reg);
     byte_cnt += sizeof(reg);
+    if (buf == pad_buf)
+      break;
+    buf += sizeof(reg);
     avail--;
   }
 
@@ -888,7 +893,7 @@ static int rshim_fifo_ctrl_tx(rshim_backend_t *bd)
 static void rshim_fifo_input(rshim_backend_t *bd)
 {
   rshim_tmfifo_msg_hdr_t *hdr;
-  bool rx_avail = false;
+  uint8_t rx_avail = 0;
   int rc;
 
   if (bd->is_boot_open)
@@ -992,7 +997,7 @@ again:
 
     if (bd->read_buf_pkt_rem <= 0) {
       bd->read_buf_next = bd->read_buf_next + bd->read_buf_pkt_padding;
-      rx_avail = true;
+      rx_avail = 1;
     }
   }
 
@@ -1026,7 +1031,7 @@ again:
   if (rx_avail && bd->rx_chan == TMFIFO_NET_CHAN) {
     if (__sync_bool_compare_and_swap(&bd->net_rx_pending, false, true)) {
       do {
-        rc = write(bd->net_notify_fd[1], &rx_avail, 1);
+        rc = write(bd->net_notify_fd[1], &rx_avail, sizeof(rx_avail));
       } while (rc == -1 && (errno == EINTR || errno == EAGAIN));
     }
   }
@@ -1415,13 +1420,15 @@ ssize_t rshim_fifo_write(rshim_backend_t *bd, const char *buffer,
 
 static void rshim_work_handler(rshim_backend_t *bd)
 {
+  int rc;
+
   pthread_mutex_lock(&bd->mutex);
 
   bd->work_pending = false;
 
   if (bd->keepalive && bd->has_rshim) {
     bd->write_rshim(bd, RSHIM_CHANNEL, RSH_SCRATCHPAD1,
-                    RSH_KEEPALIVE_MAGIC_NUM);
+                    RSHIM_KEEPALIVE_MAGIC_NUM);
     bd->keepalive = 0;
   }
 
@@ -1437,6 +1444,17 @@ static void rshim_work_handler(rshim_backend_t *bd)
   if (bd->is_boot_open) {
     pthread_mutex_unlock(&bd->mutex);
     return;
+  }
+
+  if (bd->net_fd < 0 && (rshim_timer_ticks - bd->net_init_time) <
+      RSHIM_NET_INIT_DELAY) {
+    rc = rshim_net_init(bd);
+    if (!rc) {
+      bd->is_net_open = 1;
+      pthread_mutex_lock(&bd->ringlock);
+      rshim_fifo_input(bd);
+      pthread_mutex_unlock(&bd->ringlock);
+    }
   }
 
   if (bd->has_fifo_work) {
@@ -1716,20 +1734,17 @@ int rshim_notify(rshim_backend_t *bd, int event, int code)
     if (!bd->has_reprobe && bd->has_rshim)
       rshim_fifo_sync(bd);
 
-    /* Init network interface. */
-    rc = rshim_net_init(bd);
-    if (rc < 0) {
-      RSHIM_ERR("Failed to init networking\n");
-      break;
-    }
-    bd->is_net_open = 1;
-    pthread_mutex_lock(&bd->ringlock);
-    rshim_fifo_input(bd);
-    pthread_mutex_unlock(&bd->ringlock);
+    __sync_synchronize();
+    bd->is_attach = 1;
+
+    /* Init network interface. Moved to the work handler since it takes time. */
+    bd->net_init_time = rshim_timer_ticks;
     break;
 
   case RSH_EVENT_DETACH:
     /* Shutdown network interface. */
+    __sync_synchronize();
+    bd->is_attach = 0;
     rshim_net_del(bd);
     rshim_fifo_release(bd, TMFIFO_NET_CHAN, NULL);
     break;
@@ -1881,7 +1896,8 @@ static void rshim_boot_workaround_check(rshim_backend_t *bd)
     if (!rc) {
       /* SW reset. */
       rc = rshim_reset_control(bd);
-      usleep(100000);
+      if (!rc)
+        usleep(100000);
     }
   }
 }
@@ -1920,7 +1936,7 @@ static int rshim_access_check(rshim_backend_t *bd)
       continue;
     pthread_mutex_lock(&other_bd->mutex);
     other_bd->write_rshim(other_bd, RSHIM_CHANNEL, RSH_SCRATCHPAD1,
-                    RSH_KEEPALIVE_MAGIC_NUM);
+                    RSHIM_KEEPALIVE_MAGIC_NUM);
     pthread_mutex_unlock(&other_bd->mutex);
   }
 
@@ -1934,7 +1950,7 @@ static int rshim_access_check(rshim_backend_t *bd)
     if (rc < 0)
       return -ENODEV;
 
-    if (value == RSH_KEEPALIVE_MAGIC_NUM) {
+    if (value == RSHIM_KEEPALIVE_MAGIC_NUM) {
       RSHIM_INFO("another backend already attached\n");
       return -EEXIST;
     }
@@ -2195,7 +2211,8 @@ static void rshim_main(int argc, char *argv[])
           rshim_work_handler(bd);
         continue;
       } else {
-        int index, tmp;
+        uint8_t tmp;
+        int index;
 
         /* Network. */
         for (index = 0; index < RSHIM_MAX_DEV; index++) {
@@ -2205,7 +2222,7 @@ static void rshim_main(int argc, char *argv[])
 
           if (fd == bd->net_notify_fd[0]) {
             /* Rx. */
-            if (read(fd, &tmp, 1) == 1)
+            if (read(fd, &tmp, sizeof(tmp)) == sizeof(tmp))
               rshim_net_rx(bd);
             break;
           } else if (fd == rshim_devs[index]->net_fd) {

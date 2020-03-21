@@ -5,3 +5,9 @@
 AUTOMAKE_OPTIONS = foreign
 SUBDIRS = src man
 dist_doc_DATA = README.md
+
+AM_DISTCHECK_CONFIGURE_FLAGS = \
+  --with-systemdsystemunitdir=$$dc_install_base/$(systemdsystemunitdir)
+if HAVE_SYSTEMD
+systemdsystemunit_DATA = rshim.service
+endif

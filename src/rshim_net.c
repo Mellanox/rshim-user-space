@@ -51,30 +51,28 @@ static int rshim_if_open(char *ifname, int index)
 {
   char cmd[128];
   struct ifreq ifr;
-  int s, fd, rc, retry;
-
-  rc = system("modprobe tun");
-  if (rc == -1)
-    RSHIM_DBG("Failed to load the tun module %m\n");
+  int s, fd, rc;
 
   fd = open("/dev/net/tun", O_RDWR);
   if (fd < 0) {
-    RSHIM_ERR("Can't open %s: %m\n", ifname);
-    return -1;
+    rc = system("modprobe tun");
+    if (rc == -1)
+      RSHIM_DBG("Failed to load the tun module %m\n");
+
+    fd = open("/dev/net/tun", O_RDWR);
+    if (fd < 0) {
+      RSHIM_ERR("Can't open %s: %m\n", ifname);
+      return -1;
+    }
   }
 
   memset(&ifr, 0, sizeof(ifr));
   ifr.ifr_flags = IFF_TAP | IFF_NO_PI;
-  strncpy(ifr.ifr_name, ifname, IFNAMSIZ);
+  strncpy(ifr.ifr_name, ifname, sizeof(ifr.ifr_name) - 1);
 
-  retry = 16;
-  do {
-    rc = ioctl(fd, TUNSETIFF, (void *) &ifr);
-    if (rc == -1 && retry)
-      sleep(1);
-  } while (rc == -1 && errno == EBUSY && retry--);
+  rc = ioctl(fd, TUNSETIFF, (void *) &ifr);
   if (rc < 0) {
-    RSHIM_ERR("ioctl failed: %m, errno=%d\n", errno);
+    RSHIM_ERR("ioctl failed: errno=%d\n", errno);
     close(fd);
     return -1;
   }
@@ -102,9 +100,11 @@ static int rshim_if_open(char *ifname, int index)
   close(s);
 
   rshim_if_set_non_blocking(fd);
+
   sprintf(cmd, "ifup %s 2>/dev/null&", ifname);
   if (system(cmd) == -1)
     RSHIM_DBG("Failed to call ifup\n");
+
   return fd;
 }
 #elif defined(__FreeBSD__)
@@ -212,19 +212,27 @@ static int rshim_if_write(int fd, const char *buf, size_t len)
 #ifdef __linux__
 static void rshim_if_close(int fd)
 {
-  if (fd >= 0) {
-    ioctl(fd, TUNSETPERSIST, 0);
-    close(fd);
+  struct ifreq ifr;
+  char cmd[128];
+  int rc;
+
+  memset(&ifr, 0, sizeof(ifr));
+  rc = ioctl(fd, TUNGETIFF, (void *) &ifr);
+
+  if (!rc && ifr.ifr_name[0]) {
+    sprintf(cmd, "ifdown %s 2>/dev/null&", ifr.ifr_name);
+    if (system(cmd) == -1)
+      RSHIM_DBG("Failed to call ifdown\n");
   }
+
+  ioctl(fd, TUNSETPERSIST, 0);
+  close(fd);
 }
 #elif defined(__FreeBSD__)
 static void rshim_if_close(int fd)
 {
   struct ifreq ifr;
   int s;
-
-  if (fd < 0)
-    return;
 
   memset(&ifr, 0, sizeof(ifr));
   if (ioctl(fd, TAPGIFNAME, &ifr) < 0) {
@@ -253,8 +261,8 @@ static void rshim_if_close(int fd)
 int rshim_net_init(rshim_backend_t *bd)
 {
   struct epoll_event event;
-  char ifname[64];
-  int rc;
+  char ifname[IFNAMSIZ];
+  int rc, fd[2];
 
   snprintf(ifname, sizeof(ifname), "tmfifo_net%d",
            bd->index + rshim_index_base);
@@ -269,47 +277,54 @@ int rshim_net_init(rshim_backend_t *bd)
   event.events = EPOLLIN;
   rc = epoll_ctl(rshim_epoll_fd, EPOLL_CTL_ADD, bd->net_fd, &event);
   if (rc == -1) {
-    RSHIM_ERR("epoll_ctl failed: %m %d %d\n", rshim_epoll_fd, bd->net_fd);
-    return rc;
+    RSHIM_ERR("epoll_ctl failed: %d %d\n", rshim_epoll_fd, bd->net_fd);
+    goto fail;
   }
 
-  rc = pipe(bd->net_notify_fd);
+  rc = pipe(fd);
   if (rc == -1) {
     perror("Failed to create pipe %m");
-    return rc;
+    goto fail;
   }
 
-  event.data.fd = bd->net_notify_fd[0];
+  event.data.fd = fd[0];
   event.events = EPOLLIN;
-  rc = epoll_ctl(rshim_epoll_fd, EPOLL_CTL_ADD, bd->net_notify_fd[0], &event);
+  rc = epoll_ctl(rshim_epoll_fd, EPOLL_CTL_ADD, fd[0], &event);
   if (rc == -1) {
-    RSHIM_ERR("epoll_ctl failed: %m %d %d\n",
-              rshim_epoll_fd, bd->net_notify_fd[0]);
-    bd->net_notify_fd[0] = -1;
-    return rc;
+    RSHIM_ERR("epoll_ctl failed: %d %d\n", rshim_epoll_fd, fd[0]);
+    goto fail;
   }
+  bd->net_notify_fd[0] = fd[0];
+  bd->net_notify_fd[1] = fd[1];
 
   return 0;
+fail:
+  rshim_if_close(bd->net_fd);
+  bd->net_fd = -1;
+  return rc;
 }
 
 int rshim_net_del(rshim_backend_t *bd)
 {
   struct epoll_event event;
 
-  memset(&event, 0, sizeof(event));
-
-  if (bd->net_fd >= 0) {
-    event.data.fd = bd->net_fd;
-    epoll_ctl(rshim_epoll_fd, EPOLL_CTL_DEL, bd->net_fd, &event);
-  }
-
   if (bd->net_notify_fd[0] >= 0) {
+    memset(&event, 0, sizeof(event));
     event.data.fd = bd->net_notify_fd[0];
     epoll_ctl(rshim_epoll_fd, EPOLL_CTL_DEL, bd->net_notify_fd[0], &event);
+    close(bd->net_notify_fd[0]);
+    close(bd->net_notify_fd[1]);
+    bd->net_notify_fd[0] = -1;
+    bd->net_notify_fd[1] = -1;
   }
 
-  rshim_if_close(bd->net_fd);
-  bd->net_fd = -1;
+  if (bd->net_fd >= 0) {
+    memset(&event, 0, sizeof(event));
+    event.data.fd = bd->net_fd;
+    epoll_ctl(rshim_epoll_fd, EPOLL_CTL_DEL, bd->net_fd, &event);
+    rshim_if_close(bd->net_fd);
+    bd->net_fd = -1;
+  }
   return 0;
 }
 

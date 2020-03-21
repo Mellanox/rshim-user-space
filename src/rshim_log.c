@@ -5,6 +5,8 @@
  */
 
 #include <pthread.h>
+#include <stdarg.h>
+#include <time.h>
 #include "rshim.h"
 
 /* Log module */
@@ -224,6 +226,17 @@ static int rshim_log_show_crash(rshim_backend_t *bd, uint64_t hdr, char *buf,
   return p - buf;
 }
 
+static int rshim_log_format_msg(char *buf, int len, const char* msg, ...)
+{
+  va_list args;
+
+  va_start(args, msg);
+  len = vsnprintf(buf, len, msg, args);
+  va_end(args);
+
+  return len;
+}
+
 static int rshim_log_show_msg(rshim_backend_t *bd, uint64_t hdr, char *buf,
                               int size)
 {
@@ -234,7 +247,7 @@ static int rshim_log_show_msg(rshim_backend_t *bd, uint64_t hdr, char *buf,
   int has_arg = BF_RSH_LOG_HEADER_GET(HAS_ARG, hdr);
   uint32_t arg = BF_RSH_LOG_HEADER_GET(ARG, hdr);
   uint64_t data;
-  char *tmp, *p;
+  char *msg, *p;
 
   if (len <= 0)
     return -EINVAL;
@@ -244,36 +257,40 @@ static int rshim_log_show_msg(rshim_backend_t *bd, uint64_t hdr, char *buf,
   if (level >= sizeof(rshim_log_levels) / sizeof(rshim_log_levels[0]))
     level = 0;
 
-  tmp = malloc(len * sizeof(uint64_t) + 1);
-  if (!tmp)
+  msg = malloc(len * sizeof(uint64_t) + 1);
+  if (!msg)
     return 0;
-  p = tmp;
+  p = msg;
 
   while (len--) {
     rc = bd->read_rshim(bd, RSHIM_CHANNEL, RSH_SCRATCH_BUF_DAT, &data);
-    if (rc)
+    if (rc) {
+      free(msg);
       return 0;
+    }
     memcpy(p, &data, sizeof(data));
     p += sizeof(data);
   }
   *p = '\0';
   if (!has_arg) {
     len = snprintf(buf, size, " %s[%s]: %s\n", rshim_log_levels[level],
-                   rshim_log_mod[module], tmp);
+                   rshim_log_mod[module], msg);
   } else {
     len = snprintf(buf, size, " %s[%s]: ", rshim_log_levels[level],
                    rshim_log_mod[module]);
-    len += snprintf(buf + len, size - len, tmp, arg);
+    // coverity[ +tainted_string_sanitize_content : arg-2 ]
+    len += rshim_log_format_msg(buf + len, size - len, msg, arg);
     len += snprintf(buf + len, size - len, "\n");
   }
 
-  free(tmp);
+  free(msg);
   return len;
 }
 
 int rshim_log_show(rshim_backend_t *bd, char *buf, int size)
 {
   uint64_t data, idx, hdr;
+  time_t t0, t1;
   int i, n, rc, type, len;
   char *p = buf;
 
@@ -288,6 +305,7 @@ int rshim_log_show(rshim_backend_t *bd, char *buf, int size)
   size -= n;
 
   /* Take the semaphore. */
+  time(&t0);
   while (true) {
     rc = bd->read_rshim(bd, RSHIM_CHANNEL, RSH_SEMAPHORE0, &data);
     if (rc) {
@@ -298,7 +316,10 @@ int rshim_log_show(rshim_backend_t *bd, char *buf, int size)
     if (!data)
       break;
 
-    usleep(10000);
+    /* Add a timeout in case the semaphore is stuck. */
+    time(&t1);
+    if (difftime(t1, t0) > 1)
+      break;
   }
 
   /* Read the current index. */
