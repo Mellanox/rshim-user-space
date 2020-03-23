@@ -23,7 +23,7 @@ interface. It provides ways to push boot stream, debug the target or login
 via the virtual console or network interface.
 
 %prep
-%setup -n %{name}-%{version}
+%setup -q -n %{name}-%{version}
 
 %build
 ./bootstrap.sh
