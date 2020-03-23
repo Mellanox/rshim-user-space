@@ -11,9 +11,10 @@ AM_PROG_CC_C_O
 AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_FILES([
   Makefile
+  rshim.spec
   src/Makefile
   man/Makefile
-  rshim.spec
+  rhel/rshim.spec
 ])
 AC_CANONICAL_HOST
 

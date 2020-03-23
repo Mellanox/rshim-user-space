@@ -10,12 +10,12 @@ Summary: User-space driver for Mellanox BlueField SoC
 License: GPLv2
 
 URL: https://github.com/mellanox/rshim-user-space
-Source0: https://github.com/mellanox/rshim-user-space/archive/%{name}-%{version}.tar.gz
+Source0: https://github.com/Mellanox/rshim-user-space/releases/download/%{name}-%{version}/%{name}-%{version}.tar.gz
 
 BuildRequires: gcc, autoconf, automake
 BuildRequires: pkgconfig(libpci), pkgconfig(libusb-1.0), pkgconfig(fuse)
-
-%global with_systemd %(if (test -d "%{_unitdir}" > /dev/null); then echo -n '1'; else echo -n '0'; fi)
+BuildRequires: systemd-units
+BuildRequires: systemd-rpm-macros
 
 %description
 This is the user-space driver to access the BlueField SoC via the rshim
@@ -23,10 +23,7 @@ interface. It provides ways to push boot stream, debug the target or login
 via the virtual console or network interface.
 
 %prep
-rm -fr %{name}-%{version}
-mkdir %{name}-%{version}
-tar -axf %{SOURCE0} -C %{name}-%{version} --strip-components 1
-%setup -q -D -T
+%setup -n %{name}-%{version}
 
 %build
 ./bootstrap.sh
@@ -34,44 +31,31 @@ tar -axf %{SOURCE0} -C %{name}-%{version} --strip-components 1
 make
 
 %install
-%makeinstall -C src INSTALL_DIR="%{buildroot}%{_sbindir}"
-%if "%{with_systemd}" == "1"
-  %{__install} -d %{buildroot}%{_unitdir}
-  %{__install} -m 0644 rshim.service %{buildroot}%{_unitdir}
-%endif
-%{__install} -d %{buildroot}%{_mandir}/man8
-%{__install} -m 0644 man/rshim.8 %{buildroot}%{_mandir}/man8
+%make_install
 %__spec_install_post
 
 %post
-%if "%{with_systemd}" == "1"
-  systemctl daemon-reload
-  systemctl enable rshim.service
-%endif
+%systemd_post rshim.service
 
 %preun
-%if "%{with_systemd}" == "1"
-  systemctl stop rshim
-%else
-  killall -9 rshim
-%endif
+%systemd_preun rshim.service
+
+%postun
+%systemd_postun_with_restart rshim.service
 
 %files
 %license LICENSE
-%defattr(-,root,root,-)
 %doc README.md
-%if "%{with_systemd}" == "1"
-  %{_unitdir}/rshim.service
-%endif
 %{_sbindir}/rshim
+%{_unitdir}/rshim.service
 %{_mandir}/man8/rshim.8.gz
 
 %changelog
 * Mon Mar 23 2020 Liming Sun <lsun@mellanox.com> - 2.0.1-1
 - Rename bfrshim to rshim
 - Remove rshim.spec since it's auto-generated from rshim.spec.in
-- Fix some warnings reported by coverity
-- Add file rhel/rshim.spec.in for fedora
+- Fix warnings reported by coverity
+- Add rhel/rshim.spec.in for fedora
 - Move rshim to sbin and move man page to man8
 
 * Fri Mar 13 2020 Liming Sun <lsun@mellanox.com> - 2.0-1

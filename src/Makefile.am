@@ -2,7 +2,7 @@
 # Copyright (C) 2019 Mellanox Technologies. All Rights Reserved.
 #
 
-bin_PROGRAMS = rshim
+sbin_PROGRAMS = rshim
 
 rshim_SOURCES = rshim.c rshim_log.c rshim_net.c
 rshim_CPPFLAGS = -DHAVE_RSHIM_NET

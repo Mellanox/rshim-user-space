@@ -9,7 +9,7 @@ After=network.target
 [Service]
 Restart=always
 Type=forking
-ExecStart=-/usr/bin/rshim $OPTIONS
+ExecStart=-/usr/sbin/rshim $OPTIONS
 KillMode=process
 ExecStop=/usr/bin/killall -SIGKILL rshim
 

@@ -506,7 +506,7 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
     bd = &dev->bd;
     bd->has_rshim = 1;
     bd->has_tm = 1;
-    strncpy(bd->dev_name, dev_name, sizeof(bd->dev_name) - 1);
+    strcpy(bd->dev_name, dev_name);
     bd->read_rshim = rshim_pcie_read;
     bd->write_rshim = rshim_pcie_write;
     bd->destroy = rshim_pcie_delete;
