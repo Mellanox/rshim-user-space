@@ -247,7 +247,7 @@ static int rshim_fd_full_write(int fd, void *data, int len)
 void rshim_work_signal(rshim_backend_t *bd)
 {
   if (__sync_bool_compare_and_swap(&bd->work_pending, false, true))
-    rshim_fd_full_write(rshim_work_fd[1], &bd, sizeof(bd));
+    rshim_fd_full_write(rshim_work_fd[1], &bd->index, sizeof(bd->index));
 }
 
 /*
@@ -2090,7 +2090,7 @@ bool rshim_allow_device(const char *devname)
 
 static void rshim_main(int argc, char *argv[])
 {
-  int i, fd, num, rc, epoll_fd, timer_fd;
+  int i, fd, num, rc, epoll_fd, timer_fd, index;
 #ifdef __FreeBSD__
   const int MAXEVENTS = 16;
 #else
@@ -2206,9 +2206,12 @@ static void rshim_main(int argc, char *argv[])
         rshim_fd_full_read(timer_fd, &res, sizeof(res));
         rshim_timer_run();
       } else if (fd == rshim_work_fd[0]) {
-        rc = rshim_fd_full_read(rshim_work_fd[0], &bd, sizeof(bd));
-        if (rc == sizeof(bd))
-          rshim_work_handler(bd);
+        rc = rshim_fd_full_read(rshim_work_fd[0], &index, sizeof(index));
+        if (rc == sizeof(index)) {
+          bd = rshim_devs[index];
+          if (bd)
+            rshim_work_handler(bd);
+        }
         continue;
       } else {
         uint8_t tmp;
