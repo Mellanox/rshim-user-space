@@ -15,13 +15,13 @@ const char * const rshim_log_mod[] = {
 };
 
 /* Log level */
-const char * const rshim_log_levels[] = { "INFO", "WARN", "ERR" };
+const char * const rshim_log_levels[] = { "INFO", "WARN", "ERR", "ASSERT" };
 
 /* Log type. */
 #define BF_RSH_LOG_TYPE_UNKNOWN         0x00ULL
 #define BF_RSH_LOG_TYPE_PANIC           0x01ULL
 #define BF_RSH_LOG_TYPE_EXCEPTION       0x02ULL
-#define BF_RSH_LOG_TYPE_ASSERT          0x03ULL
+#define BF_RSH_LOG_TYPE_UNUSED          0x03ULL
 #define BF_RSH_LOG_TYPE_MSG             0x04ULL
 
 /* Utility macro. */

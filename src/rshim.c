@@ -2100,6 +2100,7 @@ static void rshim_main(int argc, char *argv[])
   struct epoll_event event;
   struct itimerspec ts;
   rshim_backend_t *bd;
+  uint8_t tmp;
 
   memset(&event, 0, sizeof(event));
   memset(events, 0, sizeof(events));
@@ -2207,16 +2208,13 @@ static void rshim_main(int argc, char *argv[])
         rshim_timer_run();
       } else if (fd == rshim_work_fd[0]) {
         rc = rshim_fd_full_read(rshim_work_fd[0], &index, sizeof(index));
-        if (rc == sizeof(index)) {
+        if (rc == sizeof(index) && index >=0 && index < RSHIM_MAX_DEV) {
           bd = rshim_devs[index];
           if (bd)
             rshim_work_handler(bd);
         }
         continue;
       } else {
-        uint8_t tmp;
-        int index;
-
         /* Network. */
         for (index = 0; index < RSHIM_MAX_DEV; index++) {
           bd = rshim_devs[index];
