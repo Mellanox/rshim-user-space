@@ -1441,11 +1441,6 @@ static void rshim_work_handler(rshim_backend_t *bd)
     pthread_cond_broadcast(&bd->boot_write_complete_cond);
   }
 
-  if (bd->is_boot_open) {
-    pthread_mutex_unlock(&bd->mutex);
-    return;
-  }
-
   if (bd->net_fd < 0 && (rshim_timer_ticks - bd->net_init_time) <
       RSHIM_NET_INIT_DELAY) {
     rc = rshim_net_init(bd);
@@ -1455,6 +1450,11 @@ static void rshim_work_handler(rshim_backend_t *bd)
       rshim_fifo_input(bd);
       pthread_mutex_unlock(&bd->ringlock);
     }
+  }
+
+  if (bd->is_boot_open) {
+    pthread_mutex_unlock(&bd->mutex);
+    return;
   }
 
   if (bd->has_fifo_work) {
