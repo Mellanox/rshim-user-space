@@ -25,11 +25,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <syslog.h>
 #include <termios.h>
 #include <unistd.h>
 #ifdef HAVE_CONFIG_H
 #include <config.h>
+#endif
+#ifdef HAVE_SYSLOG_H
+#include <syslog.h>
 #endif
 
 #include "rshim_regs.h"
@@ -50,14 +52,25 @@ extern int rshim_boot_timeout;
   ((type *)(__mptr - offsetof(type, member))); })
 #endif
 
+#ifdef HAVE_SYSLOG_H
+#define RSHIM_SYSLOG(level, fmt...) syslog(level, fmt)
+#else
+#define LOG_ERR 1
+#define LOG_WARNING 2
+#define LOG_NOTICE 3
+#define LOG_DEBUG 4
+#define RSHIM_SYSLOG(level, fmt...)
+#endif
+
 #define RSHIM_LOG(log_level, fmt...) do { \
   if (rshim_log_level >= log_level) { \
     if (rshim_daemon_mode) \
-      syslog(log_level, fmt); \
+      RSHIM_SYSLOG(log_level, fmt); \
     else \
       printf(fmt); \
   } \
 } while (0)
+
 #define RSHIM_ERR(fmt...)      RSHIM_LOG(LOG_ERR, fmt)
 #define RSHIM_WARN(fmt...)     RSHIM_LOG(LOG_WARNING, fmt)
 #define RSHIM_INFO(fmt...)     RSHIM_LOG(LOG_NOTICE, fmt)

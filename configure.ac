@@ -33,6 +33,8 @@ AS_IF([test "x$with_systemdsystemunitdir" != "xno"],
       [AC_SUBST([systemdsystemunitdir], [$with_systemdsystemunitdir])])
 AM_CONDITIONAL([HAVE_SYSTEMD], [test "x$with_systemdsystemunitdir" != "xno"])
 
+AC_CHECK_HEADERS_ONCE([syslog.h])
+
 AC_ARG_ENABLE([usb],
   AS_HELP_STRING([--enable-usb], [Enable rshim over USB (default is yes) ]),
   [build_usb=$enableval], [build_usb=yes])

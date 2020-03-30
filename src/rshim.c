@@ -2377,7 +2377,9 @@ int main(int argc, char *argv[])
     close(STDERR_FILENO);
   }
 
+#ifdef HAVE_SYSLOG_H
   openlog("rshim", LOG_CONS, LOG_USER);
+#endif
 
   set_signals();
 
