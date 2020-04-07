@@ -1,5 +1,5 @@
 .\" Manpage for rshim.
-.TH man 1 "18 Dec 2019" "2.0" "rshim man page"
+.TH man 8 "18 Dec 2019" "2.0" "rshim man page"
 .SH NAME
 rshim \- user-space rshim driver for BlueField SoC
 .SH SYNOPSIS
@@ -69,13 +69,13 @@ cat /dev/rshim0/misc
 .in
 .SH OPTIONS
 -b, --backend
-    Specify the backend to attach, which can be one of usb, pcie or pcie_lf.
-    If not specified, the driver will scan all rshim backends unless the '-d'
-    option is given with a device name specified.
+.in +4n
+Specify the backend to attach, which can be one of usb, pcie or pcie_lf. If not specified, the driver will scan all rshim backends unless the '-d' option is given with a device name specified.
+.in
 
 -d, --device
-    Specify the device name to attach with the format below. The backend driver
-    can be deduced from the device name, thus the '-b' option is not needed.
+.in +4n
+Specify the device name to attach with the format below. The backend driver can be deduced from the device name, thus the '-b' option is not needed.
 
     PCIe backend:
         pcie-<bus>:<device>.<function>. Example: pcie-04:00.2
@@ -88,15 +88,25 @@ cat /dev/rshim0/misc
     USB backend:
         usb-<bus>-xx.xx. Example: usb-2-1.7
         Devices can be found under /sys/bus/usb/devices/.
+.in
 
 -f, --foreground
-    Run in forground.
+.in +4n
+Run in forground.
+.in
 
 -i, --index
-    Specify the index to create device path /dev/rshim<index>. It's also used
-    to create network interface name tmfifo_net<index>. This option is needed
-    when multiple rshim instances are running.
+.in +4n
+Specify the index to create device path /dev/rshim<index>. It's also used to create network interface name tmfifo_net<index>. This option is needed when multiple rshim instances are running.
+.in
 
 -l, --log-level
-    Log level (0:none, 1:error, 2:warning, 3:notice, 4:debug)
-    Log messages will be printed to standard output when running in foreground, or in syslog when running as a daemon.
+.in +4n
+Log level (0:none, 1:error, 2:warning, 3:notice, 4:debug)
+Log messages will be printed to standard output when running in foreground, or in syslog when running as a daemon.
+.in
+
+-v, --version
+.in +4n
+Display version
+.in
