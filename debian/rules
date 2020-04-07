@@ -1,3 +1,7 @@
 #!/usr/bin/make -f
 %:
 	dh $@
+
+override_dh_auto_configure:
+	./bootstrap.sh
+	dh_auto_configure
