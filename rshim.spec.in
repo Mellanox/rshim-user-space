@@ -34,6 +34,7 @@ tar -axf %{SOURCE0} -C %{name}-%{version} --strip-components 1
 make
 
 %install
+%undefine _missing_build_ids_terminate_build
 %makeinstall -C src INSTALL_DIR="%{buildroot}%{_sbindir}"
 %if "%{with_systemd}" == "1"
   %{__install} -d %{buildroot}%{_unitdir}
