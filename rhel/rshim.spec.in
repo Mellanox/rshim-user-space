@@ -28,11 +28,10 @@ via the virtual console or network interface.
 %build
 ./bootstrap.sh
 %configure
-make
+%make_build
 
 %install
 %make_install
-%__spec_install_post
 
 %post
 %systemd_post rshim.service
@@ -51,6 +50,12 @@ make
 %{_mandir}/man8/rshim.8.gz
 
 %changelog
+* Thu Apr 09 2020 Liming Sun <lsun@mellanox.com> - 2.0.2-1
+- Remove unnecessary dependency in .spec and use make_build
+- Add package build for debian/ubuntu
+- Fix some format in the man page
+- Add check for syslog headers
+
 * Mon Mar 23 2020 Liming Sun <lsun@mellanox.com> - 2.0.1-1
 - Rename bfrshim to rshim
 - Remove rshim.spec since it's auto-generated from rshim.spec.in

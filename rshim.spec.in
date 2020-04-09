@@ -31,7 +31,7 @@ tar -axf %{SOURCE0} -C %{name}-%{version} --strip-components 1
 %build
 ./bootstrap.sh
 %configure
-make
+%make_build
 
 %install
 %undefine _missing_build_ids_terminate_build
@@ -42,7 +42,6 @@ make
 %endif
 %{__install} -d %{buildroot}%{_mandir}/man8
 %{__install} -m 0644 man/rshim.8 %{buildroot}%{_mandir}/man8
-%__spec_install_post
 
 %post
 %if "%{with_systemd}" == "1"
@@ -69,6 +68,12 @@ make
 %{_mandir}/man8/rshim.8.gz
 
 %changelog
+* Thu Apr 09 2020 Liming Sun <lsun@mellanox.com> - 2.0.2-1
+- Remove unnecessary dependency in .spec and use make_build
+- Add package build for debian/ubuntu
+- Fix some format in the man page
+- Add check for syslog headers
+
 * Mon Mar 23 2020 Liming Sun <lsun@mellanox.com> - 2.0.1-1
 - Rename bfrshim to rshim
 - Remove rshim.spec since it's auto-generated from rshim.spec.in
