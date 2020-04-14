@@ -575,10 +575,9 @@ int rshim_pcie_lf_init(void)
          dev->device_id != BLUEFIELD2_DEVICE_ID))
       continue;
 
+    rshim_pcie_enable(dev);
     rshim_pcie_probe(dev);
   }
-
-  //pci_cleanup(pci);
 
   return 0;
 }
