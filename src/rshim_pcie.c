@@ -350,7 +350,7 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
     goto rshim_map_failed;
   }
   if (pci_dev->size[0] < PCI_RSHIM_WINDOW_SIZE) {
-    RSHIM_ERR("BAR[0] size 0x%x too small\n", pci_dev->size[0]);
+    RSHIM_ERR("BAR[0] size 0x%x too small\n", (int)pci_dev->size[0]);
     goto rshim_map_failed;
   }
 
@@ -440,21 +440,25 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
    return ret;
 }
 
-void rshim_pcie_enable(void *dev)
+int rshim_pcie_enable(void *dev)
 {
 #ifdef __linux__
-    char name[256];
-    int fd;
-    struct pci_dev *pci_dev = (struct pci_dev *)dev;
+  struct pci_dev *pci_dev = (struct pci_dev *)dev;
+  char name[256];
+  int fd, rc;
 
-    snprintf(name, sizeof(name), "%s/%04x:%02x:%02x.%1u/enable",
-             SYS_BUS_PCI, pci_dev->domain, pci_dev->bus,
-             pci_dev->dev, pci_dev->func);
-    fd = open( name, O_RDWR | O_CLOEXEC);
-    if (fd == -1)
-       return;
-    write( fd, "1", 1 );
-    close(fd);
+  snprintf(name, sizeof(name), "%s/%04x:%02x:%02x.%1u/enable",
+           SYS_BUS_PCI, pci_dev->domain, pci_dev->bus,
+           pci_dev->dev, pci_dev->func);
+  fd = open(name, O_RDWR | O_CLOEXEC);
+  if (fd == -1)
+    return -errno;
+
+  if (write(fd, "1", 1) < 0)
+    rc = -errno;
+
+  close(fd);
+  return rc;
 #endif
 }
 

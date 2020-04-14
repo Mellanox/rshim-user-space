@@ -1,3 +1,22 @@
+rshim (2.0.3-1) UNRELEASED; urgency=low
+
+  * Enable pci device during probing
+  * Map the pci resource0 file instead of /dev/mem
+  * Add copyright header in bootstrap.sh
+  * Add 'Requires' tag check in the rpm .spec for kernel-modules-extra
+  * Fix the 'rshim --version' output
+
+ -- Liming Sun <lsun@mellanox.com>  Tue, 14 Apr 2020 16:40:25 -0400
+
+rshim (2.0.2-1) UNRELEASED; urgency=low
+
+  * Remove unnecessary dependency in .spec and use make_build
+  * Add package build for debian/ubuntu
+  * Fix some format in the man page
+  * Add check for syslog headers
+
+ -- Liming Sun <lsun@mellanox.com>  Thu, 09 Apr 2020 12:17:15 -0400
+
 rshim (2.0.1-1) UNRELEASED; urgency=low
 
   * Initial release.

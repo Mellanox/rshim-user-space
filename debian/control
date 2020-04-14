@@ -7,7 +7,7 @@ Build-Depends: debhelper (>= 8.0.0), autotools-dev, bzip2, libpci-dev, libusb-1.
 Package: rshim
 Architecture: any
 Homepage: https://github.com/Mellanox/rshim-user-space
-Description: rshim driver for Mellanox BlueField SoC
-  This is the user-space driver to access the BlueField SoC via the rshim
-  interface. It provides ways to push boot stream, debug the target or login
-  via the virtual console or network interface.
+Description: driver for Mellanox BlueField SoC
+	This is the user-space driver to access the BlueField SoC via the rshim
+	interface. It provides ways to push boot stream, debug the target or
+	login via the virtual console or network interface.

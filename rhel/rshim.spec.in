@@ -55,6 +55,13 @@ via the virtual console or network interface.
 %{_mandir}/man8/rshim.8.gz
 
 %changelog
+* Tue Apr 14 2020 Liming Sun <lsun@mellanox.com> - 2.0.3-1
+- Enable pci device during probing
+- Map the pci resource0 file instead of /dev/mem
+- Add copyright header in bootstrap.sh
+- Add 'Requires' tag check in the rpm .spec for kernel-modules-extra
+- Fix the 'rshim --version' output
+
 * Thu Apr 09 2020 Liming Sun <lsun@mellanox.com> - 2.0.2-1
 - Remove unnecessary dependency in .spec and use make_build
 - Add package build for debian/ubuntu

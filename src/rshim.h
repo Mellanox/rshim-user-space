@@ -471,7 +471,7 @@ static inline void rshim_usb_poll(void)
 #ifdef HAVE_RSHIM_PCIE
 int rshim_pcie_init(void);
 int rshim_pcie_lf_init(void);
-void rshim_pcie_enable(void *dev);
+int rshim_pcie_enable(void *dev);
 #else
 static inline int rshim_pcie_init(void)
 {
