@@ -68,7 +68,7 @@ static int rshim_if_open(char *ifname, int index)
 
   memset(&ifr, 0, sizeof(ifr));
   ifr.ifr_flags = IFF_TAP | IFF_NO_PI;
-  strncpy(ifr.ifr_name, ifname, sizeof(ifr.ifr_name) - 1);
+  snprintf(ifr.ifr_name, sizeof(ifr.ifr_name), "%s", ifname);
 
   rc = ioctl(fd, TUNSETIFF, (void *) &ifr);
   if (rc < 0) {
@@ -144,7 +144,7 @@ static int rshim_if_open(char *ifname, int index)
     char temp[sizeof(ifr.ifr_name)];
 
     memcpy(temp, ifr.ifr_name, sizeof(temp));
-    strncpy(ifr.ifr_name, ifname, sizeof(temp));
+    snprintf(ifr.ifr_name, sizeof(ifr.ifr_name), "%s", ifname);
 
     /* cleanup old device */
     if (ioctl(s, SIOCIFDESTROY, &ifr) < 0) {
@@ -154,7 +154,7 @@ static int rshim_if_open(char *ifname, int index)
       return -1;
     }
 
-    strncpy(ifr.ifr_name, temp, sizeof(temp));
+    snprintf(ifr.ifr_name, sizeof(ifr.ifr_name), "%s", temp);
 
     /* try to rename device again */
     if (ioctl(s, SIOCSIFNAME, &ifr) < 0) {
@@ -165,7 +165,7 @@ static int rshim_if_open(char *ifname, int index)
     }
   }
 
-  strncpy(ifr.ifr_name, ifname, sizeof(ifr.ifr_name));
+  snprintf(ifr.ifr_name, sizeof(ifr.ifr_name), "%s", ifname);
 
   ifr.ifr_mtu = ETH_PKT_SIZE;
   if (ioctl(s, SIOCSIFMTU, &ifr) < 0) {

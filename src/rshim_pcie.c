@@ -300,7 +300,7 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
 #ifdef __linux__
   char path[256];
 #endif
-  int ret;
+  int ret = 0;
 
   snprintf(dev_name, sizeof(dev_name) - 1, "pcie-%02x:%02x.%x",
            pci_dev->bus, pci_dev->dev, pci_dev->func);
@@ -445,7 +445,7 @@ int rshim_pcie_enable(void *dev)
 #ifdef __linux__
   struct pci_dev *pci_dev = (struct pci_dev *)dev;
   char name[256];
-  int fd, rc;
+  int fd, rc = 0;
 
   snprintf(name, sizeof(name), "%s/%04x:%02x:%02x.%1u/enable",
            SYS_BUS_PCI, pci_dev->domain, pci_dev->bus,
