@@ -33,6 +33,10 @@
 /* The size the RShim region. */
 #define PCI_RSHIM_WINDOW_SIZE       0x100000
 
+#ifdef __linux__
+#define SYS_BUS_PCI "/sys/bus/pci/devices"
+#endif
+
 #ifndef __LP64__
 static inline uint32_t
 readl(const volatile void *addr)
@@ -49,12 +53,15 @@ writel(uint32_t value, volatile void *addr)
 static inline uint64_t
 readq(const volatile void *addr)
 {
-  return *(const volatile uint64_t *)addr;
+  uint64_t value = *(const volatile uint64_t *)addr;
+  __sync_synchronize();
+  return value;
 }
 
 static inline void
 writeq(uint64_t value, volatile void *addr)
 {
+  __sync_synchronize();
   *(volatile uint64_t *)addr = value;
 }
 #endif
@@ -291,7 +298,7 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
   rshim_backend_t *bd;
   rshim_pcie_t *dev;
 #ifdef __linux__
-  pciaddr_t bar0;
+  char path[256];
 #endif
   int ret;
 
@@ -342,14 +349,26 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
     ret = -ENOMEM;
     goto rshim_map_failed;
   }
+  if (pci_dev->size[0] < PCI_RSHIM_WINDOW_SIZE) {
+    RSHIM_ERR("BAR[0] size 0x%x too small\n", pci_dev->size[0]);
+    goto rshim_map_failed;
+  }
 
   /* Map in the RShim registers. */
-  dev->pci_fd = open("/dev/mem", O_RDWR | O_SYNC);
-  bar0 = (pci_dev->base_addr[0] & PCI_BASE_ADDRESS_MEM_MASK) &
-         ~(getpagesize() - 1);
-  dev->rshim_regs = mmap(NULL, PCI_RSHIM_WINDOW_SIZE, PROT_READ | PROT_WRITE,
+  snprintf(path, sizeof(path), "%s/%04x:%02x:%02x.%1u/resource0",
+           SYS_BUS_PCI, pci_dev->domain, pci_dev->bus,
+           pci_dev->dev, pci_dev->func);
+  dev->pci_fd = open(path, O_RDWR | O_SYNC);
+  if (dev->pci_fd < 0) {
+    RSHIM_ERR("Failed to open %s\n", path);
+    ret = -errno;
+    goto rshim_map_failed;
+  }
+
+  dev->rshim_regs = mmap(NULL, PCI_RSHIM_WINDOW_SIZE,
+                         PROT_READ | PROT_WRITE | MAP_LOCKED,
                          MAP_SHARED, dev->pci_fd,
-                         bar0 + PCI_RSHIM_WINDOW_OFFSET);
+                         PCI_RSHIM_WINDOW_OFFSET);
   if (dev->rshim_regs == MAP_FAILED) {
     RSHIM_ERR("Failed to map RShim registers\n");
     ret = -ENOMEM;
@@ -421,6 +440,24 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
    return ret;
 }
 
+void rshim_pcie_enable(void *dev)
+{
+#ifdef __linux__
+    char name[256];
+    int fd;
+    struct pci_dev *pci_dev = (struct pci_dev *)dev;
+
+    snprintf(name, sizeof(name), "%s/%04x:%02x:%02x.%1u/enable",
+             SYS_BUS_PCI, pci_dev->domain, pci_dev->bus,
+             pci_dev->dev, pci_dev->func);
+    fd = open( name, O_RDWR | O_CLOEXEC);
+    if (fd == -1)
+       return;
+    write( fd, "1", 1 );
+    close(fd);
+#endif
+}
+
 int rshim_pcie_init(void)
 {
   struct pci_access *pci;
@@ -443,6 +480,7 @@ int rshim_pcie_init(void)
          dev->device_id != BLUEFIELD2_DEVICE_ID))
       continue;
 
+    rshim_pcie_enable(dev);
     rshim_pcie_probe(dev);
   }
 
