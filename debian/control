@@ -1,10 +1,12 @@
 Source: rshim
-Section: base
+Section: admin
 Priority: optional
 Maintainer: Mellanox Technologies <support@mellanox.com>
-Build-Depends: debhelper (>= 8.0.0), autotools-dev, bzip2, libpci-dev, libusb-1.0-0-dev, fuse, libfuse-dev
+Build-Depends: debhelper (>= 8.0.0), autotools-dev, libpci-dev, libusb-1.0-0-dev, libfuse-dev
+Standards-Version: 4.1.4
 
 Package: rshim
+Depends: ${misc:Depends}
 Architecture: any
 Homepage: https://github.com/Mellanox/rshim-user-space
 Description: driver for Mellanox BlueField SoC

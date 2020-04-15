@@ -1,7 +1,11 @@
 #!/usr/bin/make -f
 %:
-	dh $@
+	dh $@ --with-systemd
 
 override_dh_auto_configure:
 	./bootstrap.sh
 	dh_auto_configure
+
+override_dh_auto_install:
+	dh_auto_install
+	dh_systemd_enable || true
