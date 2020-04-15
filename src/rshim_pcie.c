@@ -459,6 +459,8 @@ int rshim_pcie_enable(void *dev)
 
   close(fd);
   return rc;
+#else
+  return 0;
 #endif
 }
 
