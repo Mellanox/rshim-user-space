@@ -26,6 +26,7 @@
 #define TILERA_VENDOR_ID            0x15b3
 #define BLUEFIELD1_DEVICE_ID        0xc2d2
 #define BLUEFIELD2_DEVICE_ID        0xc2d3
+#define BLUEFIELD2_DEVICE_ID2       0xc2d6
 
 /* The offset in BAR2 of the RShim region. */
 #define PCI_RSHIM_WINDOW_OFFSET     0x0
@@ -81,6 +82,17 @@ typedef struct {
   /* File handle for PCI BAR */
   int pci_fd;
 } rshim_pcie_t;
+
+static bool rshim_is_bluefield1(uint16_t device_id)
+{
+  return (device_id == BLUEFIELD1_DEVICE_ID);
+}
+
+static bool rshim_is_bluefield2(uint16_t device_id)
+{
+  return (device_id == BLUEFIELD2_DEVICE_ID) ||
+         (device_id == BLUEFIELD2_DEVICE_ID2);
+}
 
 #ifndef __LP64__
 /* Wait until the RSH_BYTE_ACC_CTL pending bit is cleared */
@@ -140,7 +152,7 @@ static int rshim_byte_acc_read(rshim_pcie_t *dev, int addr, uint64_t *result)
   if (rc)
     return rc;
 
-  if (dev->pci_dev->device_id == BLUEFIELD2_DEVICE_ID) {
+  if (rshim_is_bluefield2(dev->pci_dev->device_id)) {
     /* Acquire RSH_BYTE_ACC_INTERLOCK */
     rc = rshim_byte_acc_lock_acquire(dev);
     if (rc)
@@ -179,7 +191,7 @@ static int rshim_byte_acc_read(rshim_pcie_t *dev, int addr, uint64_t *result)
 
 exit_read:
   /* Release RSH_BYTE_ACC_INTERLOCK */
-  if (dev->pci_dev->device_id == BLUEFIELD2_DEVICE_ID)
+  if (rshim_is_bluefield2(dev->pci_dev->device_id))
     rshim_byte_acc_lock_release(dev);
 
   return rc;
@@ -194,7 +206,7 @@ static int rshim_byte_acc_write(rshim_pcie_t *dev, int addr, uint64_t value)
   if (rc)
     return rc;
 
-  if (dev->pci_dev->device_id == BLUEFIELD2_DEVICE_ID) {
+  if (rshim_is_bluefield2(dev->pci_dev->device_id)) {
     /* Acquire RSH_BYTE_ACC_INTERLOCK */
     rc = rshim_byte_acc_lock_acquire(dev);
     if (rc)
@@ -224,7 +236,7 @@ static int rshim_byte_acc_write(rshim_pcie_t *dev, int addr, uint64_t value)
 
 exit_write:
   /* Release RSH_BYTE_ACC_INTERLOCK */
-  if (dev->pci_dev->device_id == BLUEFIELD2_DEVICE_ID)
+  if (rshim_is_bluefield2(dev->pci_dev->device_id))
     rshim_byte_acc_lock_release(dev);
 
   return rc;
@@ -267,7 +279,7 @@ static int rshim_pcie_write(rshim_backend_t *bd, int chan, int addr,
    * doing a read from another register within the BAR,
    * which forces previous writes to drain.
    */
-  if (dev->pci_dev->device_id == BLUEFIELD1_DEVICE_ID) {
+  if (rshim_is_bluefield1(dev->pci_dev->device_id)) {
     if (dev->write_count == 15) {
       __sync_synchronize();
       rshim_pcie_read(bd, chan, RSH_SCRATCHPAD, &result);
@@ -482,8 +494,8 @@ int rshim_pcie_init(void)
     pci_fill_info(dev, PCI_FILL_IDENT | PCI_FILL_BASES | PCI_FILL_CLASS);
 
     if (dev->vendor_id != TILERA_VENDOR_ID ||
-        (dev->device_id != BLUEFIELD1_DEVICE_ID &&
-         dev->device_id != BLUEFIELD2_DEVICE_ID))
+        (!rshim_is_bluefield1(dev->device_id) &&
+         !rshim_is_bluefield2(dev->device_id)))
       continue;
 
     rshim_pcie_enable(dev);
