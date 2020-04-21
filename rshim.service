@@ -10,8 +10,7 @@ After=network.target
 Restart=always
 Type=forking
 ExecStart=-/usr/sbin/rshim $OPTIONS
-KillMode=process
-ExecStop=/usr/bin/killall -SIGKILL rshim
+KillMode=control-group
 
 [Install]
 WantedBy=multi-user.target

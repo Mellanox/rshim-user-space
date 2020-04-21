@@ -445,9 +445,6 @@ int rshim_reset_control(rshim_backend_t *bd);
 void rshim_work_signal(rshim_backend_t *bd);
 int rshim_fifo_fsync(rshim_backend_t *bd, int chan);
 
-void rshim_fuse_input_notify(rshim_backend_t *bd);
-int rshim_fuse_got_peer_signal(void);
-
 /* Display the rshim logging buffer. */
 int rshim_log_show(rshim_backend_t *bd, char *buf, int len);
 
@@ -484,7 +481,11 @@ static inline int rshim_pcie_lf_init(void)
 }
 #endif
 
+#ifdef HAVE_RSHIM_FUSE
 int rshim_fuse_init(rshim_backend_t *bd);
 int rshim_fuse_del(rshim_backend_t *bd);
+void rshim_fuse_input_notify(rshim_backend_t *bd);
+int rshim_fuse_got_peer_signal(void);
+#endif
 
 #endif /* _RSHIM_H */

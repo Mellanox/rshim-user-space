@@ -185,6 +185,7 @@ char *rshim_device_filter;
 
 int rshim_log_level = LOG_NOTICE;
 bool rshim_daemon_mode = true;
+volatile bool rshim_run = true;
 
 /* Global lock / unlock. */
 
@@ -700,6 +701,8 @@ void rshim_boot_release(rshim_backend_t *bd)
 {
   int rc;
 
+  pthread_mutex_lock(&bd->mutex);
+
   /* Restore the boot mode register. */
   rc = bd->write_rshim(bd, RSHIM_CHANNEL,
                            RSH_BOOT_CONTROL,
@@ -707,7 +710,6 @@ void rshim_boot_release(rshim_backend_t *bd)
   if (rc)
     RSHIM_ERR("couldn't set boot_control, err %d\n", rc);
 
-  pthread_mutex_lock(&bd->mutex);
   /* Flush the leftover data with zeros padded. */
   if (bd->boot_rem_cnt) {
     memset((uint8_t *)&bd->boot_rem_data + bd->boot_rem_cnt, 0,
@@ -889,6 +891,22 @@ static int rshim_fifo_ctrl_tx(rshim_backend_t *bd)
   return len;
 }
 
+static int rshim_got_peer_signal(void)
+{
+#ifdef HAVE_RSHIM_FUSE
+  return rshim_fuse_got_peer_signal();
+#else
+  return -1;
+#endif
+}
+
+static void rshim_input_notify(rshim_backend_t *bd)
+{
+#ifdef HAVE_RSHIM_FUSE
+    rshim_fuse_input_notify(bd);
+#endif
+}
+
 /* Drain the read buffer, and start another read/interrupt if needed. */
 static void rshim_fifo_input(rshim_backend_t *bd)
 {
@@ -992,7 +1010,7 @@ again:
     bd->read_buf_next += copysize;
     bd->read_buf_pkt_rem -= copysize;
 
-    rshim_fuse_input_notify(bd);
+    rshim_input_notify(bd);
     pthread_cond_broadcast(&bd->read_fifo[bd->rx_chan].operable);
 
     if (bd->read_buf_pkt_rem <= 0) {
@@ -1093,7 +1111,7 @@ ssize_t rshim_fifo_read(rshim_backend_t *bd, char *buffer, size_t count,
           return -EINTR;
         }
 
-	if (rshim_fuse_got_peer_signal() == 0) {
+	if (rshim_got_peer_signal() == 0) {
           pthread_mutex_unlock(&bd->mutex);
           return -EINTR;
 	}
@@ -1370,7 +1388,7 @@ ssize_t rshim_fifo_write(rshim_backend_t *bd, const char *buffer,
           return wr_cnt ? wr_cnt : -EAGAIN;
         }
 
-	if (rshim_fuse_got_peer_signal() == 0) {
+	if (rshim_got_peer_signal() == 0) {
           pthread_mutex_unlock(&bd->mutex);
           return -EINTR;
 	}
@@ -1548,7 +1566,7 @@ int rshim_fifo_fsync(rshim_backend_t *bd, int chan)
       return -EINTR;
     }
 
-    if (rshim_fuse_got_peer_signal() == 0) {
+    if (rshim_got_peer_signal() == 0) {
       pthread_mutex_unlock(&bd->mutex);
       return -EINTR;
     }
@@ -1560,7 +1578,7 @@ int rshim_fifo_fsync(rshim_backend_t *bd, int chan)
       return -EINTR;
     }
 
-    if (rshim_fuse_got_peer_signal() == 0) {
+    if (rshim_got_peer_signal() == 0) {
       pthread_mutex_unlock(&bd->mutex);
       return -EINTR;
     }
@@ -2034,11 +2052,13 @@ int rshim_register(rshim_backend_t *bd)
   bd->timer = rshim_timer_ticks + 1;
 
   /* create character devices. */
+#ifdef HAVE_RSHIM_FUSE
   rc = rshim_fuse_init(bd);
   if (rc) {
     rshim_deregister(bd);
     return rc;
   }
+#endif
 
   return 0;
 }
@@ -2050,7 +2070,9 @@ void rshim_deregister(rshim_backend_t *bd)
   if (!bd->registered)
     return;
 
+#ifdef HAVE_RSHIM_FUSE
   rshim_fuse_del(bd);
+#endif
 
   for (i = 0; i < 2; i++) {
     free(bd->boot_buf[i]);
@@ -2088,6 +2110,25 @@ bool rshim_allow_device(const char *devname)
       !strcmp(rshim_device_filter, devname);
 }
 
+static void rshim_stop(void)
+{
+  rshim_backend_t *bd;
+  int i;
+
+  rshim_lock();
+
+  for (i = 0; i < RSHIM_MAX_DEV; i++) {
+    bd = rshim_devs[i];
+    if (!bd)
+      continue;
+    pthread_mutex_lock(&bd->mutex);
+    rshim_deregister(bd);
+    pthread_mutex_unlock(&bd->mutex);
+  }
+
+  rshim_unlock();
+}
+
 static void rshim_main(int argc, char *argv[])
 {
   int i, fd, num, rc, epoll_fd, timer_fd, index;
@@ -2105,6 +2146,7 @@ static void rshim_main(int argc, char *argv[])
   memset(&event, 0, sizeof(event));
   memset(events, 0, sizeof(events));
 
+#ifdef HAVE_RSHIM_FUSE
 #ifdef __linux__
   rc = system("modprobe cuse");
   if (rc == -1)
@@ -2115,6 +2157,7 @@ static void rshim_main(int argc, char *argv[])
   if (feature_present("cuse") == 0)
     if (system("kldload cuse") == -1)
       RSHIM_DBG("Failed the load cuse\n");
+#endif
 #endif
 
   /* Create the epoll fd */
@@ -2184,7 +2227,7 @@ static void rshim_main(int argc, char *argv[])
     exit(-1);
   }
 
-  for (;;) {
+  while (rshim_run) {
     num = epoll_wait(epoll_fd, events, MAXEVENTS, -1);
     if (num <= 0) {
       if (num < 0)
@@ -2240,6 +2283,8 @@ static void rshim_main(int argc, char *argv[])
       rshim_usb_poll();
     }
   }
+
+  rshim_stop();
 }
 
 int rshim_fifo_size(rshim_backend_t *bd, int chan, bool is_rx)
@@ -2269,6 +2314,10 @@ static void rshim_sig_handler(int sig)
   switch (sig) {
   case SIGHUP:
     rshim_sig_hup(sig);
+    break;
+
+  case SIGTERM:
+    rshim_run = false;
     break;
   }
 }

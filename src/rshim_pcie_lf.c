@@ -412,8 +412,8 @@ static int rshim_boot_fifo_write(struct pci_dev *pci_dev, int addr,
 }
 
 /* RShim read/write routines */
-static int rshim_pcie_read(struct rshim_backend *bd, int chan, int addr,
-                           uint64_t *result)
+static int __attribute__ ((noinline))
+rshim_pcie_read(struct rshim_backend *bd, int chan, int addr, uint64_t *result)
 {
   rshim_pcie_lf_t *dev = container_of(bd, rshim_pcie_lf_t, bd);
   struct pci_dev *pci_dev = dev->pci_dev;
@@ -429,8 +429,8 @@ static int rshim_pcie_read(struct rshim_backend *bd, int chan, int addr,
   return rc;
 }
 
-static int rshim_pcie_write(struct rshim_backend *bd, int chan, int addr,
-                            uint64_t value)
+static int __attribute__ ((noinline))
+rshim_pcie_write(struct rshim_backend *bd, int chan, int addr, uint64_t value)
 {
   rshim_pcie_lf_t *dev = container_of(bd, rshim_pcie_lf_t, bd);
   struct pci_dev *pci_dev = dev->pci_dev;

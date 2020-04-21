@@ -244,8 +244,8 @@ exit_write:
 #endif
 
 /* RShim read/write routines */
-static int rshim_pcie_read(rshim_backend_t *bd, int chan, int addr,
-                           uint64_t *result)
+static int __attribute__ ((noinline))
+rshim_pcie_read(rshim_backend_t *bd, int chan, int addr, uint64_t *result)
 {
   rshim_pcie_t *dev = container_of(bd, rshim_pcie_t, bd);
   int rc = 0;
@@ -263,8 +263,8 @@ static int rshim_pcie_read(rshim_backend_t *bd, int chan, int addr,
   return rc;
 }
 
-static int rshim_pcie_write(rshim_backend_t *bd, int chan, int addr,
-                            uint64_t value)
+static int __attribute__ ((noinline))
+rshim_pcie_write(rshim_backend_t *bd, int chan, int addr, uint64_t value)
 {
   rshim_pcie_t *dev = container_of(bd, rshim_pcie_t, bd);
   uint64_t result;

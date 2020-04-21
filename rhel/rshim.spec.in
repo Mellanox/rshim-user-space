@@ -14,13 +14,11 @@ Source0: https://github.com/Mellanox/rshim-user-space/releases/download/%{name}-
 
 BuildRequires: gcc, autoconf, automake, make
 BuildRequires: pkgconfig(libpci), pkgconfig(libusb-1.0), pkgconfig(fuse)
-BuildRequires: systemd-units
+BuildRequires: systemd
 BuildRequires: systemd-rpm-macros
 
-Requires: psmisc
-%if 0%{?rhel} >= 8 || 0%{?fedora} > 0
-Requires: kernel-modules-extra
-%endif
+Requires: kmod(cuse.ko)
+Suggests: kernel-modules-extra
 
 %description
 This is the user-space driver to access the BlueField SoC via the rshim
@@ -55,6 +53,13 @@ via the virtual console or network interface.
 %{_mandir}/man8/rshim.8.gz
 
 %changelog
+* Tue Apr 21 2020 Liming Sun <lsun@mellanox.com> - 2.0.4-1
+- Update .spec file according to review comments
+- Fix the 'KillMode' in rshim.service
+- Support process termination by SIGTERM
+- Fix some compiling warnings and configure issue for FreeBSD
+- Fix a read()/write() issue in rshim_pcie.c caused by optimization
+
 * Tue Apr 14 2020 Liming Sun <lsun@mellanox.com> - 2.0.3-1
 - Enable pci device during probing
 - Map the pci resource0 file instead of /dev/mem

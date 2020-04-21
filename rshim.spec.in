@@ -15,7 +15,6 @@ Source0: https://github.com/mellanox/rshim-user-space/archive/%{name}-%{version}
 BuildRequires: gcc, autoconf, automake, pkgconfig, make
 BuildRequires: pkgconfig(libpci), pkgconfig(libusb-1.0), pkgconfig(fuse)
 
-Requires: psmisc
 %if 0%{?rhel} >= 8 || 0%{?fedora} > 0
 Requires: kernel-modules-extra
 %endif
@@ -73,6 +72,13 @@ tar -axf %{SOURCE0} -C %{name}-%{version} --strip-components 1
 %{_mandir}/man8/rshim.8.gz
 
 %changelog
+* Tue Apr 21 2020 Liming Sun <lsun@mellanox.com> - 2.0.4-1
+- Update .spec file according to review comments
+- Fix the 'KillMode' in rshim.service
+- Support process termination by SIGTERM
+- Fix some compiling warnings and configure issue for FreeBSD
+- Fix a read()/write() issue in rshim_pcie.c caused by optimization
+
 * Tue Apr 14 2020 Liming Sun <lsun@mellanox.com> - 2.0.3-1
 - Enable pci device during probing
 - Map the pci resource0 file instead of /dev/mem

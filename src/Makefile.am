@@ -23,6 +23,6 @@ endif
 # FUSE / CUSE
 if BUILD_RSHIM_FUSE
 rshim_SOURCES += rshim_fuse.c
-rshim_CPPFLAGS += $(fuse_CFLAGS)
+rshim_CPPFLAGS += $(fuse_CFLAGS) -DHAVE_RSHIM_FUSE
 LIBS += $(fuse_LIBS)
 endif

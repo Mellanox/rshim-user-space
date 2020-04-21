@@ -2,7 +2,7 @@
 # Copyright (C) 2019 Mellanox Technologies. All Rights Reserved.
 #
 
-AC_INIT([rshim], [2.0.3])
+AC_INIT([rshim], [2.0.4])
 AC_CONFIG_AUX_DIR(config)
 AM_INIT_AUTOMAKE([-Wall -Werror foreign])
 AC_LANG(C)
@@ -80,7 +80,7 @@ AS_IF([test "x$build_usb" = "xyes"], [
   AC_CHECK_FUNCS([libusb_get_port_numbers libusb_get_device_address])
 ])
 
-AS_IF([test "x$build_usb" = "xyes"], [
+AS_IF([test "x$build_fuse" = "xyes"], [
   if test $backend = freebsd; then
     AC_CHECK_LIB(cuse, cuse_dev_create)
   else

@@ -1,3 +1,13 @@
+rshim (2.0.4-1) UNRELEASED; urgency=low
+
+  * Update .spec file according to review comments
+  * Fix the 'KillMode' in rshim.service
+  * Support process termination by SIGTERM
+  * Fix some compiling warnings and configure issue for FreeBSD
+  * Fix a read()/write() issue in rshim_pcie.c caused by optimization
+
+ -- Liming Sun <lsun@mellanox.com>  Tue, 21 Apr 2020 11:21:20 -0400
+
 rshim (2.0.3-1) UNRELEASED; urgency=low
 
   * Enable pci device during probing
