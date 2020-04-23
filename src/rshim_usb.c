@@ -570,7 +570,6 @@ static int rshim_usb_probe_one(libusb_context *ctx, libusb_device *usb_dev)
     dev = calloc(1, sizeof(*dev));
     if (dev == NULL) {
       RSHIM_ERR("couldn't get memory for new device");
-      rshim_unlock();
       goto error;
     }
 
@@ -604,11 +603,8 @@ static int rshim_usb_probe_one(libusb_context *ctx, libusb_device *usb_dev)
 
   if (!dev->read_or_intr_urb || !dev->write_urb) {
     RSHIM_ERR("can't allocate buffers or urbs\n");
-    rshim_unlock();
     goto error;
   }
-
-  rshim_unlock();
 
   pthread_mutex_lock(&bd->mutex);
 
@@ -693,14 +689,11 @@ static int rshim_usb_probe_one(libusb_context *ctx, libusb_device *usb_dev)
    * has already registered or not, which involves reading/writting rshim
    * registers and has assumption that the under layer is working.
    */
-  rshim_lock();
   rc = rshim_register(bd);
   if (rc) {
-    rshim_unlock();
     pthread_mutex_unlock(&bd->mutex);
     goto error;
   }
-  rshim_unlock();
 
   /* Notify that device is attached. */
   rc = rshim_notify(bd, RSH_EVENT_ATTACH, 0);
@@ -708,6 +701,7 @@ static int rshim_usb_probe_one(libusb_context *ctx, libusb_device *usb_dev)
   if (rc)
     goto error;
 
+  rshim_unlock();
   return 0;
 
 error:
@@ -721,11 +715,10 @@ error:
     free(dev->intr_buf);
     dev->intr_buf = NULL;
 
-    rshim_lock();
     rshim_deref(bd);
-    rshim_unlock();
   }
 
+  rshim_unlock();
   return rc;
 }
 
@@ -735,10 +728,12 @@ static void rshim_usb_disconnect(struct libusb_device *usb_dev)
   rshim_usb_t *dev;
 
   rshim_lock();
+
   bd = rshim_find_by_dev(usb_dev);
-  rshim_unlock();
-  if (!bd)
+  if (!bd) {
+    rshim_unlock();
     return;
+  }
 
   dev = container_of(bd, rshim_usb_t, bd);
 
@@ -797,7 +792,6 @@ static void rshim_usb_disconnect(struct libusb_device *usb_dev)
     dev->handle = NULL;
   }
 
-  rshim_lock();
   rshim_deref(bd);
   rshim_unlock();
 }

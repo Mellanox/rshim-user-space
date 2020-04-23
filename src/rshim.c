@@ -30,7 +30,7 @@
 #define RSHIM_TIMER_INTERVAL 1
 
 /* Cycles to poll the network initialization before timeout. */
-#define RSHIM_NET_INIT_DELAY (30000 / RSHIM_TIMER_INTERVAL)
+#define RSHIM_NET_INIT_DELAY (60000 / RSHIM_TIMER_INTERVAL)
 
 /* Keepalive period in milliseconds. */
 static int rshim_keepalive_period = 300;
@@ -603,8 +603,8 @@ int rshim_boot_open(rshim_backend_t *bd)
   if (rc && rc != -EPROTO && rc != -ESHUTDOWN &&
     rc != -ETIMEDOUT && rc != -EPIPE) {
     RSHIM_ERR("boot_open: error %d writing reset control\n", rc);
-    pthread_mutex_unlock(&bd->mutex);
     bd->is_boot_open = 0;
+    pthread_mutex_unlock(&bd->mutex);
     return rc;
   }
 
@@ -612,12 +612,12 @@ int rshim_boot_open(rshim_backend_t *bd)
     RSHIM_ERR("boot_open: got error %d on reset write\n", rc);
 
 boot_open_done:
+  rshim_ref(bd);
   pthread_mutex_unlock(&bd->mutex);
 
+  /* A delay to workaround to wait for PCIe backend ready. */
   if (!bd->has_reprobe)
     sleep(10);
-
-  rshim_ref(bd);
 
   return 0;
 }
@@ -1553,6 +1553,8 @@ static int rshim_boot_done(rshim_backend_t *bd)
 
 int rshim_fifo_fsync(rshim_backend_t *bd, int chan)
 {
+  int rc = 0;
+
   pthread_mutex_lock(&bd->mutex);
 
   /*
@@ -1562,31 +1564,31 @@ int rshim_fifo_fsync(rshim_backend_t *bd, int chan)
    */
   while (!write_empty(bd, chan)) {
     if (pthread_cond_wait(&bd->write_fifo[chan].operable, &bd->mutex)) {
-      pthread_mutex_unlock(&bd->mutex);
-      return -EINTR;
+      rc = -EINTR;
+      break;
     }
 
     if (rshim_got_peer_signal() == 0) {
-      pthread_mutex_unlock(&bd->mutex);
-      return -EINTR;
+      rc = -EINTR;
+      break;
     }
   }
 
-  while (bd->spin_flags & RSH_SFLG_WRITING) {
+  while (!rc && (bd->spin_flags & RSH_SFLG_WRITING)) {
     if (pthread_cond_wait(&bd->fifo_write_complete_cond, &bd->mutex)) {
-      pthread_mutex_unlock(&bd->mutex);
-      return -EINTR;
+      rc = -EINTR;
+      break;
     }
 
     if (rshim_got_peer_signal() == 0) {
-      pthread_mutex_unlock(&bd->mutex);
-      return -EINTR;
+      rc = -EINTR;
+      break;
     }
   }
 
   pthread_mutex_unlock(&bd->mutex);
 
-  return 0;
+  return rc;
 }
 
 void rshim_fifo_check_poll(rshim_backend_t *bd, int chan, bool *poll_rx,

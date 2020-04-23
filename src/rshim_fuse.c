@@ -21,6 +21,7 @@
 #ifdef __linux__
 #include <fuse/cuse_lowlevel.h>
 #include <fuse/fuse_opt.h>
+#include <unistd.h>
 #elif defined(__FreeBSD__)
 #include <termios.h>
 #include <sys/stat.h>
@@ -1099,6 +1100,7 @@ int rshim_fuse_init(rshim_backend_t *bd)
 {
   char buf[128], *name;
 #ifdef __linux__
+  time_t t0, t1;
   const char *bufp[] = {buf};
   struct cuse_info ci = {.dev_info_argc = 1,
                          .dev_info_argv = bufp,
@@ -1124,6 +1126,21 @@ int rshim_fuse_init(rshim_backend_t *bd)
   for (i = 0; i < RSH_DEV_TYPES; i++) {
 #ifdef __linux__
     name = rshim_dev_minor_names[i];
+
+    /*
+     * Check whether path already exists. Adding a loop in case the
+     * device was re-ceated during SW_RESET.
+     */
+    snprintf(buf, sizeof(buf), "/dev/rshim%d/%s",
+             bd->index + rshim_index_base, name);
+    time(&t0);
+    while (!access(buf, F_OK)) {
+      time(&t1);
+      if (difftime(t1, t0) > 5) {
+        RSHIM_ERR("%s already exists\n", buf);
+        return -1;
+      }
+    }
     snprintf(buf, sizeof(buf), "DEVNAME=rshim%d/%s",
              bd->index + rshim_index_base, name);
     if (!ops[i])

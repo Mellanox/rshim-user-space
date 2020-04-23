@@ -499,7 +499,6 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
     dev = calloc(1, sizeof(*dev));
     if (dev == NULL) {
       ret = -ENOMEM;
-      rshim_unlock();
       goto error;
     }
 
@@ -516,8 +515,6 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
 
   rshim_ref(bd);
 
-  rshim_unlock();
-
   /* Initialize object */
   dev->pci_dev = pci_dev;
 
@@ -528,14 +525,11 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
    * has already registered or not, which involves reading/writting rshim
    * registers and has assumption that the under layer is working.
    */
-  rshim_lock();
   ret = rshim_register(bd);
   if (ret) {
-    rshim_unlock();
     pthread_mutex_unlock(&bd->mutex);
     goto rshim_map_failed;
   }
-  rshim_unlock();
 
   /* Notify that the device is attached */
   ret = rshim_notify(bd, RSH_EVENT_ATTACH, 0);
@@ -543,13 +537,13 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
   if (ret)
     goto rshim_map_failed;
 
+  rshim_unlock();
   return 0;
 
 rshim_map_failed:
-  rshim_lock();
   rshim_deref(bd);
-  rshim_unlock();
 error:
+  rshim_unlock();
    return ret;
 }
 
