@@ -319,7 +319,8 @@ static ssize_t rshim_write_delayed(rshim_backend_t *bd, int devtype,
 {
   int size_addr, size_mask, data_addr, max_size;
   uint8_t pad_buf[sizeof(uint64_t)] = { 0 };
-  int rc, avail = 0, byte_cnt = 0, retry;
+  int rc, avail = 0, byte_cnt = 0;
+  time_t t0, t1;
   uint64_t reg;
 
   switch (devtype) {
@@ -361,7 +362,7 @@ static ssize_t rshim_write_delayed(rshim_backend_t *bd, int devtype,
       buf = (const uint8_t *)pad_buf;
     }
 
-    retry = 0;
+    time(&t0);
     while (avail <= 0) {
       /* Calculate available space in words. */
       rc = bd->read_rshim(bd, RSHIM_CHANNEL, size_addr, &reg);
@@ -373,15 +374,12 @@ static ssize_t rshim_write_delayed(rshim_backend_t *bd, int devtype,
       if (avail > 0)
         break;
 
-      /*
-       * Retry or return failure if the other side is not responding
-       * after the configured time.
-       */
-      if (++retry > rshim_boot_timeout * 1000)
+      if (devtype == RSH_DEV_TYPE_BOOT)
+        return (byte_cnt > count) ? count : byte_cnt;
+
+      time(&t1);
+      if (difftime(t1, t0) > 3)
         return -ETIMEDOUT;
-      pthread_mutex_unlock(&bd->mutex);
-      usleep(1000);
-      pthread_mutex_lock(&bd->mutex);
     }
 
     reg = *(uint64_t *)buf;
@@ -619,6 +617,7 @@ boot_open_done:
   if (!bd->has_reprobe)
     sleep(10);
 
+  time(&bd->boot_write_time);
   return 0;
 }
 
@@ -626,6 +625,7 @@ int rshim_boot_write(rshim_backend_t *bd, const char *user_buffer, size_t count,
                      int (*copy_in)(void *dest, const void *src, int count))
 {
   int rc = 0, whichbuf = 0, len;
+  time_t tm;
   size_t bytes_written = 0;
 
   pthread_mutex_lock(&bd->mutex);
@@ -672,9 +672,17 @@ int rshim_boot_write(rshim_backend_t *bd, const char *user_buffer, size_t count,
       bytes_written += len;
       bd->boot_rem_cnt = 0;
     } else if (rc == 0) {
-      rc = -EINTR;
+      time(&tm);
+      if (difftime(tm, bd->boot_write_time) > rshim_boot_timeout) {
+        rc = -ETIMEDOUT;
+        RSHIM_INFO("boot timeout\n");
+      } else {
+        rc = -EINTR;
+      }
       break;
     }
+
+    time(&bd->boot_write_time);
 
     if (rc != buf_bytes)
       break;
@@ -1416,12 +1424,9 @@ ssize_t rshim_fifo_write(rshim_backend_t *bd, const char *buffer,
       memcpy(bd->write_fifo[chan].data, buffer + pass1, pass2);
 
     pthread_mutex_lock(&bd->ringlock);
-
     write_add_bytes(bd, chan, writesize);
-
     /* We have some new bytes, let's see if we can write any. */
     rshim_fifo_output(bd);
-
     pthread_mutex_unlock(&bd->ringlock);
 
     count -= writesize;
@@ -1484,7 +1489,6 @@ static void rshim_work_handler(rshim_backend_t *bd)
     bd->has_fifo_work = 0;
 
     pthread_mutex_lock(&bd->ringlock);
-
     bd->spin_flags &= ~RSH_SFLG_WRITING;
     if (len == bd->fifo_work_buf_len) {
       pthread_cond_broadcast(&bd->fifo_write_complete_cond);
@@ -1493,19 +1497,15 @@ static void rshim_work_handler(rshim_backend_t *bd)
       rshim_notify(bd, RSH_EVENT_FIFO_ERR, -1);
       RSHIM_ERR("fifo_write: completed abnormally (%d)\n", len);
     }
-
     pthread_mutex_unlock(&bd->ringlock);
   }
 
   if (bd->has_cons_work) {
     pthread_mutex_lock(&bd->ringlock);
-
     /* FIFO output. */
     rshim_fifo_output(bd);
-
     /* FIFO input. */
     rshim_fifo_input(bd);
-
     pthread_mutex_unlock(&bd->ringlock);
 
     bd->has_cons_work = 0;
