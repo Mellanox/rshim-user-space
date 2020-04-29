@@ -270,9 +270,6 @@ static ssize_t rshim_read_default(rshim_backend_t *bd, int devtype,
     return -EINVAL;
   }
 
-  if (bd->is_boot_open)
-    return 0;
-
   while (total < count) {
     if (avail == 0) {
       rc = bd->read_rshim(bd, RSHIM_CHANNEL, RSH_TM_TILE_TO_HOST_STS, &reg);
@@ -921,9 +918,6 @@ static void rshim_fifo_input(rshim_backend_t *bd)
   rshim_tmfifo_msg_hdr_t *hdr;
   uint8_t rx_avail = 0;
   int rc;
-
-  if (bd->is_boot_open)
-    return;
 
 again:
   while (bd->read_buf_next < bd->read_buf_bytes) {
