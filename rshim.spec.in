@@ -35,7 +35,11 @@ tar -axf %{SOURCE0} -C %{name}-%{version} --strip-components 1
 %build
 ./bootstrap.sh
 %configure
+%if %{?make_build:1}%{!?make_build:0}
 %make_build
+%else
+make
+%endif
 
 %install
 %undefine _missing_build_ids_terminate_build
