@@ -33,9 +33,6 @@
 
 #include "rshim.h"
 
-/* Display level of the misc device file. */
-static int rshim_misc_level;
-
 /* Name of the sub-device types. */
 char *rshim_dev_minor_names[RSH_DEV_TYPES] = {
     [RSH_DEV_TYPE_RSHIM] = "rshim",
@@ -660,18 +657,23 @@ static int rshim_fuse_misc_read(struct cuse_dev *cdev, int fflags,
   p = rm->buffer;
 
   n = snprintf(p, len, "%-16s%d (0:basic, 1:advanced, 2:log)\n",
-                 "DISPLAY_LEVEL", rshim_misc_level);
+               "DISPLAY_LEVEL", bd->display_level);
   p += n;
   len -= n;
 
   n = snprintf(p, len, "%-16s%lld (0:rshim, 1:emmc, 2:emmc-boot-swap)\n",
-                 "BOOT_MODE",
-                 (unsigned long long)value & RSH_BOOT_CONTROL__BOOT_MODE_MASK);
+               "BOOT_MODE",
+               (unsigned long long)value & RSH_BOOT_CONTROL__BOOT_MODE_MASK);
   p += n;
   len -= n;
 
   n = snprintf(p, len, "%-16s%d (seconds)\n", "BOOT_TIMEOUT",
-                 rshim_boot_timeout);
+               bd->boot_timeout);
+  p += n;
+  len -= n;
+
+  n = snprintf(p, len, "%-16s%d (seconds)\n", "DROP_MODE",
+               bd->drop_mode);
   p += n;
   len -= n;
 
@@ -685,12 +687,12 @@ static int rshim_fuse_misc_read(struct cuse_dev *cdev, int fflags,
   p += n;
   len -= n;
 
-  if (rshim_misc_level == 1) {
+  if (bd->display_level == 1) {
     gettimeofday(&tp, NULL);
 
     /* Skip SW_RESET while pushing boot stream. */
     n = snprintf(p, len, "%-16s%d (1: skip)\n", "BOOT_RESET_SKIP",
-                 rshim_skip_boot_reset);
+                 bd->skip_boot_reset);
     p += n;
     len -= n;
 
@@ -720,7 +722,7 @@ static int rshim_fuse_misc_read(struct cuse_dev *cdev, int fflags,
     n = snprintf(p, len, "%-16s%d %d (rw)\n",
                    "VLAN_ID", bd->vlan[0], bd->vlan[1]);
     p += n;
-  } else if (rshim_misc_level == 2) {
+  } else if (bd->display_level == 2) {
     n = rshim_log_show(bd, p, len);
     p += n;
   }
@@ -768,6 +770,15 @@ static int rshim_fuse_misc_write(struct cuse_dev *cdev, int fflags,
   int i, rc = 0, value = 0, mac[6], vlan[2] = {0};
   char key[32];
 
+  if (!bd) {
+#ifdef __linux__
+    fuse_reply_err(req, ENODEV);
+    return;
+#elif defined(__FreeBSD__)
+    return CUSE_ERR_INVALID;
+#endif
+  }
+
   if (size >= sizeof(buf))
     size = sizeof(buf) - 1;
 #ifdef __linux__
@@ -789,11 +800,17 @@ static int rshim_fuse_misc_write(struct cuse_dev *cdev, int fflags,
   if (strcmp(key, "DISPLAY_LEVEL") == 0) {
     if (sscanf(p, "%d", &value) != 1)
       goto invalid;
-    rshim_misc_level = value;
+    bd->display_level = value;
   } else if (strcmp(key, "BOOT_TIMEOUT") == 0) {
     if (sscanf(p, "%d", &value) != 1)
       goto invalid;
-    rshim_boot_timeout = value;
+    bd->boot_timeout = value;
+  } else if (strcmp(key, "DROP_MODE") == 0) {
+    if (sscanf(p, "%d", &value) != 1)
+      goto invalid;
+    bd->drop_mode = !!value;
+    if (bd->drop_mode)
+      bd->drop_pkt = 1;
   } else if (strcmp(key, "BOOT_MODE") == 0) {
     if (sscanf(p, "%x", &value) != 1)
       goto invalid;
@@ -835,7 +852,7 @@ static int rshim_fuse_misc_write(struct cuse_dev *cdev, int fflags,
   } else if (strcmp(key, "BOOT_RESET_SKIP") == 0) {
     if (sscanf(p, "%x", &value) != 1)
       goto invalid;
-    rshim_skip_boot_reset = value;
+    bd->skip_boot_reset = !!value;
   } else if (strcmp(key, "PEER_MAC") == 0) {
     if (sscanf(p, "%x:%x:%x:%x:%x:%x",
                &mac[0], &mac[1], &mac[2], &mac[3], &mac[4], &mac[5]) != 6)

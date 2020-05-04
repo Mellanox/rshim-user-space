@@ -213,7 +213,7 @@ struct rshim_backend {
   uint32_t has_rshim : 1;         /* RSHIM found. */
   uint32_t has_fifo_work : 1;     /* FIFO output to be done in worker. */
   uint32_t has_reprobe : 1;       /* Reprobe support after SW reset. */
-  uint32_t drop : 1;              /* Drop the rest of the packet. */
+  uint32_t drop_pkt : 1;          /* Drop the rest of the packet. */
   uint32_t registered : 1;        /* Backend has been registered. */
   uint32_t keepalive : 1;         /* A flag to update keepalive. */
   uint32_t peer_ctrl_req : 1;     /* A flag to send ctrl request. */
@@ -221,6 +221,8 @@ struct rshim_backend {
   uint32_t peer_mac_set : 1;      /* A flag to send MAC-set request. */
   uint32_t peer_pxe_id_set : 1;   /* A flag to send pxe-id-set request. */
   uint32_t peer_vlan_set : 1;     /* A flag to set vlan IDs. */
+  uint32_t drop_mode : 1;         /* A flag to drop all input/output. */
+  uint32_t skip_boot_reset : 1;   /* Skip SW_RESET while pushing boot stream. */
 
   /* reference count. */
   volatile int ref;
@@ -328,6 +330,12 @@ struct rshim_backend {
 
   /* Index in rshim_devs[]. */
   int index;
+
+  /* Display level in the misc output. */
+  int display_level;
+
+  /* Boot timeout in seconds. */
+  int boot_timeout;
 
   /* Configured MAC address of the peer-side. */
   uint8_t peer_mac[6];

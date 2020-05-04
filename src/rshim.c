@@ -35,12 +35,6 @@
 /* Keepalive period in milliseconds. */
 static int rshim_keepalive_period = 300;
 
-/* Boot timeout in seconds. */
-int rshim_boot_timeout = 100;
-
-/* Skip SW_RESET while pushing boot stream. */
-int rshim_skip_boot_reset;
-
 #define RSHIM_KEEPALIVE_MAGIC_NUM 0x5089836482ULL
 
 /* Circular buffer macros. */
@@ -270,7 +264,7 @@ static ssize_t rshim_read_default(rshim_backend_t *bd, int devtype,
     return -EINVAL;
   }
 
-  while (total < count) {
+  while (total < count && !bd->drop_mode) {
     if (avail == 0) {
       rc = bd->read_rshim(bd, RSHIM_CHANNEL, RSH_TM_TILE_TO_HOST_STS, &reg);
       if (rc < 0)
@@ -319,6 +313,9 @@ static ssize_t rshim_write_delayed(rshim_backend_t *bd, int devtype,
   int rc, avail = 0, byte_cnt = 0;
   time_t t0, t1;
   uint64_t reg;
+
+  if (bd->drop_mode)
+    return count;
 
   switch (devtype) {
   case RSH_DEV_TYPE_TMFIFO:
@@ -406,6 +403,9 @@ static ssize_t rshim_write_default(rshim_backend_t *bd, int devtype,
 {
   int rc;
 
+  if (bd->drop_mode)
+    return count;
+
   switch (devtype) {
   case RSH_DEV_TYPE_TMFIFO:
     if (bd->is_boot_open)
@@ -455,7 +455,7 @@ static int wait_for_boot_done(rshim_backend_t *bd)
 {
   int rc;
 
-  if (!bd->has_reprobe || rshim_skip_boot_reset)
+  if (!bd->has_reprobe || bd->skip_boot_reset)
     return 0;
 
   if (!bd->has_rshim || bd->is_booting) {
@@ -520,7 +520,7 @@ int rshim_boot_open(rshim_backend_t *bd)
 
   pthread_mutex_lock(&bd->mutex);
 
-  if (bd->is_boot_open) {
+  if (bd->is_boot_open || bd->drop_mode) {
     RSHIM_INFO("can't boot, boot file already open\n");
     pthread_mutex_unlock(&bd->mutex);
     return -EBUSY;
@@ -573,7 +573,7 @@ int rshim_boot_open(rshim_backend_t *bd)
   bd->write_rshim(bd, RSH_MMIO_ADDRESS_SPACE__CHANNEL_VAL_WDOG1,
                   RSH_ARM_WDG_CONTROL_WCS, 0);
 
-  if (rshim_skip_boot_reset)
+  if (bd->skip_boot_reset)
     goto boot_open_done;
 
   /* SW reset. */
@@ -670,7 +670,7 @@ int rshim_boot_write(rshim_backend_t *bd, const char *user_buffer, size_t count,
       bd->boot_rem_cnt = 0;
     } else if (rc == 0) {
       time(&tm);
-      if (difftime(tm, bd->boot_write_time) > rshim_boot_timeout) {
+      if (difftime(tm, bd->boot_write_time) > bd->boot_timeout) {
         rc = -ETIMEDOUT;
         RSHIM_INFO("boot timeout\n");
       } else {
@@ -919,6 +919,9 @@ static void rshim_fifo_input(rshim_backend_t *bd)
   uint8_t rx_avail = 0;
   int rc;
 
+  if (bd->drop_mode)
+    return;
+
 again:
   while (bd->read_buf_next < bd->read_buf_bytes) {
     int copysize;
@@ -965,7 +968,7 @@ again:
 
       RSHIM_DBG("drain: hdr, nxt %d rem %d chn %d\n",
                 bd->read_buf_next, bd->read_buf_pkt_rem, bd->rx_chan);
-      bd->drop = 0;
+      bd->drop_pkt = 0;
     }
 
     if (bd->rx_chan == TMFIFO_CONS_CHAN &&
@@ -979,11 +982,11 @@ again:
        * any console data, and will then launch another read.
        */
       read_reset(bd, TMFIFO_CONS_CHAN);
-      bd->drop = 1;
+      bd->drop_pkt = 1;
     } else if (bd->rx_chan == TMFIFO_NET_CHAN && bd->net_notify_fd[0] < 0) {
       /* Drop if networking is not enabled. */
       read_reset(bd, TMFIFO_NET_CHAN);
-      bd->drop = 1;
+      bd->drop_pkt = 1;
     }
 
     copysize = MIN(bd->read_buf_pkt_rem,
@@ -1003,7 +1006,7 @@ again:
       break;
     }
 
-    if (!bd->drop) {
+    if (!bd->drop_pkt) {
       memcpy(read_space_ptr(bd, bd->rx_chan), &bd->read_buf[bd->read_buf_next],
              copysize);
       read_add_bytes(bd, bd->rx_chan, copysize);
@@ -1287,7 +1290,7 @@ static void rshim_fifo_output(rshim_backend_t *bd)
   }
 
   /* Drop the data if it is still booting. */
-  if (bd->is_boot_open)
+  if (bd->is_boot_open || bd->drop_mode)
     return;
 
   /* If we actually put anything in the buffer, send it. */
@@ -1469,7 +1472,7 @@ static void rshim_work_handler(rshim_backend_t *bd)
     }
   }
 
-  if (bd->is_boot_open) {
+  if (bd->is_boot_open || bd->drop_mode) {
     pthread_mutex_unlock(&bd->mutex);
     return;
   }
@@ -2042,6 +2045,7 @@ int rshim_register(rshim_backend_t *bd)
   bd->net_notify_fd[0] = -1;
   bd->net_notify_fd[1] = -1;
   bd->registered = 1;
+  bd->boot_timeout = 100;
 
   /* Start the keepalive timer. */
   bd->last_keepalive = rshim_timer_ticks;
