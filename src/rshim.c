@@ -919,7 +919,7 @@ static void rshim_fifo_input(rshim_backend_t *bd)
   uint8_t rx_avail = 0;
   int rc;
 
-  if (bd->drop_mode)
+  if (bd->drop_mode || bd->is_booting)
     return;
 
 again:
