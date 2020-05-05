@@ -453,10 +453,14 @@ static ssize_t rshim_write_default(rshim_backend_t *bd, int devtype,
  */
 static int wait_for_boot_done(rshim_backend_t *bd)
 {
+  struct timespec ts;
   int rc;
 
   if (!bd->has_reprobe || bd->skip_boot_reset)
     return 0;
+
+  clock_gettime(CLOCK_REALTIME, &ts);
+  ts.tv_sec += 20;
 
   if (!bd->has_rshim || bd->is_booting) {
     while (bd->is_booting) {
@@ -465,9 +469,12 @@ static int wait_for_boot_done(rshim_backend_t *bd)
        * FIXME: might we want a timeout here, too?  If the reprobe takes a very
        * long time, something's probably wrong.  Maybe a couple of minutes?
        */
-      rc = pthread_cond_wait(&bd->boot_complete_cond, &bd->mutex);
-      if (rc)
-        return rc;
+      rc = pthread_cond_timedwait(&bd->boot_complete_cond, &bd->mutex, &ts);
+      if (rc) {
+        RSHIM_ERR("Failed to detect re-probe, continues anyway.\n");
+        bd->is_booting = 0;
+        return 0;
+      }
     }
 
     if (!bd->has_rshim)
@@ -477,6 +484,48 @@ static int wait_for_boot_done(rshim_backend_t *bd)
   return 0;
 }
 
+static int rshim_reg_indirect_wait(rshim_backend_t *bd, uint64_t resp_count)
+{
+  uint64_t count;
+  int rc, retries = 1000;
+
+  while (retries--) {
+    rc = bd->read_rshim(bd, RSHIM_CHANNEL, RSH_MEM_ACC_RSP_CNT, &count);
+    if (rc)
+      return rc;
+    if (count != resp_count)
+      return 0;
+  }
+  return -1;
+}
+
+static void rshim_mmio_write_common(rshim_backend_t *bd, uintptr_t pa,
+                                    uint8_t size, uint64_t data)
+{
+  uint64_t reg, resp_count;
+
+  bd->read_rshim(bd, RSHIM_CHANNEL, RSH_DEVICE_MSTR_PRIV_LVL, &reg);
+  reg |= 0x1ULL << RSH_DEVICE_MSTR_PRIV_LVL__MEM_ACC_LVL_SHIFT;
+  bd->write_rshim(bd, RSHIM_CHANNEL, RSH_DEVICE_MSTR_PRIV_LVL, reg);
+
+  bd->read_rshim(bd, RSHIM_CHANNEL, RSH_MEM_ACC_RSP_CNT, &resp_count);
+  bd->write_rshim(bd, RSHIM_CHANNEL, RSH_MEM_ACC_DATA__FIRST_WORD, data);
+  reg = (((uint64_t)pa & RSH_MEM_ACC_CTL__ADDRESS_RMASK) <<
+           RSH_MEM_ACC_CTL__ADDRESS_SHIFT) |
+        (((uint64_t)size & RSH_MEM_ACC_CTL__SIZE_RMASK) <<
+          RSH_MEM_ACC_CTL__SIZE_SHIFT) |
+        (1ULL << RSH_MEM_ACC_CTL__WRITE_SHIFT) |
+        (1ULL << RSH_MEM_ACC_CTL__SEND_SHIFT);
+  bd->write_rshim(bd, RSHIM_CHANNEL, RSH_MEM_ACC_CTL, reg);
+  rshim_reg_indirect_wait(bd, resp_count);
+}
+
+void rshim_mmio_write32(rshim_backend_t *bd, uintptr_t addr, uint32_t value)
+{
+  rshim_mmio_write_common(bd, addr, RSH_MEM_ACC_CTL__SIZE_VAL_SZ4, value);
+}
+
+
 /*
  * Write to the RShim reset control register.
  */
@@ -485,6 +534,12 @@ int rshim_reset_control(rshim_backend_t *bd)
   uint64_t reg, val;
   uint8_t shift;
   int rc;
+
+  /* Workaround for BF2 reset issue. */
+  if (bd->bf_ver == RSHIM_BLUEFIELD_2) {
+    rshim_mmio_write32(bd, 0x2800010, 0x20000000);
+    return 0;
+  }
 
   rc = bd->read_rshim(bd, RSHIM_CHANNEL, RSH_RESET_CONTROL, &reg);
   if (rc < 0) {

@@ -42,12 +42,15 @@
 static inline uint32_t
 readl(const volatile void *addr)
 {
-  return *(const volatile uint32_t *)addr;
+  uint32_t value = *(const volatile uint32_t *)addr;
+  __sync_synchronize();
+  return value;
 }
 
 static inline void
 writel(uint32_t value, volatile void *addr)
 {
+  __sync_synchronize();
   *(volatile uint32_t *)addr = value;
 }
 #else
@@ -260,6 +263,7 @@ rshim_pcie_read(rshim_backend_t *bd, int chan, int addr, uint64_t *result)
 #else
   *result = readq(dev->rshim_regs + (addr | (chan << 16)));
 #endif
+
   return rc;
 }
 
@@ -348,6 +352,15 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
   }
 
   rshim_ref(bd);
+
+  switch (pci_dev->device_id) {
+    case BLUEFIELD2_DEVICE_ID:
+    case BLUEFIELD2_DEVICE_ID2:
+      bd->bf_ver = RSHIM_BLUEFIELD_2;
+      break;
+    default:
+      bd->bf_ver = RSHIM_BLUEFIELD_1;
+  }
 
   /* Initialize object */
   dev->pci_dev = pci_dev;

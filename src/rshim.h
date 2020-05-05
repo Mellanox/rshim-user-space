@@ -150,8 +150,8 @@ enum {
 
 #define BOOT_CHANNEL        RSH_MMIO_ADDRESS_SPACE__CHANNEL_VAL_BOOT
 #define RSHIM_CHANNEL       RSH_MMIO_ADDRESS_SPACE__CHANNEL_VAL_RSHIM
-#define UART0_CHANNEL       RSH_MMIO_ADDRESS_SPACE__CHANNEL_VAL_UART0
-#define UART1_CHANNEL       RSH_MMIO_ADDRESS_SPACE__CHANNEL_VAL_UART1
+#define MMC_CHANNEL         RSH_MMIO_ADDRESS_SPACE__CHANNEL_VAL_MMC
+#define YU_CHANNEL          RSH_MMIO_ADDRESS_SPACE__CHANNEL_VAL_TYU
 
 /* Base RShim Address */
 #define RSH_BASE_ADDR 0x80000000
@@ -178,6 +178,10 @@ typedef struct {
 
 #define RSHIM_DEV_NAME_LEN   64
 
+/* Bluefield Version. */
+#define RSHIM_BLUEFIELD_1 0
+#define RSHIM_BLUEFIELD_2 1
+
 /* RShim backend. */
 typedef struct rshim_backend rshim_backend_t;
 struct rshim_backend {
@@ -186,6 +190,9 @@ struct rshim_backend {
 
   /* Backend device. */
   void *dev;
+
+  /* BlueField version. */
+  int bf_ver;
 
   /* FUSE sessions & poll handles. */
   void *fuse_session[RSH_DEV_TYPES];

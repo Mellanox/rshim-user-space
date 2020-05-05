@@ -482,7 +482,8 @@ static void rshim_usb_backend_cancel_req(rshim_backend_t *bd, int devtype,
   }
 }
 
-static int rshim_usb_probe_one(libusb_context *ctx, libusb_device *usb_dev)
+static int rshim_usb_probe_one(libusb_context *ctx, libusb_device *usb_dev,
+                               uint16_t product_id)
 {
   int i, rc;
   const struct libusb_interface_descriptor *iface_desc;
@@ -585,9 +586,16 @@ static int rshim_usb_probe_one(libusb_context *ctx, libusb_device *usb_dev)
     pthread_mutex_init(&bd->mutex, NULL);
   }
 
+  rshim_ref(bd);
   bd->dev = usb_dev;
   dev->handle = handle;
-  rshim_ref(bd);
+  switch (product_id) {
+    case USB_BLUEFIELD_2_PRODUCT_ID:
+      bd->bf_ver = RSHIM_BLUEFIELD_2;
+      break;
+    default:
+      bd->bf_ver = RSHIM_BLUEFIELD_1;
+  }
 
   if (!dev->intr_buf) {
     dev->intr_buf = calloc(1, sizeof(*dev->intr_buf));
@@ -901,7 +909,7 @@ static bool rshim_usb_probe(void)
     num = sizeof(rshim_usb_product_ids) / sizeof(rshim_usb_product_ids[0]);
     for (j = 0; j < num; j++) {
       if (desc.idProduct == rshim_usb_product_ids[j])
-        rshim_usb_probe_one(ctx, dev);
+        rshim_usb_probe_one(ctx, dev, desc.idProduct);
     }
   }
 

@@ -515,6 +515,14 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
 
   rshim_ref(bd);
 
+  switch (pci_dev->device_id) {
+    case BLUEFIELD2_DEVICE_ID:
+      bd->bf_ver = RSHIM_BLUEFIELD_2;
+      break;
+    default:
+      bd->bf_ver = RSHIM_BLUEFIELD_1;
+  }
+
   /* Initialize object */
   dev->pci_dev = pci_dev;
 
