@@ -90,8 +90,9 @@ fi
 ])
 
 if test $backend = freebsd; then
-AC_CHECK_HEADERS([libepoll-shim/sys/epoll.h],[],[AC_MSG_ERROR([Missing libepoll-shim])])
 AC_SUBST(CPPFLAGS, "$CPPFLAGS -I/usr/local/include/libepoll-shim")
+AC_SUBST(LDFLAGS, "$LDFLAGS -L/usr/local/lib")
+AC_CHECK_HEADERS([sys/epoll.h],[],[AC_MSG_ERROR([Missing libepoll-shim])])
 AC_CHECK_LIB(epoll-shim, epoll_create1)
 fi
 

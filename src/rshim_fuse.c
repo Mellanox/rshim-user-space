@@ -672,7 +672,7 @@ static int rshim_fuse_misc_read(struct cuse_dev *cdev, int fflags,
   p += n;
   len -= n;
 
-  n = snprintf(p, len, "%-16s%d (seconds)\n", "DROP_MODE",
+  n = snprintf(p, len, "%-16s%d (0:normal, 1:drop)\n", "DROP_MODE",
                bd->drop_mode);
   p += n;
   len -= n;
