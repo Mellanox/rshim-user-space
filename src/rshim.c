@@ -523,9 +523,35 @@ static void rshim_mmio_write_common(rshim_backend_t *bd, uintptr_t pa,
   rshim_reg_indirect_wait(bd, resp_count);
 }
 
+uint64_t rshim_mmio_read_common(rshim_backend_t *bd, uintptr_t pa, uint8_t size)
+{
+  uint64_t reg, resp_count;
+
+  bd->read_rshim(bd, RSHIM_CHANNEL, RSH_MEM_ACC_RSP_CNT, &resp_count);
+
+  reg = (((uint64_t)pa & RSH_MEM_ACC_CTL__ADDRESS_RMASK) <<
+           RSH_MEM_ACC_CTL__ADDRESS_SHIFT) |
+        (((uint64_t)size & RSH_MEM_ACC_CTL__SIZE_RMASK) <<
+          RSH_MEM_ACC_CTL__SIZE_SHIFT) |
+        (1ULL << RSH_MEM_ACC_CTL__SEND_SHIFT);
+  bd->write_rshim(bd, RSHIM_CHANNEL, RSH_MEM_ACC_CTL, reg);
+
+  rshim_reg_indirect_wait(bd, resp_count);
+
+  bd->read_rshim(bd, RSHIM_CHANNEL, RSH_MEM_ACC_DATA__FIRST_WORD, &reg);
+
+  return reg;
+}
+
 void rshim_mmio_write32(rshim_backend_t *bd, uintptr_t addr, uint32_t value)
 {
   rshim_mmio_write_common(bd, addr, RSH_MEM_ACC_CTL__SIZE_VAL_SZ4, value);
+}
+
+uint32_t rshim_mmio_read32(rshim_backend_t *bd, uintptr_t addr)
+{
+  return (uint32_t) rshim_mmio_read_common(bd, addr,
+                                           RSH_MEM_ACC_CTL__SIZE_VAL_SZ4);
 }
 
 
@@ -535,11 +561,16 @@ void rshim_mmio_write32(rshim_backend_t *bd, uintptr_t addr, uint32_t value)
 int rshim_reset_control(rshim_backend_t *bd)
 {
   uint64_t reg, val;
+  uint32_t val32;
   uint8_t shift;
   int rc;
 
   /* Workaround for BF2 reset issue. */
   if (bd->bf_ver == RSHIM_BLUEFIELD_2) {
+    val32 = rshim_mmio_read32(bd, 0x28030c4);
+    val32 |= 0x400000;
+    rshim_mmio_write32(bd, 0x28030c4, val32);
+    rshim_mmio_write32(bd, 0x280151c, 0x40000);
     rshim_mmio_write32(bd, 0x2800010, 0x20000000);
     return 0;
   }
