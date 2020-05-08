@@ -482,8 +482,8 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
   rshim_pcie_lf_t *dev;
   int ret;
 
-  snprintf(dev_name, sizeof(dev_name) - 1, "pcie-lf-%02x:%02x.%d",
-           pci_dev->bus, pci_dev->dev, pci_dev->func);
+  snprintf(dev_name, sizeof(dev_name) - 1, "pcie-lf-%04x:%02x:%02x.%d",
+           pci_dev->domain, pci_dev->bus, pci_dev->dev, pci_dev->func);
 
   if (!rshim_allow_device(dev_name))
     return -EACCES;
