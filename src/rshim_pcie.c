@@ -255,6 +255,10 @@ rshim_pcie_read(rshim_backend_t *bd, int chan, int addr, uint64_t *result)
 
   if (!bd->has_rshim)
     return -ENODEV;
+  if (bd->drop_mode) {
+    *result = 0;
+    return 0;
+  }
 
   dev->write_count = 0;
 
@@ -276,6 +280,8 @@ rshim_pcie_write(rshim_backend_t *bd, int chan, int addr, uint64_t value)
 
   if (!bd->has_rshim)
     return -ENODEV;
+  if (bd->drop_mode)
+    return 0;
 
   /*
    * We cannot stream large numbers of PCIe writes to the RShim's BAR.
@@ -318,8 +324,8 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
 #endif
   int ret = 0;
 
-  snprintf(dev_name, sizeof(dev_name) - 1, "pcie-%02x:%02x.%x",
-           pci_dev->bus, pci_dev->dev, pci_dev->func);
+  snprintf(dev_name, sizeof(dev_name) - 1, "pcie-%04x:%02x:%02x.%x",
+           pci_dev->domain, pci_dev->bus, pci_dev->dev, pci_dev->func);
 
   if (!rshim_allow_device(dev_name))
     return -EACCES;

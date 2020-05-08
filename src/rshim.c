@@ -267,7 +267,7 @@ static ssize_t rshim_read_default(rshim_backend_t *bd, int devtype,
   if (bd->is_boot_open)
     return 0;
 
-  while (total < count && !bd->drop_mode) {
+  while (total < count) {
     if (avail == 0) {
       rc = bd->read_rshim(bd, RSHIM_CHANNEL, RSH_TM_TILE_TO_HOST_STS, &reg);
       if (rc < 0)
@@ -405,9 +405,6 @@ static ssize_t rshim_write_default(rshim_backend_t *bd, int devtype,
                                    const char *buf, size_t count)
 {
   int rc;
-
-  if (bd->drop_mode)
-    return count;
 
   switch (devtype) {
   case RSH_DEV_TYPE_TMFIFO:
@@ -1008,7 +1005,7 @@ static void rshim_fifo_input(rshim_backend_t *bd)
   uint8_t rx_avail = 0;
   int rc;
 
-  if (bd->drop_mode || bd->is_boot_open)
+  if (bd->is_boot_open)
     return;
 
 again:
@@ -1561,7 +1558,7 @@ static void rshim_work_handler(rshim_backend_t *bd)
     }
   }
 
-  if (bd->is_boot_open || bd->drop_mode) {
+  if (bd->is_boot_open) {
     pthread_mutex_unlock(&bd->mutex);
     return;
   }
