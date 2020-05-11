@@ -558,19 +558,8 @@ uint32_t rshim_mmio_read32(rshim_backend_t *bd, uintptr_t addr)
 int rshim_reset_control(rshim_backend_t *bd)
 {
   uint64_t reg, val;
-  uint32_t val32;
   uint8_t shift;
   int rc;
-
-  /* Workaround for BF2 reset issue. */
-  if (bd->bf_ver == RSHIM_BLUEFIELD_2) {
-    val32 = rshim_mmio_read32(bd, 0x28030c4);
-    val32 |= 0x400000;
-    rshim_mmio_write32(bd, 0x28030c4, val32);
-    rshim_mmio_write32(bd, 0x280151c, 0x40000);
-    rshim_mmio_write32(bd, 0x2800010, 0x20000000);
-    return 0;
-  }
 
   rc = bd->read_rshim(bd, RSHIM_CHANNEL, RSH_RESET_CONTROL, &reg);
   if (rc < 0) {
