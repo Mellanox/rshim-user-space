@@ -347,8 +347,6 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
     }
 
     bd = &dev->bd;
-    bd->has_rshim = 1;
-    bd->has_tm = 1;
     strcpy(bd->dev_name, dev_name);
     bd->read_rshim = rshim_pcie_read;
     bd->write_rshim = rshim_pcie_write;
@@ -443,6 +441,8 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
    * has already registered or not, which involves reading/writting rshim
    * registers and has assumption that the under layer is working.
    */
+  bd->has_rshim = 1;
+  bd->has_tm = 1;
   ret = rshim_register(bd);
   if (ret) {
     pthread_mutex_unlock(&bd->mutex);

@@ -375,8 +375,12 @@ static ssize_t rshim_write_delayed(rshim_backend_t *bd, int devtype,
         return (byte_cnt > count) ? count : byte_cnt;
 
       time(&t1);
-      if (difftime(t1, t0) > 3)
-        return -ETIMEDOUT;
+      if (difftime(t1, t0) > 3) {
+        if (devtype == RSH_DEV_TYPE_TMFIFO && bd->is_booting)
+          return count;
+        else
+          return -ETIMEDOUT;
+      }
     }
 
     reg = *(uint64_t *)buf;
@@ -618,16 +622,9 @@ int rshim_boot_open(rshim_backend_t *bd)
    */
   if (bd->cancel)
     bd->cancel(bd, RSH_DEV_TYPE_TMFIFO, true);
-  bd->read_buf_bytes = 0;
-  bd->read_buf_pkt_rem = 0;
-  bd->read_buf_pkt_padding = 0;
-  pthread_mutex_lock(&bd->ringlock);
-  bd->spin_flags &= ~RSH_SFLG_WRITING;
-  for (i = 0; i < TMFIFO_MAX_CHAN; i++) {
-    read_reset(bd, i);
-    write_reset(bd, i);
-  }
-  pthread_mutex_unlock(&bd->ringlock);
+
+  /* Reset the TmFifo. */
+  rshim_fifo_reset(bd);
 
   /* Set RShim (external) boot mode. */
   rc = bd->write_rshim(bd, RSHIM_CHANNEL, RSH_BOOT_CONTROL,
@@ -653,9 +650,6 @@ int rshim_boot_open(rshim_backend_t *bd)
 
   /* SW reset. */
   rc = rshim_reset_control(bd);
-
-  /* Reset the TmFifo. */
-  rshim_fifo_reset(bd);
 
   /*
    * Note that occasionally, we get various errors on writing to
@@ -1547,7 +1541,7 @@ static void rshim_work_handler(rshim_backend_t *bd)
     }
   }
 
-  if (bd->is_boot_open) {
+  if (bd->is_boot_open || bd->is_booting) {
     pthread_mutex_unlock(&bd->mutex);
     return;
   }
