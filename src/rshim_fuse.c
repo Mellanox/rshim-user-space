@@ -838,8 +838,6 @@ static int rshim_fuse_misc_write(struct cuse_dev *cdev, int fflags,
       /* SW reset. */
       pthread_mutex_lock(&bd->mutex);
       rc = rshim_reset_control(bd);
-      if (!bd->has_reprobe)
-        bd->drop_mode = 1;
       pthread_mutex_unlock(&bd->mutex);
 
       if (!bd->has_reprobe) {
@@ -847,7 +845,6 @@ static int rshim_fuse_misc_write(struct cuse_dev *cdev, int fflags,
         sleep(10);
         pthread_mutex_lock(&bd->mutex);
         bd->is_booting = 0;
-        bd->drop_mode = 0;
         rshim_notify(bd, RSH_EVENT_ATTACH, 0);
         pthread_mutex_unlock(&bd->mutex);
       }

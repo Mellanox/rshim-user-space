@@ -988,7 +988,7 @@ static void rshim_fifo_input(rshim_backend_t *bd)
   uint8_t rx_avail = 0;
   int rc;
 
-  if (bd->is_boot_open)
+  if (bd->is_boot_open || !bd->has_rshim || !bd->has_tm)
     return;
 
 again:
@@ -1359,7 +1359,7 @@ static void rshim_fifo_output(rshim_backend_t *bd)
   }
 
   /* Drop the data if it is still booting. */
-  if (bd->is_boot_open || bd->drop_mode)
+  if (bd->is_boot_open || bd->drop_mode || !bd->has_rshim || !bd->has_tm)
     return;
 
   /* If we actually put anything in the buffer, send it. */
@@ -1560,8 +1560,7 @@ static void rshim_work_handler(rshim_backend_t *bd)
       pthread_cond_broadcast(&bd->fifo_write_complete_cond);
       rshim_notify(bd, RSH_EVENT_FIFO_OUTPUT, 0);
     } else {
-      rshim_notify(bd, RSH_EVENT_FIFO_ERR, -1);
-      RSHIM_ERR("fifo_write: completed abnormally (%d)\n", len);
+      RSHIM_DBG("fifo_write: completed abnormally (%d)\n", len);
     }
     pthread_mutex_unlock(&bd->ringlock);
   }
@@ -1725,8 +1724,7 @@ static int rshim_fifo_release(rshim_backend_t *bd, int chan,
     read_reset(bd, TMFIFO_CONS_CHAN);
     write_reset(bd, TMFIFO_CONS_CHAN);
 
-    if (bd->has_tm)
-      rshim_fifo_input(bd);
+    rshim_fifo_input(bd);
 
     pthread_mutex_unlock(&bd->ringlock);
   }
