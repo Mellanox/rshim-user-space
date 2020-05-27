@@ -460,8 +460,10 @@ static int wait_for_boot_done(rshim_backend_t *bd)
   struct timespec ts;
   int rc;
 
-  if (!bd->has_reprobe || bd->skip_boot_reset)
+  if (!bd->has_reprobe || bd->skip_boot_reset) {
+    bd->is_booting = 0;
     return 0;
+  }
 
   clock_gettime(CLOCK_REALTIME, &ts);
   ts.tv_sec += 20;
@@ -595,7 +597,7 @@ int rshim_reset_control(rshim_backend_t *bd)
 
 int rshim_boot_open(rshim_backend_t *bd)
 {
-  int i, rc;
+  int rc;
 
   pthread_mutex_lock(&bd->mutex);
 
