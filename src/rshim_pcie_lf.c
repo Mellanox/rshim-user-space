@@ -474,6 +474,17 @@ static void rshim_pcie_delete(struct rshim_backend *bd)
   free(dev);
 }
 
+static int rshim_pcie_enable_device(rshim_backend_t *bd, bool enable)
+{
+  rshim_pcie_lf_t *dev = container_of(bd, rshim_pcie_lf_t, bd);
+  int rc = 0;
+
+  if (dev->pci_dev)
+    rc = rshim_pcie_enable(dev->pci_dev, enable);
+
+  return rc;
+}
+
 /* Probe routine */
 static int rshim_pcie_probe(struct pci_dev *pci_dev)
 {
@@ -507,6 +518,7 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
     bd->read_rshim = rshim_pcie_read;
     bd->write_rshim = rshim_pcie_write;
     bd->destroy = rshim_pcie_delete;
+    bd->enable_device = rshim_pcie_enable_device;
     dev->write_count = 0;
     pthread_mutex_init(&bd->mutex, NULL);
   }
@@ -559,6 +571,7 @@ int rshim_pcie_lf_init(void)
 {
   struct pci_access *pci;
   struct pci_dev *dev;
+  int rc;
 
   pci = pci_alloc();
   if (!pci)
@@ -577,7 +590,9 @@ int rshim_pcie_lf_init(void)
          dev->device_id != BLUEFIELD2_DEVICE_ID))
       continue;
 
-    rshim_pcie_enable(dev);
+    rc = rshim_pcie_enable(dev, true);
+    if (rc)
+      continue;
     rshim_pcie_probe(dev);
   }
 

@@ -35,6 +35,7 @@
 #define PCI_RSHIM_WINDOW_SIZE       0x100000
 
 #ifdef __linux__
+#include <dirent.h>
 #define SYS_BUS_PCI "/sys/bus/pci/devices"
 #endif
 
@@ -313,6 +314,17 @@ static void rshim_pcie_delete(rshim_backend_t *bd)
   free(dev);
 }
 
+static int rshim_pcie_enable_device(rshim_backend_t *bd, bool enable)
+{
+  rshim_pcie_t *dev = container_of(bd, rshim_pcie_t, bd);
+  int rc = 0;
+
+  if (dev->pci_dev)
+    rc = rshim_pcie_enable(dev->pci_dev, enable);
+
+  return rc;
+}
+
 /* Probe routine */
 static int rshim_pcie_probe(struct pci_dev *pci_dev)
 {
@@ -351,6 +363,7 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
     bd->read_rshim = rshim_pcie_read;
     bd->write_rshim = rshim_pcie_write;
     bd->destroy = rshim_pcie_delete;
+    bd->enable_device = rshim_pcie_enable_device;
     dev->write_count = 0;
     pthread_mutex_init(&bd->mutex, NULL);
   }
@@ -465,24 +478,38 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
    return ret;
 }
 
-int rshim_pcie_enable(void *dev)
+int rshim_pcie_enable(void *dev, bool enable)
 {
 #ifdef __linux__
   struct pci_dev *pci_dev = (struct pci_dev *)dev;
-  char name[256];
+  char path[256];
   int fd, rc = 0;
+  DIR* dir;
 
-  snprintf(name, sizeof(name), "%s/%04x:%02x:%02x.%1u/enable",
+  /* Check whether it's being attached by other driver. */
+  snprintf(path, sizeof(path), "%s/%04x:%02x:%02x.%1u/driver",
            SYS_BUS_PCI, pci_dev->domain, pci_dev->bus,
            pci_dev->dev, pci_dev->func);
-  fd = open(name, O_RDWR | O_CLOEXEC);
+  dir = opendir(path);
+  if (dir) {
+    closedir(dir);
+    return -EBUSY;
+  }
+
+  /* Set the enable attribute in sysfs. */
+  snprintf(path, sizeof(path), "%s/%04x:%02x:%02x.%1u/enable",
+           SYS_BUS_PCI, pci_dev->domain, pci_dev->bus,
+           pci_dev->dev, pci_dev->func);
+  fd = open(path, O_RDWR | O_CLOEXEC);
   if (fd == -1)
     return -errno;
-
-  if (write(fd, "1", 1) < 0)
+  if (write(fd, enable ? "1" : "0", 1) < 0)
     rc = -errno;
-
   close(fd);
+  if (rc)
+    return rc;
+
+  pci_write_word(pci_dev, PCI_COMMAND, PCI_COMMAND_MEMORY | PCI_COMMAND_MASTER);
   return rc;
 #else
   return 0;
@@ -493,6 +520,7 @@ int rshim_pcie_init(void)
 {
   struct pci_access *pci;
   struct pci_dev *dev;
+  int rc;
 
   pci = pci_alloc();
   if (!pci)
@@ -511,7 +539,10 @@ int rshim_pcie_init(void)
          !rshim_is_bluefield2(dev->device_id)))
       continue;
 
-    rshim_pcie_enable(dev);
+    rc = rshim_pcie_enable(dev, true);
+    if (rc)
+      continue;
+
     rshim_pcie_probe(dev);
   }
 

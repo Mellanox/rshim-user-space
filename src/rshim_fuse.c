@@ -811,6 +811,10 @@ static int rshim_fuse_misc_write(struct cuse_dev *cdev, int fflags,
     bd->drop_mode = !!value;
     if (bd->drop_mode)
       bd->drop_pkt = 1;
+    if (bd->enable_device) {
+      if (bd->enable_device(bd, true))
+        bd->drop_mode = 1;
+    }
   } else if (strcmp(key, "BOOT_MODE") == 0) {
     if (sscanf(p, "%x", &value) != 1)
       goto invalid;

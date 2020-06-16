@@ -375,6 +375,9 @@ struct rshim_backend {
   /* API to write 8 bytes to RShim. */
   int (*write_rshim)(rshim_backend_t *bd, int chan, int addr,
                      uint64_t value);
+
+  /* API to enable the device. */
+  int (*enable_device)(rshim_backend_t *bd, bool enable);
 };
 
 /* Global variables. */
@@ -486,7 +489,7 @@ static inline void rshim_usb_poll(void)
 #ifdef HAVE_RSHIM_PCIE
 int rshim_pcie_init(void);
 int rshim_pcie_lf_init(void);
-int rshim_pcie_enable(void *dev);
+int rshim_pcie_enable(void *dev, bool enable);
 #else
 static inline int rshim_pcie_init(void)
 {
