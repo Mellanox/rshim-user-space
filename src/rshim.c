@@ -2179,10 +2179,25 @@ bool rshim_allow_device(const char *devname)
       !strcmp(rshim_device_filter, devname);
 }
 
+static void *rshim_stop_thread(void *arg)
+{
+  /* Force to kill if not able to cleanup in time. */
+  sleep(3);
+  kill(0, SIGKILL);
+  return NULL;
+}
+
 static void rshim_stop(void)
 {
   rshim_backend_t *bd;
-  int i;
+  pthread_t thread;
+  int i, rc;
+
+  rc = pthread_create(&thread, NULL, rshim_stop_thread, NULL);
+  if (rc) {
+    kill(0, SIGKILL);
+    return;
+  }
 
   rshim_lock();
 
