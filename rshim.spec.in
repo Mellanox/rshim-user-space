@@ -76,6 +76,16 @@ make
 %{_mandir}/man8/rshim.8.gz
 
 %changelog
+* Tue Jun 16 2020 Liming Sun <lsun@mellanox.com> - 2.0.5-1
+- Improve response time to ctrl+c for boot stream
+- Fix a rpmbuild issue when make_build is not defined
+- Add DROP_MODE configuration in misc file
+- Avoid reading the fifo if still booting
+- Fix configure issue for FreeBSD 12.1-RELEASE
+- Add domain id to the DEV_NAME in the misc file
+- Fix the debian copyright format
+- Enhance rshim_pcie_enable function
+
 * Tue Apr 21 2020 Liming Sun <lsun@mellanox.com> - 2.0.4-1
 - Update .spec file according to review comments
 - Fix the 'KillMode' in rshim.service
