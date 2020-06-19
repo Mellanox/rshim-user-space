@@ -15,6 +15,7 @@ AC_CONFIG_FILES([
   src/Makefile
   man/Makefile
   rhel/rshim.spec
+  freebsd/rshim
 ])
 AC_CANONICAL_HOST
 
@@ -95,6 +96,7 @@ AC_SUBST(LDFLAGS, "$LDFLAGS -L/usr/local/lib")
 AC_CHECK_HEADERS([sys/epoll.h],[],[AC_MSG_ERROR([Missing libepoll-shim])])
 AC_CHECK_LIB(epoll-shim, epoll_create1)
 fi
+AM_CONDITIONAL([OS_FREEBSD], [test "x$backend" = "xfreebsd"])
 
 AC_CHECK_LIB(pthread, pthread_create)
 

@@ -1,0 +1,15 @@
+#!/bin/sh
+
+# PROVIDE: rshim
+# REQUIRE: DAEMON
+# BEFORE:  LOGIN
+# KEYWORD: nojail shutdown
+
+. /etc/rc.subr
+
+name=rshim
+desc="rshim driver for Mellanox BlueField SoC"
+command="@prefix@/sbin/${name}"
+
+load_rc_config $name
+run_rc_command "$1"

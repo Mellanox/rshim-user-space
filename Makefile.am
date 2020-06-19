@@ -10,4 +10,10 @@ AM_DISTCHECK_CONFIGURE_FLAGS = \
   --with-systemdsystemunitdir=$$dc_install_base/$(systemdsystemunitdir)
 if HAVE_SYSTEMD
 systemdsystemunit_DATA = rshim.service
+else
+if OS_FREEBSD
+init_ddir = $(sysconfdir)/rc.d/
+init_d_SCRIPTS = freebsd/rshim
 endif
+endif
+
