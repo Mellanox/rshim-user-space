@@ -686,6 +686,10 @@ static int rshim_fuse_misc_read(struct cuse_dev *cdev, int fflags,
   n = snprintf(p, len, "%-16s%s\n", "DEV_NAME", bd->dev_name);
   p += n;
   len -= n;
+  n = snprintf(p, len, "%-16sBlueField-%d(Rev %d)\n", "DEV_INFO", bd->ver_id,
+               bd->rev_id);
+  p += n;
+  len -= n;
 
   if (bd->display_level == 1) {
     gettimeofday(&tp, NULL);
