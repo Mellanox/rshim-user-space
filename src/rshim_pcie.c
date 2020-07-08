@@ -373,11 +373,12 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
   switch (pci_dev->device_id) {
     case BLUEFIELD2_DEVICE_ID:
     case BLUEFIELD2_DEVICE_ID2:
-      bd->bf_ver = RSHIM_BLUEFIELD_2;
+      bd->ver_id = RSHIM_BLUEFIELD_2;
       break;
     default:
-      bd->bf_ver = RSHIM_BLUEFIELD_1;
+      bd->ver_id = RSHIM_BLUEFIELD_1;
   }
+  bd->rev_id = pci_read_byte(pci_dev, PCI_REVISION_ID);
 
   /* Initialize object */
   dev->pci_dev = pci_dev;

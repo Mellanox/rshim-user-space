@@ -179,8 +179,8 @@ typedef struct {
 #define RSHIM_DEV_NAME_LEN   64
 
 /* Bluefield Version. */
-#define RSHIM_BLUEFIELD_1 0
-#define RSHIM_BLUEFIELD_2 1
+#define RSHIM_BLUEFIELD_1 1
+#define RSHIM_BLUEFIELD_2 2
 
 /* RShim backend. */
 typedef struct rshim_backend rshim_backend_t;
@@ -191,8 +191,9 @@ struct rshim_backend {
   /* Backend device. */
   void *dev;
 
-  /* BlueField version. */
-  int bf_ver;
+  /* BlueField version / revision. */
+  uint16_t ver_id;
+  uint16_t rev_id;
 
   /* FUSE sessions & poll handles. */
   void *fuse_session[RSH_DEV_TYPES];
