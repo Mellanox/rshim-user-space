@@ -169,13 +169,13 @@ static char *rshim_backend_name;
 /* Global epoll handler. */
 int rshim_epoll_fd;
 
-/* Index base of /dev/rshim<index>. */
-int rshim_index_base;
+/* Static rshim index (/dev/rshim<index>) and device name. */
+int rshim_static_index = -1;
+char *rshim_static_dev_name;
 
 /* Array of devices and device names. */
 rshim_backend_t *rshim_devs[RSHIM_MAX_DEV];
 char *rshim_dev_names[RSHIM_MAX_DEV];
-char *rshim_device_filter;
 
 int rshim_log_level = LOG_NOTICE;
 bool rshim_daemon_mode = true;
@@ -681,9 +681,8 @@ boot_open_done:
   rshim_ref(bd);
   pthread_mutex_unlock(&bd->mutex);
 
-  /* A delay to workaround to wait for PCIe backend ready. */
-  if (!bd->has_reprobe)
-    sleep(10);
+  /* Add a small delay for the reset. */
+  sleep(!bd->has_reprobe ? 10 : 1);
 
   time(&bd->boot_write_time);
   return 0;
@@ -1612,7 +1611,7 @@ static int rshim_boot_done(rshim_backend_t *bd)
     }
 
     /* Tell the user this device is now attached. */
-    RSHIM_INFO("rshim%d attached\n", bd->index + rshim_index_base);
+    RSHIM_INFO("rshim%d attached\n", bd->index);
   }
 
   return 0;
@@ -1841,38 +1840,39 @@ int rshim_notify(rshim_backend_t *bd, int event, int code)
 
 static int rshim_find_index(char *dev_name)
 {
-  int i, index = -1;
+  int i;
+
+  /* Need to match static device name if configured. */
+  if (rshim_static_dev_name && strcmp(rshim_static_dev_name, dev_name))
+    return -1;
+
+  /* Return static index if configured. */
+  if (rshim_static_index >= 0)
+    return rshim_static_index;
 
   /* First look for a match with a previous device name. */
   for (i = 0; i < RSHIM_MAX_DEV; i++) {
     if (rshim_dev_names[i] && !strcmp(dev_name, rshim_dev_names[i])) {
       RSHIM_DBG("found match with previous at index %d\n", i);
-      index = i;
-      break;
+      return i;
     }
   }
 
   /* Then look for a never-used slot. */
-  if (index < 0) {
-    for (i = 0; i < RSHIM_MAX_DEV; i++)
-      if (!rshim_dev_names[i]) {
-        index = i;
-        break;
-    }
+  for (i = 0; i < RSHIM_MAX_DEV; i++) {
+    if (!rshim_dev_names[i])
+      return i;
   }
 
   /* Finally look for a currently-unused slot. */
-  if (index < 0) {
-    for (i = 0; i < RSHIM_MAX_DEV; i++) {
-      if (!rshim_devs[i]) {
-        RSHIM_DBG("found unused slot %d\n", i);
-        index = i;
-        break;
-      }
+  for (i = 0; i < RSHIM_MAX_DEV; i++) {
+    if (!rshim_devs[i]) {
+      RSHIM_DBG("found unused slot %d\n", i);
+      return i;
     }
   }
 
-  return index;
+  return -1;
 }
 
 rshim_backend_t *rshim_find_by_name(char *dev_name)
@@ -2175,8 +2175,8 @@ void rshim_deref(rshim_backend_t *bd)
 
 bool rshim_allow_device(const char *devname)
 {
-  return !rshim_device_filter ||
-      !strcmp(rshim_device_filter, devname);
+  return !rshim_static_dev_name ||
+      !strcmp(rshim_static_dev_name, devname);
 }
 
 static void *rshim_stop_thread(void *arg)
@@ -2286,12 +2286,12 @@ static void rshim_main(int argc, char *argv[])
 
   /* Scan rshim backends. */
   rc = 0;
-  if (!rshim_backend_name && rshim_device_filter) {
-    if (!strncmp(rshim_device_filter, "usb", 3))
+  if (!rshim_backend_name && rshim_static_dev_name) {
+    if (!strncmp(rshim_static_dev_name, "usb", 3))
       rshim_backend_name = "usb";
-    else if (!strncmp(rshim_device_filter, "pcie", 4))
+    else if (!strncmp(rshim_static_dev_name, "pcie", 4))
       rshim_backend_name = "pcie";
-    else if (!strncmp(rshim_device_filter, "pcie_lf", 7))
+    else if (!strncmp(rshim_static_dev_name, "pcie_lf", 7))
       rshim_backend_name = "pcie_lf";
   }
   if (!rshim_backend_name) {
@@ -2455,13 +2455,17 @@ int main(int argc, char *argv[])
       rshim_backend_name = optarg;
       break;
     case 'd':
-      rshim_device_filter = optarg;
+      rshim_static_dev_name = optarg;
       break;
     case 'f':
       rshim_daemon_mode = false;
       break;
     case 'i':
-      rshim_index_base = atoi(optarg);
+      rshim_static_index = atoi(optarg);
+      if (rshim_static_index >= RSHIM_MAX_DEV) {
+        fprintf(stderr, "Index exceeds max value %d\n", RSHIM_MAX_DEV - 1);
+        return -EINVAL;
+      }
       break;
     case 'l':
       rshim_log_level = atoi(optarg);

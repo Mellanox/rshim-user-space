@@ -712,7 +712,9 @@ static int rshim_fuse_misc_read(struct cuse_dev *cdev, int fflags,
 
     ts.tv_sec  = tp.tv_sec + 1;
     ts.tv_nsec = tp.tv_usec * 1000;
-    pthread_cond_timedwait(&bd->ctrl_wait_cond, &bd->mutex, &ts);
+    rc = pthread_cond_timedwait(&bd->ctrl_wait_cond, &bd->mutex, &ts);
+    if (rc)
+      RSHIM_DBG("Timeout in getting peer response.\n");
     n = snprintf(p, len, "%-16s%02x:%02x:%02x:%02x:%02x:%02x (rw)\n",
                    "PEER_MAC", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
     p += n;
@@ -1156,8 +1158,7 @@ int rshim_fuse_init(rshim_backend_t *bd)
      * Check whether path already exists. Adding a loop in case the
      * device was re-ceated during SW_RESET.
      */
-    snprintf(buf, sizeof(buf), "/dev/rshim%d/%s",
-             bd->index + rshim_index_base, name);
+    snprintf(buf, sizeof(buf), "/dev/rshim%d/%s", bd->index, name);
     time(&t0);
     while (!access(buf, F_OK)) {
       time(&t1);
@@ -1166,8 +1167,7 @@ int rshim_fuse_init(rshim_backend_t *bd)
         return -1;
       }
     }
-    snprintf(buf, sizeof(buf), "DEVNAME=rshim%d/%s",
-             bd->index + rshim_index_base, name);
+    snprintf(buf, sizeof(buf), "DEVNAME=rshim%d/%s", bd->index, name);
     if (!ops[i])
       continue;
     bd->fuse_session[i] = cuse_lowlevel_setup(sizeof(argv)/sizeof(char *),
@@ -1186,14 +1186,12 @@ int rshim_fuse_init(rshim_backend_t *bd)
     }
 #elif defined(__FreeBSD__)
     name = rshim_dev_minor_names[i];
-    snprintf(buf, sizeof(buf), "rshim%d/%s",
-             bd->index + rshim_index_base, name);
+    snprintf(buf, sizeof(buf), "rshim%d/%s", bd->index, name);
     if (!ops[i])
       continue;
     bd->fuse_session[i] =
       cuse_dev_create(ops[i], bd, NULL, 0 /* UID_ROOT */, 0 /* GID_WHEEL */,
-                      0600, "rshim%d/%s", bd->index + rshim_index_base,
-                      name);
+                      0600, "rshim%d/%s", bd->index, name);
     if (!bd->fuse_session[i]) {
       RSHIM_ERR("Failed to setup CUSE %s\n", name);
       return -1;

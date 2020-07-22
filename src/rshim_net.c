@@ -264,9 +264,8 @@ int rshim_net_init(rshim_backend_t *bd)
   char ifname[IFNAMSIZ];
   int rc, fd[2];
 
-  snprintf(ifname, sizeof(ifname), "tmfifo_net%d",
-           bd->index + rshim_index_base);
-  bd->net_fd = rshim_if_open(ifname, bd->index + rshim_index_base);
+  snprintf(ifname, sizeof(ifname), "tmfifo_net%d", bd->index);
+  bd->net_fd = rshim_if_open(ifname, bd->index);
 
   if (bd->net_fd < 0)
     return bd->net_fd;

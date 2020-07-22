@@ -384,7 +384,6 @@ struct rshim_backend {
 /* Global variables. */
 
 extern int rshim_epoll_fd;
-extern int rshim_index_base;
 
 /* Common APIs. */
 
