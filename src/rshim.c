@@ -173,9 +173,13 @@ int rshim_epoll_fd;
 int rshim_static_index = -1;
 char *rshim_static_dev_name;
 
+/* Default configuration file. */
+char *rshim_cfg_file = "/etc/rshim.conf";
+
 /* Array of devices and device names. */
 rshim_backend_t *rshim_devs[RSHIM_MAX_DEV];
 char *rshim_dev_names[RSHIM_MAX_DEV];
+char *rshim_blocked_dev_names[RSHIM_MAX_DEV];
 
 int rshim_log_level = LOG_NOTICE;
 bool rshim_daemon_mode = true;
@@ -195,8 +199,8 @@ void rshim_unlock(void)
 
 static int rshim_fd_full_read(int fd, void *data, int len)
 {
-  int cc, total = 0;
   char *buf = (char *)data;
+  int cc, total = 0;
 
   while (len > 0) {
     cc = read(fd, buf, len);
@@ -492,8 +496,8 @@ static int wait_for_boot_done(rshim_backend_t *bd)
 
 static int rshim_reg_indirect_wait(rshim_backend_t *bd, uint64_t resp_count)
 {
-  uint64_t count;
   int rc, retries = 1000;
+  uint64_t count;
 
   while (retries--) {
     rc = bd->read_rshim(bd, RSHIM_CHANNEL, RSH_MEM_ACC_RSP_CNT, &count);
@@ -2175,8 +2179,18 @@ void rshim_deref(rshim_backend_t *bd)
 
 bool rshim_allow_device(const char *devname)
 {
-  return !rshim_static_dev_name ||
-      !strcmp(rshim_static_dev_name, devname);
+  int i;
+
+  if (rshim_static_dev_name && strcmp(rshim_static_dev_name, devname))
+    return false;
+
+  for (i = 0; i < RSHIM_MAX_DEV; i++) {
+    if (rshim_blocked_dev_names[i] &&
+        !strcmp(rshim_blocked_dev_names[i], devname))
+      return false;
+  }
+
+  return true;
 }
 
 static void *rshim_stop_thread(void *arg)
@@ -2376,6 +2390,55 @@ int rshim_fifo_size(rshim_backend_t *bd, int chan, bool is_rx)
   return is_rx ? read_cnt(bd, chan) : write_cnt(bd, chan);
 }
 
+static int rshim_load_cfg(void)
+{
+  char rshim_name[32] = "", dev_name[64] = "";
+  char *buf = NULL;
+  size_t n = 0;
+  FILE *file;
+  int index;
+
+  file = fopen(rshim_cfg_file, "r");
+  if (!file)
+    return -ENOENT;
+
+  while (getline(&buf, &n, file) != -1) {
+    if (sscanf(buf, "%31s%63s", rshim_name, dev_name) != 2)
+      continue;
+
+    if (strncmp(rshim_name, "rshim", 5) && strcmp(rshim_name, "none"))
+      continue;
+
+    if (strncmp(dev_name, "usb-", 4) && strncmp(dev_name, "pcie-", 5))
+      continue;
+
+    /* Blocked devices. */
+    if (!strcmp(rshim_name, "none")) {
+      for (index = 0; index < RSHIM_MAX_DEV; index++) {
+        if (!rshim_blocked_dev_names[index]) {
+          rshim_blocked_dev_names[index] = strdup(dev_name);
+          break;
+        }
+      }
+      continue;
+    }
+
+    /* Static mapping of rshim device to index. */
+    index = atoi(rshim_name + 5);
+    if (index < 0 || index >= RSHIM_MAX_DEV)
+      continue;
+    if (rshim_dev_names[index])
+      free(rshim_dev_names[index]);
+    rshim_dev_names[index] = strdup(dev_name);
+  }
+
+  if (buf)
+    free(buf);
+  fclose(file);
+
+  return 0;
+}
+
 void rshim_sig_hup(int sig)
 {
   rshim_backend_t *bd;
@@ -2519,6 +2582,8 @@ int main(int argc, char *argv[])
 #ifdef HAVE_SYSLOG_H
   openlog("rshim", LOG_CONS, LOG_USER);
 #endif
+
+  rshim_load_cfg();
 
   set_signals();
 

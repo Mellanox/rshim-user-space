@@ -112,3 +112,20 @@ Log messages will be printed to standard output when running in foreground, or i
 .in +4n
 Display version
 .in
+.SH CONFIGURATION FILE
+Rshim configuration file (/etc/rshim.conf) can be used to specify the static mapping between rshim devices and rshim names. It can also be used to ignore some rshim devices.
+
+Example:
+.in +4n
+# Map usb-2-1.7 to rshim0
+.br
+rshim0       usb-2-1.7
+
+# Map pcie-0000:04:00.2 to rshim1
+.br
+rshim1       pcie-0000:04:00.2
+
+# Ignore usb-1-1.4
+.br
+none         usb-1-1.4
+.in
