@@ -1,3 +1,11 @@
+rshim (2.0.5-2) UNRELEASED; urgency=low
+
+  * Add configuration file support
+  * misc: Display device version / revision ID
+  * Add service file for FreeBSD
+
+ -- Liming Sun <lsun@mellanox.com>  Fri, 24 Jul 2020 08:06:20 -0400
+
 rshim (2.0.5-1) UNRELEASED; urgency=low
 
   * Improve response time to ctrl+c for boot stream

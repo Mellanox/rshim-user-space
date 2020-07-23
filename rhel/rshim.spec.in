@@ -4,7 +4,7 @@
 
 Name: rshim
 Version: @VERSION@
-Release: 1%{?dist}
+Release: 2%{?dist}
 Summary: User-space driver for Mellanox BlueField SoC
 
 License: GPLv2
@@ -48,11 +48,17 @@ via the virtual console or network interface.
 %files
 %license LICENSE
 %doc README.md
+%config(noreplace) %{_sysconfdir}/rshim.conf
 %{_sbindir}/rshim
 %{_unitdir}/rshim.service
 %{_mandir}/man8/rshim.8.gz
 
 %changelog
+* Fri Jul 24 2020 Liming Sun <lsun@mellanox.com> - 2.0.5-2
+- Add configuration file support
+- misc: Display device version / revision ID
+- Add service file for FreeBSD
+
 * Tue Jun 16 2020 Liming Sun <lsun@mellanox.com> - 2.0.5-1
 - Improve response time to ctrl+c for boot stream
 - Fix a rpmbuild issue when make_build is not defined
