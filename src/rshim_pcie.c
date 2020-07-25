@@ -104,12 +104,15 @@ static int rshim_byte_acc_pending_wait(rshim_pcie_t *dev)
 {
   uint32_t read_value;
   int retry = 0;
+  time_t t0, t1;
 
+  time(&t0);
   do {
     read_value = readl(dev->rshim_regs +
                        (RSH_BYTE_ACC_CTL | (RSHIM_CHANNEL << 16)));
 
-    if (++retry > LOCK_RETRY_CNT)
+    time(&t1);
+    if (difftime(t1, t0) > RSHIM_LOCK_RETRY_TIME)
       return -ETIMEDOUT;
 
   } while (read_value & RSH_BYTE_ACC_PENDING);
@@ -122,9 +125,11 @@ static int rshim_byte_acc_lock_acquire(rshim_pcie_t *dev)
 {
   uint32_t read_value;
   int retry = 0;
+  time_t t0, t1;
 
   do {
-    if (++retry > LOCK_RETRY_CNT)
+    time(&t1);
+    if (difftime(t1, t0) > RSHIM_LOCK_RETRY_TIME)
       return -ETIMEDOUT;
 
     read_value = readl(dev->rshim_regs +
@@ -254,9 +259,10 @@ rshim_pcie_read(rshim_backend_t *bd, int chan, int addr, uint64_t *result)
   rshim_pcie_t *dev = container_of(bd, rshim_pcie_t, bd);
   int rc = 0;
 
-  if (!bd->has_rshim)
+  if (!bd->has_rshim || !bd->has_tm)
     return -ENODEV;
-  if (bd->drop_mode) {
+
+  if (bd->drop_mode && !rshim_drop_mode_access(addr)) {
     *result = 0;
     return 0;
   }
@@ -279,9 +285,10 @@ rshim_pcie_write(rshim_backend_t *bd, int chan, int addr, uint64_t value)
   uint64_t result;
   int rc = 0;
 
-  if (!bd->has_rshim)
+  if (!bd->has_rshim || !bd->has_tm)
     return -ENODEV;
-  if (bd->drop_mode)
+
+  if (bd->drop_mode && !rshim_drop_mode_access(addr))
     return 0;
 
   /*

@@ -260,6 +260,9 @@ static void rshim_usb_fifo_read(rshim_usb_t *dev, char *buffer, size_t count)
   struct libusb_transfer *urb;
   int rc;
 
+  if (!bd->has_rshim || !bd->has_tm || bd->drop_mode)
+    return;
+
   if ((int) *dev->intr_buf || bd->read_buf_bytes) {
     /* We're doing a read. */
     urb = dev->read_or_intr_urb;
@@ -392,6 +395,12 @@ static int rshim_usb_fifo_write(rshim_usb_t *dev, const char *buffer,
 {
   rshim_backend_t *bd = &dev->bd;
   int rc;
+
+  if (!bd->has_rshim || !bd->has_tm)
+    return -ENODEV;
+
+  if (bd->drop_mode)
+    return 0;
 
   if (count % 8)
     RSHIM_WARN("rshim write %d is not multiple of 8 bytes\n", (int)count);
