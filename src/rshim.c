@@ -321,12 +321,9 @@ static ssize_t rshim_write_delayed(rshim_backend_t *bd, int devtype,
   time_t t0, t1;
   uint64_t reg;
 
-  if (bd->drop_mode)
-    return count;
-
   switch (devtype) {
   case RSH_DEV_TYPE_TMFIFO:
-    if (bd->is_boot_open)
+    if (bd->is_boot_open || bd->drop_mode)
       return count;
     size_addr = RSH_TM_HOST_TO_TILE_STS;
     size_mask = RSH_TM_HOST_TO_TILE_STS__COUNT_MASK;
@@ -605,7 +602,7 @@ int rshim_boot_open(rshim_backend_t *bd)
 
   pthread_mutex_lock(&bd->mutex);
 
-  if (bd->is_boot_open || bd->drop_mode) {
+  if (bd->is_boot_open) {
     RSHIM_INFO("can't boot, boot file already open\n");
     pthread_mutex_unlock(&bd->mutex);
     return -EBUSY;

@@ -97,15 +97,18 @@ static int pci_cap_write(struct pci_dev *pci_dev, int offset, uint32_t value)
 static int trio_cr_gw_lock_acquire(struct pci_dev *pci_dev)
 {
   uint32_t read_value, retry = 0;
+  time_t t0, t1;
   int rc;
 
   /* Wait until TRIO_CR_GW_LOCK is free */
+  time(&t0);
   do {
     rc = pci_cap_read(pci_dev, TRIO_CR_GW_LOCK, &read_value);
     if (rc)
       return rc;
 
-    if (++retry > LOCK_RETRY_CNT)
+    time(&t1);
+    if (difftime(t1, t0) > RSHIM_LOCK_RETRY_TIME)
       return -ETIMEDOUT;
   } while (read_value & TRIO_CR_GW_LOCK_ACQUIRED);
 
@@ -233,14 +236,17 @@ static int crspace_rsh_gw_write(struct pci_dev *pci_dev, int addr,
 static int rshim_byte_acc_pending_wait(struct pci_dev *pci_dev)
 {
   uint32_t read_value, retry = 0;
+  time_t t0, t1;
   int rc;
 
+  time(&t0);
   do {
     rc = crspace_rsh_gw_read(pci_dev, RSH_BYTE_ACC_CTL, &read_value);
     if (rc)
       return rc;
 
-    if (++retry > LOCK_RETRY_CNT)
+    time(&t1);
+    if (difftime(t1, t0) > RSHIM_LOCK_RETRY_TIME)
       return -ETIMEDOUT;
   } while (read_value & RSH_BYTE_ACC_PENDING);
 
@@ -250,11 +256,14 @@ static int rshim_byte_acc_pending_wait(struct pci_dev *pci_dev)
 /* Acquire BAW Interlock */
 static int rshim_byte_acc_lock_acquire(struct pci_dev *pci_dev)
 {
-  int rc, retry = 0;
   uint32_t read_value;
+  int rc, retry = 0;
+  time_t t0, t1;
 
+  time(&t0);
   do {
-    if (++retry > LOCK_RETRY_CNT)
+    time(&t1);
+    if (difftime(t1, t0) > RSHIM_LOCK_RETRY_TIME)
       return -ETIMEDOUT;
 
     rc = crspace_rsh_gw_read(pci_dev, RSH_BYTE_ACC_INTERLOCK,
@@ -419,8 +428,13 @@ rshim_pcie_read(struct rshim_backend *bd, int chan, int addr, uint64_t *result)
   struct pci_dev *pci_dev = dev->pci_dev;
   int rc = 0;
 
-  if (!bd->has_rshim)
+  if (!bd->has_rshim || !bd->has_tm)
     return -ENODEV;
+
+  if (bd->drop_mode && !rshim_drop_mode_access(addr)) {
+    *result = 0;
+    return 0;
+  }
 
   dev->write_count = 0;
 
@@ -438,8 +452,11 @@ rshim_pcie_write(struct rshim_backend *bd, int chan, int addr, uint64_t value)
   uint64_t result;
   int rc = 0;
 
-  if (!bd->has_rshim)
+  if (!bd->has_rshim || !bd->has_tm)
     return -ENODEV;
+
+  if (bd->drop_mode && !rshim_drop_mode_access(addr))
+    return 0;
 
   /*
    * Limitation in BlueField-1
@@ -554,6 +571,10 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
 
   /* Notify that the device is attached */
   ret = rshim_notify(bd, RSH_EVENT_ATTACH, 0);
+
+  /* Enable drop mode by default for livefish. */
+  bd->drop_mode = 1;
+
   pthread_mutex_unlock(&bd->mutex);
   if (ret)
     goto rshim_map_failed;
