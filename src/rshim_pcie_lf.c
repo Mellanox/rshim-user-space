@@ -96,7 +96,7 @@ static int pci_cap_write(struct pci_dev *pci_dev, int offset, uint32_t value)
 /* Acquire and release the TRIO_CR_GW_LOCK. */
 static int trio_cr_gw_lock_acquire(struct pci_dev *pci_dev)
 {
-  uint32_t read_value, retry = 0;
+  uint32_t read_value;
   time_t t0, t1;
   int rc;
 
@@ -235,7 +235,7 @@ static int crspace_rsh_gw_write(struct pci_dev *pci_dev, int addr,
 /* Wait until the RSH_BYTE_ACC_CTL pending bit is cleared */
 static int rshim_byte_acc_pending_wait(struct pci_dev *pci_dev)
 {
-  uint32_t read_value, retry = 0;
+  uint32_t read_value;
   time_t t0, t1;
   int rc;
 
@@ -257,7 +257,7 @@ static int rshim_byte_acc_pending_wait(struct pci_dev *pci_dev)
 static int rshim_byte_acc_lock_acquire(struct pci_dev *pci_dev)
 {
   uint32_t read_value;
-  int rc, retry = 0;
+  int rc;
   time_t t0, t1;
 
   time(&t0);
