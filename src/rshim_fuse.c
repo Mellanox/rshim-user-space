@@ -613,6 +613,7 @@ static int rshim_fuse_misc_read(struct cuse_dev *cdev, int fflags,
   struct rshim_misc *rm = cuse_dev_get_per_file_handle(cdev);
   off_t off;
 #endif
+  char opn[RSHIM_YU_BOOT_RECORD_OPN_SIZE + 1] = "";
   uint8_t *mac = bd->peer_mac;
   int rc, len = sizeof(rm->buffer), n;
   struct timespec ts;
@@ -686,10 +687,22 @@ static int rshim_fuse_misc_read(struct cuse_dev *cdev, int fflags,
   n = snprintf(p, len, "%-16s%s\n", "DEV_NAME", bd->dev_name);
   p += n;
   len -= n;
+
+  /* Display device info. */
   n = snprintf(p, len, "%-16sBlueField-%d(Rev %d)\n", "DEV_INFO", bd->ver_id,
                bd->rev_id);
   p += n;
   len -= n;
+
+  /* Display OPN info (for BlueField-2 and above). */
+  if (bd->ver_id >= RSHIM_BLUEFIELD_2) {
+    rshim_get_opn(bd, opn, RSHIM_YU_BOOT_RECORD_OPN_SIZE);
+    if (!strlen(opn))
+      strcpy(opn, "N/A");
+    n = snprintf(p, len, "%-16s%s\n", "OPN_STR", opn);
+    p += n;
+    len -= n;
+  }
 
   if (bd->display_level == 1) {
     gettimeofday(&tp, NULL);
@@ -774,6 +787,7 @@ static int rshim_fuse_misc_write(struct cuse_dev *cdev, int fflags,
   const char *p = buf;
 #endif
   int i, rc = 0, value = 0, mac[6], vlan[2] = {0};
+  char opn[RSHIM_YU_BOOT_RECORD_OPN_SIZE + 1] = "";
   char key[32];
 
   if (!bd) {
@@ -893,6 +907,10 @@ static int rshim_fuse_misc_write(struct cuse_dev *cdev, int fflags,
     bd->has_cons_work = 1;
     rshim_work_signal(bd);
     pthread_mutex_unlock(&bd->mutex);
+  } else if (!strcmp(key, "OPN_STR")) {
+    if (sscanf(p, "%16s", opn) != 1)
+      goto invalid;
+    rshim_set_opn(bd, opn, RSHIM_YU_BOOT_RECORD_OPN_SIZE);
   } else {
 invalid:
 #ifdef __linux__

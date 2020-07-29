@@ -2387,6 +2387,47 @@ int rshim_fifo_size(rshim_backend_t *bd, int chan, bool is_rx)
   return is_rx ? read_cnt(bd, chan) : write_cnt(bd, chan);
 }
 
+int rshim_get_opn(rshim_backend_t *bd, char *opn, int len)
+{
+  uint32_t value;
+  int i;
+
+  if (len)
+    opn[0] = 0;
+
+  if (bd->ver_id < RSHIM_BLUEFIELD_2)
+    return -EOPNOTSUPP;
+
+  for (i = 0; i < RSHIM_YU_BOOT_RECORD_OPN_SIZE && len >= 4; i += 4, len -= 4) {
+    value = le32toh(rshim_mmio_read32(bd, RSHIM_YU_BASE_ADDR +
+                                      RSHIM_YU_BOOT_RECORD_OPN + i));
+    opn[i] = (value >> 24) & 0xff;
+    opn[i + 1] = (value >> 16) & 0xff;
+    opn[i + 2] = (value >> 8) & 0xff;
+    opn[i + 3] = value & 0xff;
+  }
+
+  return 0;
+}
+
+int rshim_set_opn(rshim_backend_t *bd, const char *opn, int len)
+{
+  uint32_t value;
+  int i;
+
+  if (bd->ver_id < RSHIM_BLUEFIELD_2)
+    return -EOPNOTSUPP;
+
+  for (i = 0; i < RSHIM_YU_BOOT_RECORD_OPN_SIZE && len >= 4; i += 4, len -= 4) {
+    value = htole32((opn[i] << 24) | (opn[i + 1] << 16) | (opn[i + 2] << 8) |
+                    opn[i + 3]);
+    rshim_mmio_write32(bd, RSHIM_YU_BASE_ADDR + RSHIM_YU_BOOT_RECORD_OPN + i,
+                       value);
+  }
+
+  return 0;
+}
+
 static int rshim_load_cfg(void)
 {
   char rshim_name[32] = "", dev_name[64] = "";

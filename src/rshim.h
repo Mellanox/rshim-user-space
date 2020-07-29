@@ -162,6 +162,11 @@ enum {
 /* Retry time in seconds. */
 #define RSHIM_LOCK_RETRY_TIME  2
 
+/* YU boot record OPN offset/size */
+#define RSHIM_YU_BASE_ADDR             0x2800000
+#define RSHIM_YU_BOOT_RECORD_OPN       0xfd8
+#define RSHIM_YU_BOOT_RECORD_OPN_SIZE  16
+
 /* FIFO structure. */
 typedef struct {
   unsigned char *data;
@@ -516,5 +521,12 @@ static inline bool rshim_drop_mode_access(int addr)
   return (addr == RSH_BOOT_CONTROL || addr == RSH_RESET_CONTROL ||
           addr == RSH_BOOT_FIFO_DATA || addr == RSH_BOOT_FIFO_COUNT);
 }
+
+/*
+ * Get/Set the OPN string from the YU boot record, which means setting
+ * the value only persists during warm resets.
+ */
+int rshim_get_opn(rshim_backend_t *bd, char *opn, int len);
+int rshim_set_opn(rshim_backend_t *bd, const char *opn, int len);
 
 #endif /* _RSHIM_H */
