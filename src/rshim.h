@@ -167,6 +167,22 @@ enum {
 #define RSHIM_YU_BOOT_RECORD_OPN       0xfd8
 #define RSHIM_YU_BOOT_RECORD_OPN_SIZE  16
 
+#define YU_RESET_MODE_TRIGGER   0x0011
+#define YU_BOOT_DEVID           0x0014
+#define YU_BOOT                 0x0068
+#define YU_POWER_CLK_DELAY      0x0c24
+#define YU_RESET_8_CLK_EN       0x2800
+#define YU_RESET_13_CLK_EN      0x2d00
+#define YU_CLK_EN_COUNT         16
+#define YU_RESET_8_RESET_EN     0x2840
+#define YU_RESET_13_RESET_EN    0x2d40
+#define YU_RESET_EN_COUNT       8
+#define YU_RESET_8_POWERDOWN    0x2860
+#define YU_RESET_13_POWERDOWN   0x2d60
+#define YU_POWERDOWN_COUNT      8
+#define YU_RESET_ACTIVATION_13  0x30b4
+#define YU_MAIN_CLK_GATE_EN     0x30c8
+
 /* FIFO structure. */
 typedef struct {
   unsigned char *data;
