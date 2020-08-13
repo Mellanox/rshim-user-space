@@ -503,10 +503,11 @@ static int rshim_reg_indirect_wait(rshim_backend_t *bd, uint64_t resp_count)
     if (count != resp_count)
       return 0;
   }
+  RSHIM_ERR("Rshim byte access widget timeout\n");
   return -1;
 }
 
-static void rshim_mmio_write_common(rshim_backend_t *bd, uintptr_t pa,
+static int rshim_mmio_write_common(rshim_backend_t *bd, uintptr_t pa,
                                     uint8_t size, uint64_t data)
 {
   uint64_t reg, resp_count;
@@ -524,12 +525,17 @@ static void rshim_mmio_write_common(rshim_backend_t *bd, uintptr_t pa,
         (1ULL << RSH_MEM_ACC_CTL__WRITE_SHIFT) |
         (1ULL << RSH_MEM_ACC_CTL__SEND_SHIFT);
   bd->write_rshim(bd, RSHIM_CHANNEL, RSH_MEM_ACC_CTL, reg);
-  rshim_reg_indirect_wait(bd, resp_count);
+  return rshim_reg_indirect_wait(bd, resp_count);
 }
 
-uint64_t rshim_mmio_read_common(rshim_backend_t *bd, uintptr_t pa, uint8_t size)
+static int rshim_mmio_read_common(rshim_backend_t *bd, uintptr_t pa,
+                                  uint8_t size, uint64_t *data)
 {
   uint64_t reg, resp_count;
+
+  bd->read_rshim(bd, RSHIM_CHANNEL, RSH_DEVICE_MSTR_PRIV_LVL, &reg);
+  reg |= 0x1ULL << RSH_DEVICE_MSTR_PRIV_LVL__MEM_ACC_LVL_SHIFT;
+  bd->write_rshim(bd, RSHIM_CHANNEL, RSH_DEVICE_MSTR_PRIV_LVL, reg);
 
   bd->read_rshim(bd, RSHIM_CHANNEL, RSH_MEM_ACC_RSP_CNT, &resp_count);
 
@@ -540,22 +546,48 @@ uint64_t rshim_mmio_read_common(rshim_backend_t *bd, uintptr_t pa, uint8_t size)
         (1ULL << RSH_MEM_ACC_CTL__SEND_SHIFT);
   bd->write_rshim(bd, RSHIM_CHANNEL, RSH_MEM_ACC_CTL, reg);
 
-  rshim_reg_indirect_wait(bd, resp_count);
+  if (rshim_reg_indirect_wait(bd, resp_count))
+    return -1;
 
   bd->read_rshim(bd, RSHIM_CHANNEL, RSH_MEM_ACC_DATA__FIRST_WORD, &reg);
+  *data = reg;
 
-  return reg;
+  return 0;
 }
 
-void rshim_mmio_write32(rshim_backend_t *bd, uintptr_t addr, uint32_t value)
+int rshim_mmio_write32(rshim_backend_t *bd, uintptr_t addr, uint32_t value)
 {
-  rshim_mmio_write_common(bd, addr, RSH_MEM_ACC_CTL__SIZE_VAL_SZ4, value);
+  return rshim_mmio_write_common(bd, addr, RSH_MEM_ACC_CTL__SIZE_VAL_SZ4,
+                                 value);
 }
 
-uint32_t rshim_mmio_read32(rshim_backend_t *bd, uintptr_t addr)
+int rshim_mmio_read32(rshim_backend_t *bd, uintptr_t addr, uint32_t *data)
 {
-  return (uint32_t) rshim_mmio_read_common(bd, addr,
-                                           RSH_MEM_ACC_CTL__SIZE_VAL_SZ4);
+  uint64_t reg;
+
+  if (rshim_mmio_read_common(bd, addr, RSH_MEM_ACC_CTL__SIZE_VAL_SZ4, &reg)) {
+    return -1;
+  } else {
+    *data = (uint32_t)reg;
+    return 0;
+  }
+}
+
+static int rshim_is_livefish(rshim_backend_t *bd)
+{
+  uint32_t yu_boot, boot_status, devid;
+  uint64_t priv_lvl;
+  int rc;
+
+  /*
+   * A value of 1 in yu_boot.boot_status indicates a successful FW
+   * boot, any other value indicates livefish mode.
+   */
+  rc = rshim_mmio_read32(bd, RSHIM_YU_BASE_ADDR + YU_BOOT, &yu_boot);
+  boot_status = (yu_boot >> 17) & 3;
+  RSHIM_DBG("yu_boot_status: %d\n", boot_status);
+
+  return (rc != 0 || boot_status != 1);
 }
 
 
@@ -591,6 +623,12 @@ int rshim_reset_control(rshim_backend_t *bd)
   if (rc < 0) {
     RSHIM_ERR("failed to write rshim reset control error %d\n", rc);
     return rc;
+  }
+
+  if (bd->ver_id == RSHIM_BLUEFIELD_2 && rshim_is_livefish(bd)) {
+    RSHIM_DBG("Apply reset type 13\n");
+    /* yu.reset_mode_control.reset_mode_control.sw_reset_event_activation13 */
+    rshim_mmio_write32(bd, RSHIM_YU_BASE_ADDR + YU_RESET_ACTIVATION_13, 1);
   }
 
   return 0;
@@ -1989,6 +2027,82 @@ static void rshim_boot_workaround_check(rshim_backend_t *bd)
   }
 }
 
+static int rshim_bf2_a0_wa(rshim_backend_t *bd)
+{
+  uint32_t devid, clk_en, reset_en, powerdown;
+  uint32_t main_clk_gate_en;
+  int i, rc;
+
+  rc = rshim_mmio_read32(bd, RSHIM_YU_BASE_ADDR + YU_BOOT_DEVID, &devid);
+  RSHIM_DBG("yu_boot_devid: 0x%x\n", devid);
+  if (rc)
+    return -1;
+
+  /* Workaround applies only to rev A0 in livefish mode */
+  if ((devid >> 16) > 0)
+    return 0;
+
+  RSHIM_INFO("Apply reset_mode_control WA\n");
+  if (rshim_mmio_read32(bd, RSHIM_YU_BASE_ADDR +
+                        YU_MAIN_CLK_GATE_EN, &main_clk_gate_en))
+    return -1;
+
+  main_clk_gate_en |= (1 << 13);
+  if (rshim_mmio_write32(bd, RSHIM_YU_BASE_ADDR + YU_MAIN_CLK_GATE_EN,
+                         main_clk_gate_en))
+    return -1;
+  RSHIM_DBG("main_clk_gate_en: 0x%x\n", main_clk_gate_en);
+
+  /*
+   * yu.reset_mode_control.reset_modes.reset_mode[13].clk_en_bits[i].clk_en_bits =
+   *   yu.reset_mode_control.reset_modes.reset_mode[8].clk_en_bits[i].clk_en_bits
+   */
+  for (i = 0; i < YU_CLK_EN_COUNT; ++i) {
+    if (rshim_mmio_read32(bd, RSHIM_YU_BASE_ADDR + YU_RESET_8_CLK_EN +
+                          (i * 4), &clk_en))
+      return -1;
+    if (rshim_mmio_write32(bd, RSHIM_YU_BASE_ADDR + YU_RESET_13_CLK_EN +
+                           (i * 4), clk_en))
+      return -1;
+  }
+
+  /*
+   * yu.reset_mode_control.reset_modes.reset_mode[13].reset_en_bits[i].reset_en_bits =
+   *   yu.reset_mode_control.reset_modes.reset_mode[8].reset_en_bits[i].reset_en_bits
+   */
+  for (i = 0; i < YU_RESET_EN_COUNT; ++i) {
+    if (rshim_mmio_read32(bd, RSHIM_YU_BASE_ADDR + YU_RESET_8_RESET_EN +
+                          (i * 4), &reset_en))
+      return -1;
+    if (rshim_mmio_write32(bd, RSHIM_YU_BASE_ADDR + YU_RESET_13_RESET_EN +
+                           (i * 4), reset_en))
+      return -1;
+  }
+
+  /*
+   * yu.reset_mode_control.reset_modes.reset_mode[13].powerdown_bits[i].powerdown_bits =
+   *   yu.reset_mode_control.reset_modes.reset_mode[8].powerdown_bits[i].powerdown_bits
+   */
+  for (i = 0; i < YU_POWERDOWN_COUNT; ++i) {
+    if (rshim_mmio_read32(bd, RSHIM_YU_BASE_ADDR + YU_RESET_8_POWERDOWN +
+                          (i * 4), &powerdown))
+      return -1;
+    if (rshim_mmio_write32(bd, RSHIM_YU_BASE_ADDR + YU_RESET_13_POWERDOWN +
+                           (i * 4), powerdown))
+      return -1;
+  }
+
+  /*
+   * yu.bootrecord.nic.power.power_clock_up_delay = 0x9
+   * yu.bootrecord.nic.power.power_clock_down_delay = 0x9
+   */
+  if (rshim_mmio_write32(bd, RSHIM_YU_BASE_ADDR + YU_POWER_CLK_DELAY,
+                         0x9 | (0x9 << 5)))
+      return -1;
+
+  return 0;
+}
+
 /* Check whether backend is allowed to register or not. */
 static int rshim_access_check(rshim_backend_t *bd)
 {
@@ -2010,6 +2124,19 @@ static int rshim_access_check(rshim_backend_t *bd)
   }
 
   rshim_boot_workaround_check(bd);
+
+  if (bd->ver_id == RSHIM_BLUEFIELD_2 && rshim_is_livefish(bd)) {
+    if (rshim_bf2_a0_wa(bd) != 0) {
+      /*
+       * If the workaround fails it is likely because the mesh is
+       * already stuck.  Issue a soft reset and try one more time.
+       */
+      rc = bd->write_rshim(bd, RSHIM_CHANNEL, RSH_RESET_CONTROL,
+                           RSH_RESET_CONTROL__RESET_CHIP_VAL_KEY);
+      sleep(1);
+      rshim_bf2_a0_wa(bd);
+    }
+  }
 
   /* Write value 0 to RSH_SCRATCHPAD1. */
   rc = bd->write_rshim(bd, RSHIM_CHANNEL, RSH_SCRATCHPAD1, 0);
@@ -2399,8 +2526,10 @@ int rshim_get_opn(rshim_backend_t *bd, char *opn, int len)
     return -EOPNOTSUPP;
 
   for (i = 0; i < RSHIM_YU_BOOT_RECORD_OPN_SIZE && len >= 4; i += 4, len -= 4) {
-    value = le32toh(rshim_mmio_read32(bd, RSHIM_YU_BASE_ADDR +
-                                      RSHIM_YU_BOOT_RECORD_OPN + i));
+    uint32_t br_opn;
+    rshim_mmio_read32(bd, RSHIM_YU_BASE_ADDR +
+                      RSHIM_YU_BOOT_RECORD_OPN + i, &br_opn);
+    value = le32toh(br_opn);
     opn[i] = (value >> 24) & 0xff;
     opn[i + 1] = (value >> 16) & 0xff;
     opn[i + 2] = (value >> 8) & 0xff;
