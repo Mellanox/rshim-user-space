@@ -21,6 +21,10 @@
 #include <sys/time.h>
 #include <unistd.h>
 
+#ifdef __linux__
+#include <dirent.h>
+#endif
+
 #include "rshim.h"
 
 /* Maximum number of devices supported. */
@@ -2358,6 +2362,7 @@ static void rshim_main(int argc, char *argv[])
   const int MAXEVENTS = 16;
 #else
   const int MAXEVENTS = 64;
+  DIR* dir;
 #endif
   struct epoll_event events[MAXEVENTS];
   struct epoll_event event;
@@ -2372,7 +2377,13 @@ static void rshim_main(int argc, char *argv[])
 #ifdef __linux__
   rc = system("modprobe cuse");
   if (rc == -1)
-    RSHIM_DBG("Failed the load cuse: %m\n");
+    RSHIM_DBG("Failed the modprobe cuse\n");
+  dir = opendir("/sys/module/cuse");
+  if (!dir) {
+    RSHIM_ERR("Failed the load cuse\n");
+    return;
+  }
+  closedir(dir);
 #endif
 
 #ifdef __FreeBSD__
