@@ -1,3 +1,11 @@
+rshim (2.0.5-3) UNRELEASED; urgency=low
+
+  * Fix several coverity warnings
+  * Add workaround to boot Viper rev A0 in LiveFish mode
+  * Display/configure OPN string for BlueField-2
+
+ -- Liming Sun <lsun@mellanox.com>  Mon, 17 Aug 2020 20:37:23 -0400
+
 rshim (2.0.5-2) UNRELEASED; urgency=low
 
   * Add configuration file support
