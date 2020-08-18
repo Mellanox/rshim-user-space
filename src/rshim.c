@@ -575,8 +575,7 @@ int rshim_mmio_read32(rshim_backend_t *bd, uintptr_t addr, uint32_t *data)
 
 static int rshim_is_livefish(rshim_backend_t *bd)
 {
-  uint32_t yu_boot, boot_status, devid;
-  uint64_t priv_lvl;
+  uint32_t yu_boot = 0, boot_status;
   int rc;
 
   /*
@@ -2029,7 +2028,7 @@ static void rshim_boot_workaround_check(rshim_backend_t *bd)
 
 static int rshim_bf2_a0_wa(rshim_backend_t *bd)
 {
-  uint32_t devid, clk_en, reset_en, powerdown;
+  uint32_t devid = 0, clk_en, reset_en, powerdown;
   uint32_t main_clk_gate_en;
   int i, rc;
 
@@ -2128,11 +2127,12 @@ static int rshim_access_check(rshim_backend_t *bd)
   if (bd->ver_id == RSHIM_BLUEFIELD_2 && rshim_is_livefish(bd)) {
     if (rshim_bf2_a0_wa(bd) != 0) {
       /*
-       * If the workaround fails it is likely because the mesh is
-       * already stuck.  Issue a soft reset and try one more time.
+       * If the workaround fails it is likely because the mesh is already
+       * stuck. Issue a soft reset and try one more time. Ignore the error code
+       * since it's not reliable when doing reset.
        */
-      rc = bd->write_rshim(bd, RSHIM_CHANNEL, RSH_RESET_CONTROL,
-                           RSH_RESET_CONTROL__RESET_CHIP_VAL_KEY);
+      bd->write_rshim(bd, RSHIM_CHANNEL, RSH_RESET_CONTROL,
+                      RSH_RESET_CONTROL__RESET_CHIP_VAL_KEY);
       sleep(1);
       rshim_bf2_a0_wa(bd);
     }
@@ -2516,8 +2516,8 @@ int rshim_fifo_size(rshim_backend_t *bd, int chan, bool is_rx)
 
 int rshim_get_opn(rshim_backend_t *bd, char *opn, int len)
 {
-  uint32_t value;
-  int i;
+  uint32_t value, br_opn = 0;
+  int i, rc;
 
   if (len)
     opn[0] = 0;
@@ -2526,9 +2526,10 @@ int rshim_get_opn(rshim_backend_t *bd, char *opn, int len)
     return -EOPNOTSUPP;
 
   for (i = 0; i < RSHIM_YU_BOOT_RECORD_OPN_SIZE && len >= 4; i += 4, len -= 4) {
-    uint32_t br_opn;
-    rshim_mmio_read32(bd, RSHIM_YU_BASE_ADDR +
-                      RSHIM_YU_BOOT_RECORD_OPN + i, &br_opn);
+    rc = rshim_mmio_read32(bd, RSHIM_YU_BASE_ADDR +
+                           RSHIM_YU_BOOT_RECORD_OPN + i, &br_opn);
+    if (rc)
+      return rc;
     value = le32toh(br_opn);
     opn[i] = (value >> 24) & 0xff;
     opn[i + 1] = (value >> 16) & 0xff;
@@ -2542,7 +2543,7 @@ int rshim_get_opn(rshim_backend_t *bd, char *opn, int len)
 int rshim_set_opn(rshim_backend_t *bd, const char *opn, int len)
 {
   uint32_t value;
-  int i;
+  int i, rc;
 
   if (bd->ver_id < RSHIM_BLUEFIELD_2)
     return -EOPNOTSUPP;
@@ -2550,8 +2551,10 @@ int rshim_set_opn(rshim_backend_t *bd, const char *opn, int len)
   for (i = 0; i < RSHIM_YU_BOOT_RECORD_OPN_SIZE && len >= 4; i += 4, len -= 4) {
     value = htole32((opn[i] << 24) | (opn[i + 1] << 16) | (opn[i + 2] << 8) |
                     opn[i + 3]);
-    rshim_mmio_write32(bd, RSHIM_YU_BASE_ADDR + RSHIM_YU_BOOT_RECORD_OPN + i,
-                       value);
+    rc = rshim_mmio_write32(bd, RSHIM_YU_BASE_ADDR + RSHIM_YU_BOOT_RECORD_OPN + i,
+                            value);
+    if (rc)
+      return rc;
   }
 
   return 0;

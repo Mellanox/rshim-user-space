@@ -4,7 +4,7 @@
 
 Name: rshim
 Version: @VERSION@
-Release: 2%{?dist}
+Release: 3%{?dist}
 Summary: User-space driver for Mellanox BlueField SoC
 
 License: GPLv2
@@ -54,6 +54,11 @@ via the virtual console or network interface.
 %{_mandir}/man8/rshim.8.gz
 
 %changelog
+* Mon Aug 17 2020 Liming Sun <lsun@mellanox.com> - 2.0.5-3
+- Fix several coverity warnings
+- Add workaround to boot Viper rev A0 in LiveFish mode
+- Display/configure OPN string for BlueField-2
+
 * Fri Jul 24 2020 Liming Sun <lsun@mellanox.com> - 2.0.5-2
 - Add configuration file support
 - misc: Display device version / revision ID
