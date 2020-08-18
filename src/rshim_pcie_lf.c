@@ -594,6 +594,7 @@ int rshim_pcie_lf_init(void)
   struct pci_access *pci;
   struct pci_dev *dev;
   int rc;
+  bool dev_present = false;
 
   pci = pci_alloc();
   if (!pci)
@@ -616,7 +617,11 @@ int rshim_pcie_lf_init(void)
     if (rc)
       continue;
     rshim_pcie_probe(dev);
+    dev_present = true;
   }
+
+  if (!dev_present)
+	  return -1;
 
   return 0;
 }
