@@ -413,8 +413,8 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
   }
 
   dev->rshim_regs = mmap(NULL, PCI_RSHIM_WINDOW_SIZE,
-                         PROT_READ | PROT_WRITE | MAP_LOCKED,
-                         MAP_SHARED, dev->pci_fd,
+                         PROT_READ | PROT_WRITE,
+                         MAP_SHARED | MAP_LOCKED, dev->pci_fd,
                          PCI_RSHIM_WINDOW_OFFSET);
   if (dev->rshim_regs == MAP_FAILED) {
     RSHIM_ERR("Failed to map RShim registers\n");
