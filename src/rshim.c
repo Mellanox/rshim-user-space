@@ -192,6 +192,11 @@ void rshim_lock(void)
   pthread_mutex_lock(&rshim_mutex);
 }
 
+int rshim_trylock(void)
+{
+  return pthread_mutex_trylock(&rshim_mutex);
+}
+
 void rshim_unlock(void)
 {
   pthread_mutex_unlock(&rshim_mutex);
@@ -232,6 +237,7 @@ static int rshim_fd_full_write(int fd, void *data, int len)
     if (written < 0) {
       if (errno == EINTR || errno == EAGAIN)
         continue;
+      RSHIM_ERR("fd write error %d\n", written);
       return written;
     }
     total += written;
@@ -2140,8 +2146,10 @@ static int rshim_access_check(rshim_backend_t *bd)
 
   /* Write value 0 to RSH_SCRATCHPAD1. */
   rc = bd->write_rshim(bd, RSHIM_CHANNEL, RSH_SCRATCHPAD1, 0);
-  if (rc < 0)
+  if (rc < 0) {
+    RSHIM_ERR("failed to write rshim rc=%d\n", rc);
     return -ENODEV;
+  }
 
   /* Write magic number to all the other backends. */
   for (i = 0; i < RSHIM_MAX_DEV; i++) {
@@ -2159,17 +2167,23 @@ static int rshim_access_check(rshim_backend_t *bd)
    * the keepalive magic value, which indicates another backend driver has
    * already attached to this target.
    */
+  value = 0;
   for (i = 0; i < 10; i++) {
     rc = bd->read_rshim(bd, RSHIM_CHANNEL, RSH_SCRATCHPAD1, &value);
-    if (rc < 0)
-      return -ENODEV;
 
-    if (value == RSHIM_KEEPALIVE_MAGIC_NUM) {
+    if (!rc && value == RSHIM_KEEPALIVE_MAGIC_NUM) {
       RSHIM_INFO("another backend already attached\n");
       return -EEXIST;
     }
 
     usleep(100000);
+  }
+
+  /* One more read to make sure it's ready. */
+  rc = bd->read_rshim(bd, RSHIM_CHANNEL, RSH_SCRATCHPAD1, &value);
+  if (rc < 0) {
+    RSHIM_ERR("access_check: failed to read rshim\n");
+    return -ENODEV;
   }
 
   return 0;
@@ -2392,7 +2406,11 @@ static void rshim_main(int argc, char *argv[])
 
   /* Create and add work fd. */
   if (pipe(rshim_work_fd) == -1) {
-    perror("Failed to create pipe %m");
+    RSHIM_ERR("Failed to create pipe");
+    exit(-1);
+  }
+  if (fcntl(rshim_work_fd[0], F_SETFL, O_NONBLOCK) < 0) {
+    RSHIM_ERR("failed to set nonblock pipe");
     exit(-1);
   }
   event.data.fd = rshim_work_fd[0];

@@ -421,6 +421,7 @@ rshim_backend_t *rshim_find_by_dev(void *dev);
 
 /* RShim global lock. */
 void rshim_lock(void);
+int rshim_trylock(void);
 void rshim_unlock(void);
 
 /* Event notification. */

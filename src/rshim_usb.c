@@ -523,7 +523,7 @@ static int rshim_usb_probe_one(libusb_context *ctx, libusb_device *usb_dev,
   rc = -EINVAL;
 #endif
   if (rc <= 0) {
-    perror("Failed to get USB ports\n");
+    RSHIM_ERR("Failed to get USB ports\n");
     return -ENODEV;
   }
   sprintf(dev_name, "usb-%x", bus);
@@ -540,13 +540,13 @@ static int rshim_usb_probe_one(libusb_context *ctx, libusb_device *usb_dev,
 
   rc = libusb_get_active_config_descriptor(usb_dev, &config);
   if (rc) {
-    perror("Failed to get active config\n");
+    RSHIM_ERR("Failed to get active config\n");
     return -ENODEV;
   }
 
   rc = libusb_open(usb_dev, &handle);
   if (rc) {
-    perror("Failed to open USB device: %m\n");
+    RSHIM_ERR("Failed to open USB device\n");
     return rc;
   }
 
@@ -554,10 +554,10 @@ static int rshim_usb_probe_one(libusb_context *ctx, libusb_device *usb_dev,
     rc = libusb_claim_interface(handle, i);
     if (rc < 0) {
       if (libusb_kernel_driver_active(handle, i) == 1) {
-        perror("Kernel driver is running. Please uninstall it first.\n");
+        RSHIM_ERR("Kernel driver is running. Please uninstall it first.\n");
         exit(rc);
       } else {
-        perror("Failed to claim interface\n");
+        RSHIM_ERR("Failed to claim interface\n");
       }
       libusb_close(handle);
       return rc;
@@ -745,7 +745,10 @@ static void rshim_usb_disconnect(struct libusb_device *usb_dev)
   rshim_backend_t *bd;
   rshim_usb_t *dev;
 
-  rshim_lock();
+  if (rshim_trylock()) {
+    RSHIM_ERR("rshim_trylock failed\n");
+    return;
+  }
 
   bd = rshim_find_by_dev(usb_dev);
   if (!bd) {
@@ -761,7 +764,10 @@ static void rshim_usb_disconnect(struct libusb_device *usb_dev)
    * Clear this interface so we don't unregister our devices next
    * time.
    */
-  pthread_mutex_lock(&bd->mutex);
+  if (pthread_mutex_trylock(&bd->mutex)) {
+    rshim_unlock();
+    return;
+  }
 
   bd->has_rshim = 0;
 
@@ -902,7 +908,7 @@ static bool rshim_usb_probe(void)
 
   rc = libusb_get_device_list(ctx, &devs);
   if (rc < 0) {
-    perror("USB Get Device Error\n");
+    RSHIM_ERR("USB Get Device Error\n");
     return false;
   }
 
@@ -1004,6 +1010,7 @@ void rshim_usb_poll(void)
 
   if (rshim_usb_need_probe) {
     rshim_usb_need_probe = false;
+    __sync_synchronize();
     rshim_usb_probe();
   }
 

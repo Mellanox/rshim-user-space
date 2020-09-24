@@ -81,7 +81,7 @@ static int rshim_if_open(char *ifname, int index)
   ifr.ifr_hwaddr.sa_family = ARPHRD_ETHER;
   ifr.ifr_hwaddr.sa_data[5] += index * 2;
   if (ioctl(fd, SIOCSIFHWADDR, &ifr)) {
-    perror("SIOCSIFHWADDR");
+    RSHIM_ERR("ioctl SIOCSIFHWADDR failed");
     close(fd);
     return -1;
   }
@@ -133,7 +133,7 @@ static int rshim_if_open(char *ifname, int index)
 
   memset(&ifr, 0, sizeof(ifr));
   if (ioctl(fd, TAPGIFNAME, &ifr) < 0) {
-    perror("TAPGIFNAME");
+    RSHIM_ERR("ioctl TAPGIFNAME failed");
     close(fd);
     close(s);
     return -1;
@@ -169,7 +169,7 @@ static int rshim_if_open(char *ifname, int index)
 
   ifr.ifr_mtu = ETH_PKT_SIZE;
   if (ioctl(s, SIOCSIFMTU, &ifr) < 0) {
-    perror("SIOCSIMTU");
+    RSHIM_ERR("ioctl SIOCSIMTU failed");
     close(s);
     close(fd);
     return -1;
@@ -180,7 +180,7 @@ static int rshim_if_open(char *ifname, int index)
   ifr.ifr_addr.sa_len = 6;
   ifr.ifr_addr.sa_data[5] += index * 2;
   if (ioctl(s, SIOCSIFLLADDR, &ifr) < 0) {
-    perror("SIOCSIFLLADDR");
+    RSHIM_ERR("ioctl SIOCSIFLLADDR failed");
     close(s);
     close(fd);
     return -1;
@@ -282,7 +282,7 @@ int rshim_net_init(rshim_backend_t *bd)
 
   rc = pipe(fd);
   if (rc == -1) {
-    perror("Failed to create pipe %m");
+    RSHIM_ERR("Failed to create net pipe");
     goto fail;
   }
 
