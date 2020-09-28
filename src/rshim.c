@@ -237,7 +237,7 @@ static int rshim_fd_full_write(int fd, void *data, int len)
     if (written < 0) {
       if (errno == EINTR || errno == EAGAIN)
         continue;
-      RSHIM_ERR("fd write error %d\n", written);
+      RSHIM_ERR("fd write error %d\n", (int)written);
       return written;
     }
     total += written;
