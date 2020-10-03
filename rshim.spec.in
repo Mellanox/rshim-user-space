@@ -53,18 +53,26 @@ make
 %{__install} -d %{buildroot}%{_sysconfdir}
 %{__install} -m 0644 etc/rshim.conf %{buildroot}%{_sysconfdir}
 
+%pre
+%if "%{with_systemd}" == "1"
+  systemctl stop rshim
+%endif
+
 %post
 %if "%{with_systemd}" == "1"
   systemctl daemon-reload
-  systemctl enable rshim.service
+  systemctl enable rshim
+  systemctl start rshim
 %endif
 
 %preun
+if [ "$1" = "0" ]; then
 %if "%{with_systemd}" == "1"
   systemctl stop rshim
 %else
   killall -9 rshim
 %endif
+fi
 
 %files
 %{!?_licensedir:%global license %%doc}
