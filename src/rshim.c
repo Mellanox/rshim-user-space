@@ -2368,6 +2368,7 @@ static void rshim_stop(void)
 static void rshim_main(int argc, char *argv[])
 {
   int i, fd, num, rc, epoll_fd, timer_fd, index;
+  bool rshim_pcie_lf_init_done = false;
 #ifdef __FreeBSD__
   const int MAXEVENTS = 16;
 #else
@@ -2377,6 +2378,7 @@ static void rshim_main(int argc, char *argv[])
   struct epoll_event event;
   struct itimerspec ts;
   rshim_backend_t *bd;
+  time_t t0, t1;
   uint8_t tmp;
 
   memset(&event, 0, sizeof(event));
@@ -2453,7 +2455,6 @@ static void rshim_main(int argc, char *argv[])
   if (!rshim_backend_name) {
     rshim_pcie_init();
     rshim_usb_init(epoll_fd);
-    rshim_pcie_lf_init();
   } else {
     if (!strcmp(rshim_backend_name, "usb"))
       rc = rshim_usb_init(epoll_fd);
@@ -2466,6 +2467,8 @@ static void rshim_main(int argc, char *argv[])
     RSHIM_ERR("failed to initialize rshim backend\n");
     exit(-1);
   }
+
+  time(&t0);
 
   while (rshim_run) {
     num = epoll_wait(epoll_fd, events, MAXEVENTS, -1);
@@ -2521,6 +2524,15 @@ static void rshim_main(int argc, char *argv[])
 
       /* Check USB for timeout or unhandled fd. */
       rshim_usb_poll();
+    }
+
+    /* Delayed initialization for livefish probe. */
+    if (!rshim_pcie_lf_init_done && !rshim_backend_name) {
+      time(&t1);
+      if (difftime(t1, t0) > 3) {
+        rshim_pcie_lf_init();
+        rshim_pcie_lf_init_done = true;
+      }
     }
   }
 
