@@ -55,7 +55,9 @@ make
 
 %pre
 %if "%{with_systemd}" == "1"
-  systemctl stop rshim
+  if systemctl is-active --quiet rshim ; then
+      systemctl stop rshim
+  fi
 %endif
 
 %post
@@ -68,7 +70,9 @@ make
 %preun
 if [ "$1" = "0" ]; then
 %if "%{with_systemd}" == "1"
-  systemctl stop rshim
+  if systemctl is-active --quiet rshim ; then
+      systemctl stop rshim
+  fi
 %else
   killall -9 rshim
 %endif
