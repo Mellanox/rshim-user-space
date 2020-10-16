@@ -2651,7 +2651,6 @@ static void rshim_sig_handler(int sig)
     rshim_sig_hup(sig);
     break;
 
-  case SIGINT:
   case SIGTERM:
     rshim_run = false;
     break;

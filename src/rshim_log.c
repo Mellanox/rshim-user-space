@@ -11,7 +11,7 @@
 
 /* Log module */
 const char * const rshim_log_mod[] = {
-  "others", "BL1", "BL2", "BL2R", "BL31", "UEFI"
+  "MISC", "BL1", "BL2", "BL2R", "BL31", "UEFI"
 };
 
 /* Log level */
