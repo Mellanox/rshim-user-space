@@ -546,4 +546,7 @@ static inline bool rshim_drop_mode_access(int addr)
 int rshim_get_opn(rshim_backend_t *bd, char *opn, int len);
 int rshim_set_opn(rshim_backend_t *bd, const char *opn, int len);
 
+/* Check whether rshim backend is accessible or not. */
+int rshim_access_check(rshim_backend_t *bd);
+
 #endif /* _RSHIM_H */

@@ -2107,8 +2107,7 @@ static int rshim_bf2_a0_wa(rshim_backend_t *bd)
   return 0;
 }
 
-/* Check whether backend is allowed to register or not. */
-static int rshim_access_check(rshim_backend_t *bd)
+int rshim_access_check(rshim_backend_t *bd)
 {
   rshim_backend_t *other_bd;
   uint64_t value;

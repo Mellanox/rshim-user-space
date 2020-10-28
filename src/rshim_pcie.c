@@ -500,6 +500,7 @@ int rshim_pcie_enable(void *dev, bool enable)
            pci_dev->dev, pci_dev->func);
   dir = opendir(path);
   if (dir) {
+    RSHIM_ERR("failed to open %s\n", path);
     closedir(dir);
     return -EBUSY;
   }
@@ -509,19 +510,22 @@ int rshim_pcie_enable(void *dev, bool enable)
            SYS_BUS_PCI, pci_dev->domain, pci_dev->bus,
            pci_dev->dev, pci_dev->func);
   fd = open(path, O_RDWR | O_CLOEXEC);
-  if (fd == -1)
+  if (fd == -1) {
+    RSHIM_ERR("failed to open %s\n", path);
     return -errno;
+  }
   if (write(fd, enable ? "1" : "0", 1) < 0)
     rc = -errno;
   close(fd);
-  if (rc)
+  if (rc) {
+    RSHIM_ERR("failed to write to %s\n", path);
     return rc;
+  }
 
   pci_write_word(pci_dev, PCI_COMMAND, PCI_COMMAND_MEMORY | PCI_COMMAND_MASTER);
-  return rc;
-#else
-  return 0;
 #endif
+
+  return 0;
 }
 
 int rshim_pcie_init(void)

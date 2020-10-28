@@ -786,7 +786,7 @@ static int rshim_fuse_misc_write(struct cuse_dev *cdev, int fflags,
   rshim_backend_t *bd = cuse_dev_get_priv0(cdev);
   const char *p = buf;
 #endif
-  int i, rc = 0, value = 0, mac[6], vlan[2] = {0};
+  int i, rc = 0, value = 0, mac[6], vlan[2] = {0}, old_value;
   char opn[RSHIM_YU_BOOT_RECORD_OPN_SIZE + 1] = "";
   char key[32];
 
@@ -828,12 +828,25 @@ static int rshim_fuse_misc_write(struct cuse_dev *cdev, int fflags,
   } else if (strcmp(key, "DROP_MODE") == 0) {
     if (sscanf(p, "%d", &value) != 1)
       goto invalid;
+    old_value = (int)bd->drop_mode;
     bd->drop_mode = !!value;
     if (bd->drop_mode)
       bd->drop_pkt = 1;
     if (bd->enable_device) {
       if (bd->enable_device(bd, true))
         bd->drop_mode = 1;
+    }
+    /*
+     * Check if another endpoint driver has already attached to the
+     * same rshim device before enabling it.
+     */
+    if (old_value && !bd->drop_mode) {
+      pthread_mutex_lock(&bd->mutex);
+      if (rshim_access_check(bd)) {
+        RSHIM_WARN("rshim %s is not accessible\n", bd->dev_name);
+        bd->drop_mode = old_value;
+      }
+      pthread_mutex_unlock(&bd->mutex);
     }
   } else if (strcmp(key, "BOOT_MODE") == 0) {
     if (sscanf(p, "%x", &value) != 1)
