@@ -4,7 +4,7 @@
 
 Name: rshim
 Version: @VERSION@
-Release: 4%{?dist}
+Release: 5%{?dist}
 Summary: User-space driver for Mellanox BlueField SoC
 
 License: GPLv2
@@ -91,6 +91,12 @@ fi
 %{_mandir}/man8/rshim.8.gz
 
 %changelog
+* Thu Oct 29 2020 Liming Sun <lsun@mellanox.com> - 2.0.5-5
+- Check rshim accessibility when re-enabling it
+- Enable console output during boot stream pushing
+- Add some delay for the pcie_lf probe
+- Auto-start rshim service after installation
+
 * Fri Sep 25 2020 Liming Sun <lsun@mellanox.com> - 2.0.5-4
 - Some robust fixes for USB rshim
 - Fix a typo in pcie mmap

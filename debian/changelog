@@ -1,3 +1,12 @@
+rshim (2.0.5-5) UNRELEASED; urgency=low
+
+  * Check rshim accessibility when re-enabling it
+  * Enable console output during boot stream pushing
+  * Add some delay for the pcie_lf probe
+  * Auto-start rshim service after installation
+
+ -- Liming Sun <lsun@mellanox.com>  Thu, 29 Oct 2020 08:06:13 -0400
+
 rshim (2.0.5-4) UNRELEASED; urgency=low
 
   * Some robust fixes for USB rshim
