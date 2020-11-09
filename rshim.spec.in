@@ -50,8 +50,10 @@ make
 %endif
 %{__install} -d %{buildroot}%{_mandir}/man8
 %{__install} -m 0644 man/rshim.8 %{buildroot}%{_mandir}/man8
+%{__install} -m 0644 man/bfb-install.8 %{buildroot}%{_mandir}/man8
 %{__install} -d %{buildroot}%{_sysconfdir}
 %{__install} -m 0644 etc/rshim.conf %{buildroot}%{_sysconfdir}
+%{__install} -m 0755 scripts/bfb-install %{buildroot}%{_sbindir}
 
 %pre
 %if "%{with_systemd}" == "1"
@@ -88,7 +90,9 @@ fi
   %{_unitdir}/rshim.service
 %endif
 %{_sbindir}/rshim
+%{_sbindir}/bfb-install
 %{_mandir}/man8/rshim.8.gz
+%{_mandir}/man8/bfb-install.8.gz
 
 %changelog
 * Thu Oct 29 2020 Liming Sun <lsun@mellanox.com> - 2.0.5-5

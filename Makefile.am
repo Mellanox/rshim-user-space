@@ -7,6 +7,7 @@ SUBDIRS = src man
 dist_doc_DATA = README.md
 confdir = $(sysconfdir)
 dist_conf_DATA = etc/rshim.conf
+dist_sbin_SCRIPTS = scripts/bfb-install
 
 AM_DISTCHECK_CONFIGURE_FLAGS = \
   --with-systemdsystemunitdir=$$dc_install_base/$(systemdsystemunitdir)

@@ -1,0 +1,28 @@
+.\" Manpage for bfb-install.
+.TH man 8 "19 Nov 2020" "2.0" "bfb-install man page"
+.SH NAME
+bfb-install \- BFB installing script for BlueField SoC over rshim driver
+.SH SYNOPSIS
+rshim [options]
+.SH DESCRIPTION
+bfb-install is a utility script to install BFB images on BlueField SoC over the rshim driver.
+.SH OPTIONS
+-b, --bfb
+.in +4n
+This is the BFB image to use, which is pushed as the boot stream.
+.in
+
+-c, --config
+.in +4n
+This is an optional configuration file to use, usually called bf.cfg.
+.in
+
+-f, --rootfs
+.in +4n
+This is the optional rootfs tar.xz file which is uaually used when installing Yocto.
+.in
+
+-r, --rshim
+.in +4n
+This is the rshim device to use, which can be 'rshim<N>' or '/dev/rshim<N>'.
+.in
