@@ -1,0 +1,143 @@
+#!/bin/sh
+
+# Copyright (c) 2020, NVIDIA Corporation
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#
+# 1. Redistributions of source code must retain the above copyright notice, this
+#    list of conditions and the following disclaimer.
+# 2. Redistributions in binary form must reproduce the above copyright notice,
+#    this list of conditions and the following disclaimer in the documentation
+#    and/or other materials provided with the distribution.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+# ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+# WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR
+# ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+# (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+# LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+# ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+# SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+#
+# The views and conclusions contained in the software and documentation are those
+# of the authors and should not be interpreted as representing official policies,
+# either expressed or implied, of the FreeBSD Project.
+
+usage ()
+{
+  echo "syntax: bfb_install --bfb|-b <BFBFILE> [--config|-c <bf.cfg>] \\"
+  echo "  [--rootfs|-f <rootfs.tar.xz>] --rshim|-r <rshimN> [--help|-h]"
+}
+
+bfb=
+cfg=
+rootfs=
+rshim=
+
+options=`getopt -n bfb_install -o b:c:f:r:h \
+        -l help,bfb:,config:,rootfs:,rshim: -- "$@"`
+eval set -- $options
+while [ "$1" != -- ]; do
+  case $1 in
+    --help|-h) usage; exit 0 ;;
+    --bfb|-b) shift; bfb=$1 ;;
+    --config|-c) shift; cfg=$1 ;;
+    --rootfs|-f) shift; rootfs=$1 ;;
+    --rshim|-r) shift; rshim=$1 ;;
+  esac
+  shift
+done
+shift
+
+if [ $# -ne 0 ]; then
+  usage >&2
+  exit 1
+fi
+
+if [ -z "${bfb}" -o -z "${rshim}" ]; then
+  echo "Error: Need to provide both bfb file and rshim device name."
+  usage >&2
+  exit 1
+fi
+
+if [ ! -e "${bfb}" ]; then
+  echo "Error: ${bfb} not found."
+  exit 1
+fi
+
+if [ ."$(echo "${rshim}" | cut -c1-1)" != ."/" ]; then
+  rshim="/dev/${rshim}"
+fi
+
+if [ ! -e "${rshim}/boot" ]; then
+  echo "Error: ${rshim}/boot not found."
+  exit 1
+fi
+
+if [ -n "${rootfs}" -a ! -e "${rootfs}" ]; then
+  echo "Error: ${rootfs} not found."
+  exit 1
+fi
+
+if [ -n "${cfg}" -a ! -e "${cfg}" ]; then
+  echo "Error: ${cfg} not found."
+  exit 1
+fi
+
+if [ $(id -u) -ne 0 ]; then
+  echo "Error: Need root permission to push BFB on local host."
+  exit 1
+fi
+
+pv=$(which pv 2>/dev/null)
+if [ -z "${pv}" ]; then
+  echo "Warn: 'pv' command not found. Continue without showing BFB progress."
+fi
+
+# Push the boot stream.
+echo "Pushing bfb${cfg:+ + cfg}${rootfs:+ + rootfs}"
+sh -c "cat ${bfb} ${cfg:+$cfg} ${rootfs:+${rootfs}} ${pv:+| ${pv}} > ${rshim}/boot"
+
+# Print the rshim log.
+echo "Collecting BlueField booting status. Press Ctrl+C to stop…"
+
+last=""
+while true; do
+  last_len=${#last}
+  cur=$(echo 'DISPLAY_LEVEL 2' > ${rshim}/misc && cat ${rshim}/misc | sed -n '/^ INFO/,$p')
+  cur_len=${#cur}
+
+  sleep 1
+
+  # Overwrite if current length smaller than previous length.
+  if [ ${last_len} -eq 0 -o ${last_len} -gt ${cur_len} ]; then
+    echo "${cur}" | sed '/^[[:space:]]*$/d'
+    last="${cur}"
+    continue
+  fi
+
+  # Overwrite if first portion doesn't match.
+  sub_cur=$(echo "${cur}" | dd bs=1 count=${last_len} 2>/dev/null)
+  if [ "${sub_cur}" != "${last}" ]; then
+    echo "${cur}" | sed '/^[[:space:]]*$/d'
+    last="${cur}"
+    continue
+  fi
+
+  # Nothing if no update.
+  if [ ${last_len} -eq ${cur_len} ]; then
+    continue;
+  fi
+
+  # Print the diff.
+  echo "${cur}" | dd bs=1 skip=${last_len} 2>/dev/null | sed '/^[[:space:]]*$/d'
+  last="${cur}"
+
+  if echo ${cur} | grep -i "Reboot" >/dev/null; then
+    break;
+  fi
+done

@@ -2,4 +2,4 @@
 # Copyright (C) 2019 Mellanox Technologies. All Rights Reserved.
 #
 
-man8_MANS = rshim.8
+man8_MANS = rshim.8 bfb-install.8
