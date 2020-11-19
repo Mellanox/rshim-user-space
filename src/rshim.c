@@ -181,6 +181,7 @@ rshim_backend_t *rshim_devs[RSHIM_MAX_DEV];
 char *rshim_dev_names[RSHIM_MAX_DEV];
 char *rshim_blocked_dev_names[RSHIM_MAX_DEV];
 
+bool rshim_no_net = false;
 int rshim_log_level = LOG_NOTICE;
 bool rshim_daemon_mode = true;
 volatile bool rshim_run = true;
@@ -481,7 +482,7 @@ static int wait_for_boot_done(rshim_backend_t *bd)
        */
       rc = pthread_cond_timedwait(&bd->boot_complete_cond, &bd->mutex, &ts);
       if (rc) {
-        RSHIM_ERR("Failed to detect re-probe, continues anyway.\n");
+        RSHIM_DBG("Failed to detect re-probe, continues anyway.\n");
         bd->is_booting = 0;
         return 0;
       }
@@ -506,7 +507,7 @@ static int rshim_reg_indirect_wait(rshim_backend_t *bd, uint64_t resp_count)
     if (count != resp_count)
       return 0;
   }
-  RSHIM_ERR("Rshim byte access widget timeout\n");
+  RSHIM_DBG("Rshim byte access widget timeout\n");
   return -1;
 }
 
@@ -1572,8 +1573,8 @@ static void rshim_work_handler(rshim_backend_t *bd)
     pthread_cond_broadcast(&bd->boot_write_complete_cond);
   }
 
-  if (bd->net_fd < 0 && (rshim_timer_ticks - bd->net_init_time) <
-      RSHIM_NET_INIT_DELAY) {
+  if (!rshim_no_net && bd->net_fd < 0 &&
+      (rshim_timer_ticks - bd->net_init_time) < RSHIM_NET_INIT_DELAY) {
     rc = rshim_net_init(bd);
     if (!rc) {
       bd->is_net_open = 1;
@@ -2690,12 +2691,13 @@ static void print_help(void)
   printf("  -i, --index       use device path /dev/rshim<i>/\n");
   printf("  -l, --log-level   log level");
   printf("(0:none, 1:error, 2:warning, 3:notice, 4:debug)\n");
+  printf("  -n, --nonet       no network interface\n");
   printf("  -v, --version     version\n");
 }
 
 int main(int argc, char *argv[])
 {
-  static const char short_options[] = "b:d:fhi:l:v";
+  static const char short_options[] = "b:d:fhi:l:nv";
   static struct option long_options[] = {
     { "backend", required_argument, NULL, 'b' },
     { "device", required_argument, NULL, 'd' },
@@ -2703,6 +2705,7 @@ int main(int argc, char *argv[])
     { "help", no_argument, NULL, 'h' },
     { "index", required_argument, NULL, 'i' },
     { "log-level", required_argument, NULL, 'l' },
+    { "nonet", no_argument, NULL, 'n' },
     { "version", no_argument, NULL, 'v' },
     { NULL, 0, NULL, 0 }
   };
@@ -2738,6 +2741,9 @@ int main(int argc, char *argv[])
         rshim_log_level = LOG_NOTICE;
       else if (rshim_log_level >= 4)
         rshim_log_level = LOG_DEBUG;
+      break;
+    case 'n':
+      rshim_no_net = true;
       break;
     case 'v':
 #if defined(PACKAGE_NAME) && defined(VERSION)
