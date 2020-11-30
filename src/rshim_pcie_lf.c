@@ -572,8 +572,9 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
   /* Notify that the device is attached */
   ret = rshim_notify(bd, RSH_EVENT_ATTACH, 0);
 
-  /* Enable drop mode by default for livefish. */
-  bd->drop_mode = 1;
+  /* Enable drop mode for livefish by default if not configured. */
+  if (rshim_drop_mode < 0)
+    bd->drop_mode = 1;
 
   pthread_mutex_unlock(&bd->mutex);
   if (ret)
