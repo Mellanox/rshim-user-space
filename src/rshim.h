@@ -39,8 +39,7 @@
 /* Global variables. */
 extern int rshim_log_level;
 extern bool rshim_daemon_mode;
-extern int rshim_skip_boot_reset;
-extern int rshim_boot_timeout;
+extern int rshim_drop_mode;
 
 #ifndef offsetof
 #define offsetof(TYPE, MEMBER)	((size_t)&((TYPE *)0)->MEMBER)

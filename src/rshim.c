@@ -175,6 +175,9 @@ char *rshim_static_dev_name;
 
 /* Default configuration file. */
 char *rshim_cfg_file = "/etc/rshim.conf";
+static int rshim_display_level = 0;
+static int rshim_boot_timeout = 100;
+int rshim_drop_mode = -1;
 
 /* Array of devices and device names. */
 rshim_backend_t *rshim_devs[RSHIM_MAX_DEV];
@@ -2255,7 +2258,10 @@ int rshim_register(rshim_backend_t *bd)
   bd->net_notify_fd[0] = -1;
   bd->net_notify_fd[1] = -1;
   bd->registered = 1;
-  bd->boot_timeout = 100;
+  bd->boot_timeout = rshim_boot_timeout;
+  bd->display_level = rshim_display_level;
+  if (rshim_drop_mode >= 0)
+    bd->drop_mode = rshim_drop_mode;
 
   /* Start the keepalive timer. */
   bd->last_keepalive = rshim_timer_ticks;
@@ -2591,7 +2597,7 @@ int rshim_set_opn(rshim_backend_t *bd, const char *opn, int len)
 
 static int rshim_load_cfg(void)
 {
-  char rshim_name[32] = "", dev_name[64] = "";
+  char key[32] = "", value[64] = "";
   char *buf = NULL;
   size_t n = 0;
   FILE *file;
@@ -2602,20 +2608,31 @@ static int rshim_load_cfg(void)
     return -ENOENT;
 
   while (getline(&buf, &n, file) != -1) {
-    if (sscanf(buf, "%31s%63s", rshim_name, dev_name) != 2)
+    if (sscanf(buf, "%31s%63s", key, value) != 2)
       continue;
 
-    if (strncmp(rshim_name, "rshim", 5) && strcmp(rshim_name, "none"))
+    if (!strcmp(key, "DISPLAY_LEVEL")) {
+      rshim_display_level = atoi(value);
+      continue;
+    } else if (!strcmp(key, "BOOT_TIMEOUT")) {
+      rshim_boot_timeout = atoi(value);
+      continue;
+    } else if (!strcmp(key, "DROP_MODE")) {
+      rshim_drop_mode = atoi(value);
+      continue;
+    }
+
+    if (strncmp(key, "rshim", 5) && strcmp(key, "none"))
       continue;
 
-    if (strncmp(dev_name, "usb-", 4) && strncmp(dev_name, "pcie-", 5))
+    if (strncmp(value, "usb-", 4) && strncmp(value, "pcie-", 5))
       continue;
 
     /* Blocked devices. */
-    if (!strcmp(rshim_name, "none")) {
+    if (!strcmp(key, "none")) {
       for (index = 0; index < RSHIM_MAX_DEV; index++) {
         if (!rshim_blocked_dev_names[index]) {
-          rshim_blocked_dev_names[index] = strdup(dev_name);
+          rshim_blocked_dev_names[index] = strdup(value);
           break;
         }
       }
@@ -2623,12 +2640,12 @@ static int rshim_load_cfg(void)
     }
 
     /* Static mapping of rshim device to index. */
-    index = atoi(rshim_name + 5);
+    index = atoi(key + 5);
     if (index < 0 || index >= RSHIM_MAX_DEV)
       continue;
     if (rshim_dev_names[index])
       free(rshim_dev_names[index]);
-    rshim_dev_names[index] = strdup(dev_name);
+    rshim_dev_names[index] = strdup(value);
   }
 
   if (buf)
