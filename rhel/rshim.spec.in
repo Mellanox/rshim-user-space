@@ -4,7 +4,7 @@
 
 Name: rshim
 Version: @VERSION@
-Release: 5%{?dist}
+Release: 6%{?dist}
 Summary: User-space driver for Mellanox BlueField SoC
 
 License: GPLv2
@@ -54,6 +54,11 @@ via the virtual console or network interface.
 %{_mandir}/man8/rshim.8.gz
 
 %changelog
+* Wed Dec 02 2020 Liming Sun <limings@nvidia.com> - 2.0.5-6
+- Add some default configuration in rshim.conf
+- Change the debug level of Rshim byte access widget timeout
+- Add bfb-install script
+
 * Thu Oct 29 2020 Liming Sun <lsun@mellanox.com> - 2.0.5-5
 - Check rshim accessibility when re-enabling it
 - Enable console output during boot stream pushing
