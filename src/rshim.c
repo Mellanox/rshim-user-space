@@ -335,13 +335,7 @@ static ssize_t rshim_write_delayed(rshim_backend_t *bd, int devtype,
     size_addr = RSH_TM_HOST_TO_TILE_STS;
     size_mask = RSH_TM_HOST_TO_TILE_STS__COUNT_MASK;
     data_addr = RSH_TM_HOST_TO_TILE_DATA;
-    rc = bd->read_rshim(bd, RSHIM_CHANNEL, RSH_TM_HOST_TO_TILE_CTL, &reg);
-    if (rc < 0) {
-      RSHIM_ERR("read_rshim error %d\n", rc);
-      return rc;
-    }
-    max_size = (reg >> RSH_TM_HOST_TO_TILE_CTL__MAX_ENTRIES_SHIFT) &
-               RSH_TM_HOST_TO_TILE_CTL__MAX_ENTRIES_RMASK;
+    max_size = RSH_TM_FIFO_SIZE;
     break;
 
   case RSH_DEV_TYPE_BOOT:
@@ -869,13 +863,7 @@ static int rshim_fifo_tx_avail(rshim_backend_t *bd)
   int ret, max_size, avail;
 
   /* Get FIFO max size. */
-  ret = bd->read_rshim(bd, RSHIM_CHANNEL, RSH_TM_HOST_TO_TILE_CTL, &word);
-  if (ret) {
-    RSHIM_ERR("read_rshim error %d\n", ret);
-    return ret;
-  }
-  max_size = (word >> RSH_TM_HOST_TO_TILE_CTL__MAX_ENTRIES_SHIFT) &
-             RSH_TM_HOST_TO_TILE_CTL__MAX_ENTRIES_RMASK;
+  max_size = RSH_TM_FIFO_SIZE;
 
   /* Calculate available size. */
   ret = bd->read_rshim(bd, RSHIM_CHANNEL, RSH_TM_HOST_TO_TILE_STS, &word);
@@ -2114,7 +2102,7 @@ static int rshim_bf2_a0_wa(rshim_backend_t *bd)
 int rshim_access_check(rshim_backend_t *bd)
 {
   rshim_backend_t *other_bd;
-  uint64_t value;
+  uint64_t value = 0;
   int i, rc;
 
   /*
@@ -2124,10 +2112,14 @@ int rshim_access_check(rshim_backend_t *bd)
    * rshim device.
    */
   for (i = 0; i < 10; i++) {
-    rc = bd->read_rshim(bd, RSHIM_CHANNEL, RSH_TM_HOST_TO_TILE_CTL, &value);
-    if (!rc && value)
+    rc = bd->read_rshim(bd, RSHIM_CHANNEL, RSH_FABRIC_DIM, &value);
+    if (!rc && value && value != 0xbad00acce55)
       break;
     usleep(100000);
+  }
+  if (value == 0xbad00acce55) {
+    RSHIM_ERR("Unable to read from rshim\n");
+    return -ETIMEDOUT;
   }
 
   rshim_boot_workaround_check(bd);
