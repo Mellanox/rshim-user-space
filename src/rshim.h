@@ -157,6 +157,7 @@ enum {
 #define RSH_CHANNEL_BASE(chan) (RSH_BASE_ADDR | (chan << 16))
 
 #define RSH_BOOT_FIFO_SIZE   512
+#define RSH_TM_FIFO_SIZE     256
 
 /* Retry time in seconds. */
 #define RSHIM_LOCK_RETRY_TIME  2
