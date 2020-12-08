@@ -841,12 +841,14 @@ static int rshim_fuse_misc_write(struct cuse_dev *cdev, int fflags,
      * same rshim device before enabling it.
      */
     if (old_value && !bd->drop_mode) {
+      rshim_lock();
       pthread_mutex_lock(&bd->mutex);
       if (rshim_access_check(bd)) {
         RSHIM_WARN("rshim %s is not accessible\n", bd->dev_name);
         bd->drop_mode = old_value;
       }
       pthread_mutex_unlock(&bd->mutex);
+      rshim_unlock();
     }
   } else if (strcmp(key, "BOOT_MODE") == 0) {
     if (sscanf(p, "%x", &value) != 1)
