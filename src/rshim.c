@@ -2199,6 +2199,9 @@ int rshim_register(rshim_backend_t *bd)
     return -EINVAL;
   }
 
+  if (rshim_drop_mode >= 0)
+    bd->drop_mode = rshim_drop_mode;
+
   rc = rshim_access_check(bd);
   if (rc)
     return rc;
@@ -2252,8 +2255,6 @@ int rshim_register(rshim_backend_t *bd)
   bd->registered = 1;
   bd->boot_timeout = rshim_boot_timeout;
   bd->display_level = rshim_display_level;
-  if (rshim_drop_mode >= 0)
-    bd->drop_mode = rshim_drop_mode;
 
   /* Start the keepalive timer. */
   bd->last_keepalive = rshim_timer_ticks;
