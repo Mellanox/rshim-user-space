@@ -495,14 +495,16 @@ int rshim_pcie_enable(void *dev, bool enable)
   DIR* dir;
 
   /* Check whether it's being attached by other driver. */
-  snprintf(path, sizeof(path), "%s/%04x:%02x:%02x.%1u/driver",
-           SYS_BUS_PCI, pci_dev->domain, pci_dev->bus,
-           pci_dev->dev, pci_dev->func);
-  dir = opendir(path);
-  if (dir) {
-    RSHIM_ERR("failed to open %s\n", path);
-    closedir(dir);
-    return -EBUSY;
+  if (!rshim_drop_mode) {
+    snprintf(path, sizeof(path), "%s/%04x:%02x:%02x.%1u/driver",
+             SYS_BUS_PCI, pci_dev->domain, pci_dev->bus,
+             pci_dev->dev, pci_dev->func);
+    dir = opendir(path);
+    if (dir) {
+      RSHIM_ERR("rshim used by %s\n", path);
+      closedir(dir);
+      return -EBUSY;
+    }
   }
 
   /* Set the enable attribute in sysfs. */
