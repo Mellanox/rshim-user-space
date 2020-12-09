@@ -1,3 +1,11 @@
+rshim (2.0.5-7) UNRELEASED; urgency=low
+
+  * Fix potential dead-lock when calling rshim_access_check
+  * Ignore rshim access checking when global drop mode is enabled
+  * Fix some secure boot related issue
+
+ -- Liming Sun <limings@nvidia.com>  Wed, 09 Dec 2020 08:58:43 -0400
+
 rshim (2.0.5-6) UNRELEASED; urgency=low
 
   * Add some default configuration in rshim.conf
