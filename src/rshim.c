@@ -651,7 +651,7 @@ int rshim_boot_open(rshim_backend_t *bd)
     return -ENODEV;
   }
 
-  RSHIM_INFO("begin booting\n");
+  RSHIM_INFO("rshim%d: boot open\n", bd->index);
   bd->is_booting = 1;
   bd->boot_rem_cnt = 0;
 
@@ -781,7 +781,7 @@ int rshim_boot_write(rshim_backend_t *bd, const char *user_buffer, size_t count,
       time(&tm);
       if (difftime(tm, bd->boot_write_time) > bd->boot_timeout) {
         rc = -ETIMEDOUT;
-        RSHIM_INFO("boot timeout\n");
+        RSHIM_INFO("rshim%d: boot timeout\n", bd->index);
       } else {
         rc = -EINTR;
       }
@@ -836,6 +836,7 @@ void rshim_boot_release(rshim_backend_t *bd)
   rshim_work_signal(bd);
   pthread_mutex_unlock(&bd->mutex);
 
+  RSHIM_INFO("rshim%d: boot close\n", bd->index);
   rshim_deref(bd);
 }
 
@@ -1237,7 +1238,6 @@ ssize_t rshim_fifo_read(rshim_backend_t *bd, char *buffer, size_t count,
     readsize = MIN(count, (size_t)read_cnt(bd, chan));
     pass1 = MIN(readsize, (size_t)read_cnt_to_end(bd, chan));
     pass2 = readsize - pass1;
-    pthread_mutex_unlock(&bd->ringlock);
 
     RSHIM_DBG("fifo_read: readsize %zd, head %d, tail %d\n",
               readsize, bd->read_fifo[chan].head,
@@ -1247,7 +1247,6 @@ ssize_t rshim_fifo_read(rshim_backend_t *bd, char *buffer, size_t count,
     if (pass2)
       memcpy(buffer + pass1, bd->read_fifo[chan].data, pass2);
 
-    pthread_mutex_lock(&bd->ringlock);
     read_consume_bytes(bd, chan, readsize);
 
     /* Check if there is any more incoming data. */
