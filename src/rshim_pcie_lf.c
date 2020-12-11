@@ -431,7 +431,7 @@ rshim_pcie_read(struct rshim_backend *bd, int chan, int addr, uint64_t *result)
   if (!bd->has_rshim || !bd->has_tm)
     return -ENODEV;
 
-  if (bd->drop_mode && !rshim_drop_mode_access(addr)) {
+  if (bd->drop_mode) {
     *result = 0;
     return 0;
   }
@@ -455,7 +455,7 @@ rshim_pcie_write(struct rshim_backend *bd, int chan, int addr, uint64_t value)
   if (!bd->has_rshim || !bd->has_tm)
     return -ENODEV;
 
-  if (bd->drop_mode && !rshim_drop_mode_access(addr))
+  if (bd->drop_mode)
     return 0;
 
   /*

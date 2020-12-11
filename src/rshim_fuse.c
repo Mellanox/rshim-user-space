@@ -828,6 +828,7 @@ static int rshim_fuse_misc_write(struct cuse_dev *cdev, int fflags,
   } else if (strcmp(key, "DROP_MODE") == 0) {
     if (sscanf(p, "%d", &value) != 1)
       goto invalid;
+    pthread_mutex_lock(&bd->mutex);
     old_value = (int)bd->drop_mode;
     bd->drop_mode = !!value;
     if (bd->drop_mode)
@@ -836,6 +837,7 @@ static int rshim_fuse_misc_write(struct cuse_dev *cdev, int fflags,
       if (bd->enable_device(bd, true))
         bd->drop_mode = 1;
     }
+    pthread_mutex_unlock(&bd->mutex);
     /*
      * Check if another endpoint driver has already attached to the
      * same rshim device before enabling it.

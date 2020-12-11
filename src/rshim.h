@@ -532,13 +532,6 @@ void rshim_fuse_input_notify(rshim_backend_t *bd);
 int rshim_fuse_got_peer_signal(void);
 #endif
 
-/* Allowed registers in drop mode. */
-static inline bool rshim_drop_mode_access(int addr)
-{
-  return (addr == RSH_BOOT_CONTROL || addr == RSH_RESET_CONTROL ||
-          addr == RSH_BOOT_FIFO_DATA || addr == RSH_BOOT_FIFO_COUNT);
-}
-
 /*
  * Get/Set the OPN string from the YU boot record, which means setting
  * the value only persists during warm resets.

@@ -640,6 +640,12 @@ int rshim_boot_open(rshim_backend_t *bd)
 
   pthread_mutex_lock(&bd->mutex);
 
+  if (bd->drop_mode) {
+    RSHIM_INFO("rshim is in drop mode\n");
+    pthread_mutex_unlock(&bd->mutex);
+    return -EINVAL;
+  }
+
   if (bd->is_boot_open) {
     RSHIM_INFO("can't boot, boot file already open\n");
     pthread_mutex_unlock(&bd->mutex);
