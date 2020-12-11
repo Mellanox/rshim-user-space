@@ -1,3 +1,10 @@
+rshim (2.0.5-8) UNRELEASED; urgency=low
+
+  * Don't allow any register access when DROP_MODE is set
+  * Avoid potential race in rshim_fifo_read
+
+ -- Liming Sun <limings@nvidia.com>  Fri, 11 Dec 2020 15:10:23 -0400
+
 rshim (2.0.5-7) UNRELEASED; urgency=low
 
   * Fix potential dead-lock when calling rshim_access_check
