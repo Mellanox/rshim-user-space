@@ -29,7 +29,7 @@
 
 usage ()
 {
-  echo "syntax: bfb_install --bfb|-b <BFBFILE> [--config|-c <bf.cfg>] \\"
+  echo "syntax: bfb-install --bfb|-b <BFBFILE> [--config|-c <bf.cfg>] \\"
   echo "  [--rootfs|-f <rootfs.tar.xz>] --rshim|-r <rshimN> [--help|-h]"
 }
 
@@ -38,7 +38,7 @@ cfg=
 rootfs=
 rshim=
 
-options=`getopt -n bfb_install -o b:c:f:r:h \
+options=`getopt -n bfb-install -o b:c:f:r:h \
         -l help,bfb:,config:,rootfs:,rshim: -- "$@"`
 eval set -- $options
 while [ "$1" != -- ]; do
@@ -100,7 +100,12 @@ fi
 
 # Push the boot stream.
 echo "Pushing bfb${cfg:+ + cfg}${rootfs:+ + rootfs}"
-sh -c "cat ${bfb} ${cfg:+$cfg} ${rootfs:+${rootfs}} ${pv:+| ${pv}} > ${rshim}/boot"
+sh -c "cat ${bfb} ${cfg:+$cfg} ${rootfs:+${rootfs}} ${pv:+| ${pv} | cat -} > ${rshim}/boot"
+RETVAL=$?
+if [ $RETVAL -ne 0 ]; then
+  echo "Failed to push BFB"
+  exit
+fi
 
 # Print the rshim log.
 echo "Collecting BlueField booting status. Press Ctrl+C to stop…"
@@ -109,6 +114,11 @@ last=""
 while true; do
   last_len=${#last}
   cur=$(echo 'DISPLAY_LEVEL 2' > ${rshim}/misc && cat ${rshim}/misc | sed -n '/^ INFO/,$p')
+  RETVAL=$?
+  if [ $RETVAL -ne 0 ]; then
+    echo "Failed to read ${rshim}/misc"
+    exit
+  fi
   cur_len=${#cur}
 
   sleep 1
