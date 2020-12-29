@@ -2129,7 +2129,9 @@ int rshim_access_check(rshim_backend_t *bd)
 
   rshim_boot_workaround_check(bd);
 
-  if (bd->ver_id == RSHIM_BLUEFIELD_2 && rshim_is_livefish(bd)) {
+  /* BLUEFIELD_2 REV0 workaround. */
+  if (bd->ver_id == RSHIM_BLUEFIELD_2 && bd->rev_id == BLUEFIELD_REV0 &&
+      rshim_is_livefish(bd)) {
     if (rshim_bf2_a0_wa(bd) != 0) {
       /*
        * If the workaround fails it is likely because the mesh is already
