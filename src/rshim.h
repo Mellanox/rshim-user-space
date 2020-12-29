@@ -204,6 +204,10 @@ typedef struct {
 #define RSHIM_BLUEFIELD_1 1
 #define RSHIM_BLUEFIELD_2 2
 
+/* Bluefield Revision ID. */
+#define BLUEFIELD_REV0 0
+#define BLUEFIELD_REV1 1
+
 /* RShim backend. */
 typedef struct rshim_backend rshim_backend_t;
 struct rshim_backend {
