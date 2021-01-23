@@ -1487,6 +1487,10 @@ ssize_t rshim_fifo_write(rshim_backend_t *bd, const char *buffer,
 
     if (write_full(bd, chan)) {
       RSHIM_DBG("fifo_write: fifo full\n");
+      /* Try to send more data. */
+      pthread_mutex_lock(&bd->ringlock);
+      rshim_fifo_output(bd);
+      pthread_mutex_unlock(&bd->ringlock);
       if (nonblock) {
         pthread_mutex_unlock(&bd->mutex);
         RSHIM_DBG("fifo_write: returning %zd/EAGAIN\n", wr_cnt);
