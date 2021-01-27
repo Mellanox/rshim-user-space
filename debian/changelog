@@ -1,3 +1,11 @@
+rshim (2.0.5-9) UNRELEASED; urgency=low
+
+  * Fix potential tmfifo data loss
+  * Add workaround checking for Bluefield-2 REV-0
+  * Fix network traffic stop issue when Tx buffer full
+
+ -- Liming Sun <limings@nvidia.com>  Wed, 27 Jan 2021 10:17:20 -0400
+
 rshim (2.0.5-8) UNRELEASED; urgency=low
 
   * Don't allow any register access when DROP_MODE is set
