@@ -95,7 +95,7 @@ fi
 %{_mandir}/man8/bfb-install.8.gz
 
 %changelog
-* Web Jan 27 2021 Liming Sun <limings@nvidia.com> - 2.0.5-9
+* Wed Jan 27 2021 Liming Sun <limings@nvidia.com> - 2.0.5-9
 - Fix potential tmfifo data loss
 - Add workaround checking for Bluefield-2 REV-0
 - Fix network traffic stop issue when Tx buffer full
