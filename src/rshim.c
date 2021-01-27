@@ -32,6 +32,9 @@
 /* Cycles to poll the network initialization before timeout. */
 #define RSHIM_NET_INIT_DELAY (60000 / RSHIM_TIMER_INTERVAL)
 
+/* Reserve some space to indicate full. */
+#define RSHIM_FIFO_SPACE_RESERV  3
+
 /* Keepalive period in milliseconds. */
 static int rshim_keepalive_period = 300;
 
@@ -369,7 +372,7 @@ static ssize_t rshim_write_delayed(rshim_backend_t *bd, int devtype,
         RSHIM_ERR("read_rshim error %d\n", rc);
         break;
       }
-      avail = max_size - (int)(reg & size_mask) - 8;
+      avail = max_size - (int)(reg & size_mask) - RSHIM_FIFO_SPACE_RESERV;
       if (avail > 0)
         break;
 
@@ -878,7 +881,8 @@ static int rshim_fifo_tx_avail(rshim_backend_t *bd)
     RSHIM_ERR("read_rshim error %d\n", ret);
     return ret;
   }
-  avail = max_size - (int)(word & RSH_TM_HOST_TO_TILE_STS__COUNT_MASK) - 1;
+  avail = max_size - (int)(word & RSH_TM_HOST_TO_TILE_STS__COUNT_MASK) -
+          RSHIM_FIFO_SPACE_RESERV;
 
   return avail;
 }
@@ -1273,14 +1277,16 @@ ssize_t rshim_fifo_read(rshim_backend_t *bd, char *buffer, size_t count,
 
 static void rshim_fifo_output(rshim_backend_t *bd)
 {
-  int writesize, write_buf_next = 0;
-  int write_avail = WRITE_BUF_SIZE - write_buf_next;
+  int writesize, write_buf_next = 0, write_avail;
   int numchan = TMFIFO_MAX_CHAN;
-  int chan, chan_offset;
+  int chan, chan_offset, fifo_avail;
 
   /* If we're already writing, we have nowhere to put data. */
   if (bd->spin_flags & RSH_SFLG_WRITING)
     return;
+
+  fifo_avail = rshim_fifo_tx_avail(bd) * sizeof(uint64_t);
+  write_avail = fifo_avail - write_buf_next;
 
   if (!bd->write_buf_pkt_rem) {
     /* Send control messages. */
@@ -1292,7 +1298,8 @@ static void rshim_fifo_output(rshim_backend_t *bd)
   }
 
   /* Walk through all the channels, sending as much data as possible. */
-  for (chan_offset = 0; chan_offset < numchan; chan_offset++) {
+  for (chan_offset = 0; chan_offset < numchan && write_avail > 0;
+       chan_offset++) {
     /*
      * Pick the current channel if not done, otherwise round-robin
      * to the next channel.
@@ -1390,7 +1397,7 @@ static void rshim_fifo_output(rshim_backend_t *bd)
       /* Add padding at the end. */
       if (bd->write_buf_pkt_rem == 0)
         write_buf_next = (write_buf_next + 7) & -8;
-      write_avail = WRITE_BUF_SIZE - write_buf_next;
+      write_avail = fifo_avail - write_buf_next;
 
       pthread_cond_broadcast(&bd->write_fifo[chan].operable);
       RSHIM_DBG("fifo_output: woke up writable chan %d\n", chan);
