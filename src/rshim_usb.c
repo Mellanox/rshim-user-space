@@ -16,6 +16,7 @@
 #define USB_TILERA_VENDOR_ID        0x22dc   /* Tilera Corporation */
 #define USB_BLUEFIELD_1_PRODUCT_ID  0x0004   /* Mellanox Bluefield-1 */
 #define USB_BLUEFIELD_2_PRODUCT_ID  0x0214   /* Mellanox Bluefield-2 */
+#define USB_BLUEFIELD_3_PRODUCT_ID  0x0314   /* Mellanox Bluefield-3 */
 
 #define READ_RETRIES       5
 #define WRITE_RETRIES      5
@@ -59,7 +60,8 @@ static bool rshim_usb_need_probe;
 
 static int rshim_usb_product_ids[] = {
   USB_BLUEFIELD_1_PRODUCT_ID,
-  USB_BLUEFIELD_2_PRODUCT_ID
+  USB_BLUEFIELD_2_PRODUCT_ID,
+  USB_BLUEFIELD_3_PRODUCT_ID
 };
 
 static void rshim_usb_delete(rshim_backend_t *bd)
@@ -75,23 +77,97 @@ static void rshim_usb_delete(rshim_backend_t *bd)
   free(dev);
 }
 
+struct rshim_usb_addr {
+	uint16_t wvalue;
+	uint16_t windex;
+};
+
+struct rshim_usb_addr bf3_wvalue_widx_pair_map[] = {
+	[RSHIM_CHANNEL] = {
+		.wvalue = 0x0400,
+		.windex = 0x0000,
+	},
+	[UART0_CHANNEL] = {
+		.wvalue = 0x0400,
+		.windex = 0x4000,
+	},
+	[UART1_CHANNEL] = {
+		.wvalue = 0x0400,
+		.windex = 0x5000,
+	},
+	[DIAGUART_CHANNEL] = {
+		.wvalue = 0x0400,
+		.windex = 0x6000,
+	},
+	[OOB_CHANNEL] = {
+		.wvalue = 0x0400,
+		.windex = 0x7000,
+	},
+	[TIMER_ARM_CHANNEL] = {
+		.wvalue = 0x0400,
+		.windex = 0x8000,
+	},
+	[RSH_HUB_CHANNEL] = {
+		.wvalue = 0x0400,
+		.windex = 0x9000,
+	},
+	[TIMER_EXT_CHANNEL] = {
+		.wvalue = 0x0400,
+		.windex = 0xa000,
+	},
+	[WDOG0_CHANNEL] = {
+		.wvalue = 0x0402,
+		.windex = 0x0000,
+	},
+	[WDOG1_CHANNEL] = {
+		.wvalue = 0x0404,
+		.windex = 0x0000,
+	},
+	[GIC_CHANNEL] = {
+		.wvalue = 0x0440,
+		.windex = 0x0000,
+	},
+	[MCH_CORE_CHANNEL] = {
+		.wvalue = 0x0480,
+		.windex = 0x0000,
+	},
+};
+
+static struct rshim_usb_addr get_wvalue_windex(int chan, int addr, uint16_t ver_id)
+{
+  struct rshim_usb_addr rsh_usb_addr;
+
+  if (ver_id == RSHIM_BLUEFIELD_3) {
+    rsh_usb_addr.wvalue = bf3_wvalue_widx_pair_map[chan].wvalue;
+    rsh_usb_addr.windex = bf3_wvalue_widx_pair_map[chan].windex + addr;
+  } else {
+    rsh_usb_addr.wvalue = chan;
+    rsh_usb_addr.windex = addr;
+  }
+
+  return rsh_usb_addr;
+}
+
 /* Rshim read/write routines */
 
 static int rshim_usb_read_rshim(rshim_backend_t *bd, int chan, int addr,
                                 uint64_t *result)
 {
   rshim_usb_t *dev = container_of(bd, rshim_usb_t, bd);
+  struct rshim_usb_addr rsh_usb_addr;
   int rc;
 
   if (!bd->has_rshim)
     return -ENODEV;
+
+  rsh_usb_addr = get_wvalue_windex(chan, addr, bd->ver_id);
 
   /* Do a blocking control read and endian conversion. */
   rc = libusb_control_transfer(dev->handle,
                                LIBUSB_ENDPOINT_IN |
                                LIBUSB_REQUEST_TYPE_VENDOR |
                                LIBUSB_RECIPIENT_ENDPOINT,
-                               0, chan, addr,
+                               0, rsh_usb_addr.wvalue, rsh_usb_addr.windex,
                                (unsigned char *)&dev->ctrl_data,
                                sizeof(dev->ctrl_data),
                                RSHIM_USB_TIMEOUT);
@@ -117,10 +193,13 @@ static int rshim_usb_write_rshim(rshim_backend_t *bd, int chan, int addr,
                                  uint64_t value)
 {
   rshim_usb_t *dev = container_of(bd, rshim_usb_t, bd);
+  struct rshim_usb_addr rsh_usb_addr;
   int rc;
 
   if (!bd->has_rshim)
     return -ENODEV;
+
+  rsh_usb_addr = get_wvalue_windex(chan, addr, bd->ver_id);
 
   /* Convert the word to little endian and do blocking control write. */
   dev->ctrl_data = htole64(value);
@@ -128,7 +207,7 @@ static int rshim_usb_write_rshim(rshim_backend_t *bd, int chan, int addr,
                                LIBUSB_ENDPOINT_OUT |
                                LIBUSB_REQUEST_TYPE_VENDOR |
                                LIBUSB_RECIPIENT_ENDPOINT,
-                               0, chan, addr,
+                               0, rsh_usb_addr.wvalue, rsh_usb_addr.windex,
                                (unsigned char *)&dev->ctrl_data,
                                sizeof(dev->ctrl_data),
                                RSHIM_USB_TIMEOUT);
@@ -601,6 +680,9 @@ static int rshim_usb_probe_one(libusb_context *ctx, libusb_device *usb_dev,
   switch (desc->idProduct) {
     case USB_BLUEFIELD_2_PRODUCT_ID:
       bd->ver_id = RSHIM_BLUEFIELD_2;
+      break;
+    case USB_BLUEFIELD_3_PRODUCT_ID:
+      bd->ver_id = RSHIM_BLUEFIELD_3;
       break;
     default:
       bd->ver_id = RSHIM_BLUEFIELD_1;
