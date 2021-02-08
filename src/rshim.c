@@ -1285,7 +1285,10 @@ static void rshim_fifo_output(rshim_backend_t *bd)
   if (bd->spin_flags & RSH_SFLG_WRITING)
     return;
 
-  fifo_avail = rshim_fifo_tx_avail(bd) * sizeof(uint64_t);
+  if (bd->has_reprobe)
+    fifo_avail = WRITE_BUF_SIZE;
+  else
+    fifo_avail = rshim_fifo_tx_avail(bd) * sizeof(uint64_t);
   write_avail = fifo_avail - write_buf_next;
 
   if (!bd->write_buf_pkt_rem) {
