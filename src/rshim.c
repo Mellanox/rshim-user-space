@@ -28,6 +28,7 @@
 
 /* RShim timer interval in milliseconds. */
 #define RSHIM_TIMER_INTERVAL 1
+#define RSHIM_TIMER_INTERVAL_SLOW 100
 
 /* Cycles to poll the network initialization before timeout. */
 #define RSHIM_NET_INIT_DELAY (60000 / RSHIM_TIMER_INTERVAL)
@@ -187,10 +188,18 @@ rshim_backend_t *rshim_devs[RSHIM_MAX_DEV];
 char *rshim_dev_names[RSHIM_MAX_DEV];
 char *rshim_blocked_dev_names[RSHIM_MAX_DEV];
 
+/* Bitmask of the used rshim device id. */
+#if RSHIM_MAX_DEV > 64
+#error Need to fix the size of rshim_dev_bitmask.
+#endif
+uint64_t rshim_dev_bitmask;
+
 bool rshim_no_net = false;
 int rshim_log_level = LOG_NOTICE;
 bool rshim_daemon_mode = true;
 volatile bool rshim_run = true;
+
+static uint32_t rshim_timer_interval = RSHIM_TIMER_INTERVAL;
 
 /* Global lock / unlock. */
 
@@ -2289,6 +2298,8 @@ int rshim_register(rshim_backend_t *bd)
   }
 #endif
 
+  rshim_dev_bitmask |= (1ULL << index);
+
   return 0;
 }
 
@@ -2298,6 +2309,8 @@ void rshim_deregister(rshim_backend_t *bd)
 
   if (!bd->registered)
     return;
+
+  rshim_dev_bitmask &= ~(1ULL << bd->index);
 
 #ifdef HAVE_RSHIM_FUSE
   rshim_fuse_del(bd);
@@ -2383,6 +2396,18 @@ static void rshim_stop(void)
   rshim_unlock();
 }
 
+static void rshim_set_timer(int timer_fd, int interval)
+{
+  struct itimerspec ts;
+
+  ts.it_interval.tv_sec = 0;
+  ts.it_interval.tv_nsec = interval * 1000000;
+  ts.it_value.tv_sec = 0;
+  ts.it_value.tv_nsec = ts.it_interval.tv_nsec;
+  rshim_timer_interval = interval;
+  timerfd_settime(timer_fd, 0, &ts, NULL);
+}
+
 static void rshim_main(int argc, char *argv[])
 {
   int i, fd, num, rc, epoll_fd, timer_fd, index;
@@ -2394,7 +2419,6 @@ static void rshim_main(int argc, char *argv[])
 #endif
   struct epoll_event events[MAXEVENTS];
   struct epoll_event event;
-  struct itimerspec ts;
   rshim_backend_t *bd;
   time_t t0, t1;
   uint8_t tmp;
@@ -2441,17 +2465,13 @@ static void rshim_main(int argc, char *argv[])
     exit(-1);
   }
 
-  /* Add timer fd. */
+  /* Add periodic timer. */
   timer_fd = timerfd_create(CLOCK_MONOTONIC, 0);
   if (timer_fd == -1) {
     fprintf(stderr, "timerfd_create failed: %m\n");
     exit(1);
   }
-  ts.it_interval.tv_sec = 0;
-  ts.it_interval.tv_nsec = RSHIM_TIMER_INTERVAL * 1000000;
-  ts.it_value.tv_sec = 0;
-  ts.it_value.tv_nsec = ts.it_interval.tv_nsec;
-  timerfd_settime(timer_fd, 0, &ts, NULL);
+  rshim_set_timer(timer_fd, RSHIM_TIMER_INTERVAL);
   event.data.fd = timer_fd;
   event.events = EPOLLIN | EPOLLOUT;
   rc = epoll_ctl(epoll_fd, EPOLL_CTL_ADD, timer_fd, &event);
@@ -2551,6 +2571,14 @@ static void rshim_main(int argc, char *argv[])
         rshim_pcie_lf_init();
         rshim_pcie_lf_init_done = true;
       }
+    }
+
+    /* Use slower timer if no rshim devices are found. */
+    if (rshim_dev_bitmask) {
+      if (rshim_timer_interval == RSHIM_TIMER_INTERVAL_SLOW)
+        rshim_set_timer(timer_fd, RSHIM_TIMER_INTERVAL);
+    } else if (rshim_timer_interval == RSHIM_TIMER_INTERVAL) {
+        rshim_set_timer(timer_fd, RSHIM_TIMER_INTERVAL_SLOW);
     }
   }
 
