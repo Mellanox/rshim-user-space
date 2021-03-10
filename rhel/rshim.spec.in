@@ -4,7 +4,7 @@
 
 Name: rshim
 Version: @VERSION@
-Release: 9%{?dist}
+Release: 10%{?dist}
 Summary: User-space driver for Mellanox BlueField SoC
 
 License: GPLv2
@@ -54,6 +54,10 @@ via the virtual console or network interface.
 %{_mandir}/man8/rshim.8.gz
 
 %changelog
+* Wed Mar 10 2021 Liming Sun <limings@nvidia.com> - 2.0.5-10
+- PCIe hotplug support
+- Reduce CPU utilization when there is no rshim device
+
 * Wed Jan 27 2021 Liming Sun <limings@nvidia.com> - 2.0.5-9
 - Fix potential tmfifo data loss
 - Add workaround checking for Bluefield-2 REV-0
