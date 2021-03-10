@@ -324,10 +324,49 @@ static void rshim_pcie_delete(rshim_backend_t *bd)
 static int rshim_pcie_enable_device(rshim_backend_t *bd, bool enable)
 {
   rshim_pcie_t *dev = container_of(bd, rshim_pcie_t, bd);
+  struct pci_dev *pci_dev = dev->pci_dev;
   int rc = 0;
 
-  if (dev->pci_dev)
-    rc = rshim_pcie_enable(dev->pci_dev, enable);
+  if (!pci_dev)
+    return -ENODEV;
+
+  rc = rshim_pcie_enable(pci_dev, enable);
+
+#ifdef __linux__
+  /* Remap resource0 in case it's changed during pcie hotplug. */
+  if (bd) {
+    rshim_pcie_t *dev = container_of(bd, rshim_pcie_t, bd);
+    char path[256];
+
+    if (dev->pci_fd) {
+      close(dev->pci_fd);
+      dev->pci_fd = -1;
+    }
+
+    if (dev->rshim_regs) {
+      munmap((void *)dev->rshim_regs, PCI_RSHIM_WINDOW_OFFSET);
+      dev->rshim_regs = NULL;
+    }
+
+    snprintf(path, sizeof(path), "%s/%04x:%02x:%02x.%1u/resource0",
+             SYS_BUS_PCI, pci_dev->domain, pci_dev->bus,
+             pci_dev->dev, pci_dev->func);
+
+    dev->pci_fd = open(path, O_RDWR | O_SYNC);
+    if (dev->pci_fd < 0) {
+      RSHIM_ERR("Failed to open %s\n", path);
+      return -ENODEV;
+    }
+    dev->rshim_regs = mmap(NULL, PCI_RSHIM_WINDOW_SIZE,
+                           PROT_READ | PROT_WRITE,
+                           MAP_SHARED | MAP_LOCKED, dev->pci_fd,
+                           PCI_RSHIM_WINDOW_OFFSET);
+    if (dev->rshim_regs == MAP_FAILED) {
+      RSHIM_ERR("Failed to map RShim registers\n");
+      return -ENOMEM;
+    }
+  }
+#endif
 
   return rc;
 }
