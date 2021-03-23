@@ -91,12 +91,17 @@ fi
 ])
 
 if test $backend = freebsd; then
-AC_SUBST(CPPFLAGS, "$CPPFLAGS -I/usr/local/include/libepoll-shim")
-AC_SUBST(LDFLAGS, "$LDFLAGS -L/usr/local/lib")
+AC_SUBST(CPPFLAGS, "$CPPFLAGS -I${prefix}/include/libepoll-shim")
+AC_SUBST(LDFLAGS, "$LDFLAGS -L${prefix}/lib")
 AC_CHECK_HEADERS([sys/epoll.h],[],[AC_MSG_ERROR([Missing libepoll-shim])])
 AC_CHECK_LIB(epoll-shim, epoll_create1)
 fi
 AM_CONDITIONAL([OS_FREEBSD], [test "x$backend" = "xfreebsd"])
+
+if test "x$prefix" = "xNONE" ; then
+  prefix=""
+fi
+AC_SUBST(CPPFLAGS, "$CPPFLAGS -DDEFAULT_RSHIM_CONFIG_FILE='\"${prefix}/etc/rshim.conf\"'")
 
 AC_CHECK_LIB(pthread, pthread_create)
 

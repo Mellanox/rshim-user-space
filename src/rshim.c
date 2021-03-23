@@ -178,7 +178,7 @@ int rshim_static_index = -1;
 char *rshim_static_dev_name;
 
 /* Default configuration file. */
-char *rshim_cfg_file = "/etc/rshim.conf";
+const char *rshim_cfg_file = DEFAULT_RSHIM_CONFIG_FILE;
 static int rshim_display_level = 0;
 static int rshim_boot_timeout = 100;
 int rshim_drop_mode = -1;
