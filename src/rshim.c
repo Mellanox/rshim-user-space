@@ -28,7 +28,6 @@
 
 /* RShim timer interval in milliseconds. */
 #define RSHIM_TIMER_INTERVAL 1
-#define RSHIM_TIMER_INTERVAL_SLOW 100
 
 /* Cycles to poll the network initialization before timeout. */
 #define RSHIM_NET_INIT_DELAY (60000 / RSHIM_TIMER_INTERVAL)
@@ -264,11 +263,16 @@ static int rshim_fd_full_write(int fd, void *data, int len)
   return total;
 }
 
-/* Wake up the worker function. */
+/* Wake up the epoll loop or worker function. */
 void rshim_work_signal(rshim_backend_t *bd)
 {
-  if (__sync_bool_compare_and_swap(&bd->work_pending, false, true))
-    rshim_fd_full_write(rshim_work_fd[1], &bd->index, sizeof(bd->index));
+  if (bd) {
+    if (__sync_bool_compare_and_swap(&bd->work_pending, false, true))
+      rshim_fd_full_write(rshim_work_fd[1], &bd->index, sizeof(bd->index));
+  } else {
+    int index = -1;
+    rshim_fd_full_write(rshim_work_fd[1], &index, sizeof(index));
+  }
 }
 
 /*
@@ -2401,7 +2405,7 @@ static void rshim_set_timer(int timer_fd, int interval)
   struct itimerspec ts;
 
   ts.it_interval.tv_sec = 0;
-  ts.it_interval.tv_nsec = interval * 1000000;
+  ts.it_interval.tv_nsec = (long)interval * 1000000;
   ts.it_value.tv_sec = 0;
   ts.it_value.tv_nsec = ts.it_interval.tv_nsec;
   rshim_timer_interval = interval;
@@ -2559,26 +2563,27 @@ static void rshim_main(int argc, char *argv[])
         if (index != RSHIM_MAX_DEV)
           continue;
       }
-
-      /* Check USB for timeout or unhandled fd. */
-      rshim_usb_poll();
     }
+
+    /* Check USB for timeout or unhandled fd. */
+    rshim_usb_poll();
 
     /* Delayed initialization for livefish probe. */
-    if (!rshim_pcie_lf_init_done && !rshim_backend_name) {
+    if (!rshim_pcie_lf_init_done) {
       time(&t1);
       if (difftime(t1, t0) > 3) {
-        rshim_pcie_lf_init();
+        if (!rshim_backend_name)
+          rshim_pcie_lf_init();
         rshim_pcie_lf_init_done = true;
       }
-    }
-
-    /* Use slower timer if no rshim devices are found. */
-    if (rshim_dev_bitmask) {
-      if (rshim_timer_interval == RSHIM_TIMER_INTERVAL_SLOW)
-        rshim_set_timer(timer_fd, RSHIM_TIMER_INTERVAL);
-    } else if (rshim_timer_interval == RSHIM_TIMER_INTERVAL) {
-        rshim_set_timer(timer_fd, RSHIM_TIMER_INTERVAL_SLOW);
+    } else {
+      /* Disable the timer if no rshim devices are found. */
+      if (rshim_dev_bitmask) {
+        if (!rshim_timer_interval)
+          rshim_set_timer(timer_fd, RSHIM_TIMER_INTERVAL);
+      } else if (rshim_timer_interval) {
+          rshim_set_timer(timer_fd, 0);
+      }
     }
   }
 
