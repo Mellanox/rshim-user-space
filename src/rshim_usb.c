@@ -56,7 +56,7 @@ typedef struct {
 
 static libusb_context *rshim_usb_ctx;
 static int rshim_usb_epoll_fd;
-static bool rshim_usb_need_probe;
+static bool rshim_usb_need_probe, rshim_usb_need_poll;
 
 static int rshim_usb_product_ids[] = {
   USB_BLUEFIELD_1_PRODUCT_ID,
@@ -945,6 +945,11 @@ static int rshim_usb_add_poll(libusb_context *ctx)
 
   free(usb_pollfd);
 
+  rshim_usb_need_poll = true;
+
+  /* Notify the polling thread. */
+  rshim_work_signal(NULL);
+
   return rc;
 }
 
@@ -1096,5 +1101,6 @@ void rshim_usb_poll(void)
     rshim_usb_probe();
   }
 
-  libusb_handle_events_timeout_completed(rshim_usb_ctx, &tv, NULL);
+  if (rshim_usb_need_poll)
+    libusb_handle_events_timeout_completed(rshim_usb_ctx, &tv, NULL);
 }
