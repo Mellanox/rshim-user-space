@@ -4,7 +4,7 @@
 
 Name: rshim
 Version: @VERSION@
-Release: 10%{?dist}
+Release: 1%{?dist}
 Summary: User-space driver for Mellanox BlueField SoC
 
 License: GPLv2
@@ -95,6 +95,10 @@ fi
 %{_mandir}/man8/bfb-install.8.gz
 
 %changelog
+* Wed May 12 2021 Liming Sun <limings@nvidia.com> - 2.0.6-1
+- Disable the background timer if no rshim devices
+- Setting default path for rshim config file
+
 * Wed Mar 10 2021 Liming Sun <limings@nvidia.com> - 2.0.5-10
 - PCIe hotplug support
 - Reduce CPU utilization when there is no rshim device

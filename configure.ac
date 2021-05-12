@@ -2,7 +2,7 @@
 # Copyright (C) 2019 Mellanox Technologies. All Rights Reserved.
 #
 
-AC_INIT([rshim], [2.0.5])
+AC_INIT([rshim], [2.0.6])
 AC_CONFIG_AUX_DIR(config)
 AM_INIT_AUTOMAKE([-Wall -Werror foreign])
 AC_LANG(C)
@@ -95,13 +95,11 @@ AC_SUBST(CPPFLAGS, "$CPPFLAGS -I${prefix}/include/libepoll-shim")
 AC_SUBST(LDFLAGS, "$LDFLAGS -L${prefix}/lib")
 AC_CHECK_HEADERS([sys/epoll.h],[],[AC_MSG_ERROR([Missing libepoll-shim])])
 AC_CHECK_LIB(epoll-shim, epoll_create1)
+AC_SUBST(CPPFLAGS, "$CPPFLAGS -DDEFAULT_RSHIM_CONFIG_FILE='\"${prefix}/etc/rshim.conf\"'")
+else
+AC_SUBST(CPPFLAGS, "$CPPFLAGS -DDEFAULT_RSHIM_CONFIG_FILE='\"/etc/rshim.conf\"'")
 fi
 AM_CONDITIONAL([OS_FREEBSD], [test "x$backend" = "xfreebsd"])
-
-if test "x$prefix" = "xNONE" ; then
-  prefix=""
-fi
-AC_SUBST(CPPFLAGS, "$CPPFLAGS -DDEFAULT_RSHIM_CONFIG_FILE='\"${prefix}/etc/rshim.conf\"'")
 
 AC_CHECK_LIB(pthread, pthread_create)
 
