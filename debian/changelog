@@ -1,3 +1,10 @@
+rshim (2.0.6-1) UNRELEASED; urgency=low
+
+  * Disable the background timer if no rshim devices
+  * Setting default path for rshim config file
+
+ -- Liming Sun <limings@nvidia.com>  Wed, 12 May 2021 17:50:20 -0400
+
 rshim (2.0.5-10) UNRELEASED; urgency=low
 
   * PCIe hotplug support
