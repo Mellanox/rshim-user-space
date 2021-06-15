@@ -641,7 +641,8 @@ int rshim_reset_control(rshim_backend_t *bd)
     return rc;
   }
 
-  if (bd->ver_id == RSHIM_BLUEFIELD_2 && rshim_is_livefish(bd)) {
+  if (bd->ver_id == RSHIM_BLUEFIELD_2 && bd->rev_id == BLUEFIELD_REV0 &&
+      rshim_is_livefish(bd)) {
     RSHIM_DBG("Apply reset type 13\n");
     /* yu.reset_mode_control.reset_mode_control.sw_reset_event_activation13 */
     rshim_mmio_write32(bd, RSHIM_YU_BASE_ADDR + YU_RESET_ACTIVATION_13, 1);
@@ -2010,7 +2011,7 @@ static void rshim_timer_run(void)
 }
 
 /*
- * For some SmartNIC cards with UART connected to the same RSim host, the
+ * For some BF-1 SmartNIC cards with UART connected to the same RSim host, the
  * BOO_MODE comes up with 0 after power-cycle thus not able to boot from eMMC.
  * This function provides a workaround to detect such case and reset the card
  * with the correct boot mode.
@@ -2019,6 +2020,10 @@ static void rshim_boot_workaround_check(rshim_backend_t *bd)
 {
   int rc;
   uint64_t value, uptime_sw, uptime_hw;
+
+  /* This issue is only seen on BF-1 card. */
+  if (bd->ver_id != RSHIM_BLUEFIELD_1)
+    return;
 
   /* Check boot mode 0, which supposes to be set externally. */
   rc = bd->read_rshim(bd, RSHIM_CHANNEL, RSH_BOOT_CONTROL, &value);
