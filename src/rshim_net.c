@@ -346,6 +346,11 @@ void rshim_net_rx(rshim_backend_t *bd)
     }
 
     total_len = ntohs(pkt->hdr.len) + sizeof(pkt->hdr);
+    /* Drop invalid data. */
+    if (total_len > sizeof(*pkt)) {
+      bd->net_rx_len = 0;
+      continue;
+    }
     while (bd->net_rx_len < total_len) {
       len = rshim_fifo_read(bd, (char *)pkt + bd->net_rx_len,
                             total_len - bd->net_rx_len,

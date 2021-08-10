@@ -590,10 +590,14 @@ int rshim_mmio_read32(rshim_backend_t *bd, uintptr_t addr, uint32_t *data)
   }
 }
 
-static int rshim_is_livefish(rshim_backend_t *bd)
+static bool rshim_is_livefish(rshim_backend_t *bd)
 {
   uint32_t yu_boot = 0, boot_status;
   int rc;
+
+  /* No need to check livefish mode for pcie rshim driver. */
+  if (!strncmp(bd->dev_name, "pcie", 4) && strncmp(bd->dev_name + 4, "-lf", 3))
+    return false;
 
   /*
    * A value of 1 in yu_boot.boot_status indicates a successful FW
@@ -603,7 +607,7 @@ static int rshim_is_livefish(rshim_backend_t *bd)
   boot_status = (yu_boot >> 17) & 3;
   RSHIM_DBG("yu_boot_status: %d\n", boot_status);
 
-  return (rc != 0 || boot_status != 1);
+  return (!rc && boot_status != 1);
 }
 
 
@@ -674,7 +678,7 @@ int rshim_boot_open(rshim_backend_t *bd)
     return -ENODEV;
   }
 
-  RSHIM_INFO("rshim%d: boot open\n", bd->index);
+  RSHIM_INFO("rshim%d boot open\n", bd->index);
   bd->is_booting = 1;
   bd->boot_rem_cnt = 0;
 
@@ -740,11 +744,12 @@ int rshim_boot_open(rshim_backend_t *bd)
     RSHIM_ERR("boot_open: got error %d on reset write\n", rc);
 
 boot_open_done:
-  rshim_ref(bd);
-  pthread_mutex_unlock(&bd->mutex);
 
   /* Add a small delay for the reset. */
   sleep(!bd->has_reprobe ? 10 : 1);
+
+  rshim_ref(bd);
+  pthread_mutex_unlock(&bd->mutex);
 
   time(&bd->boot_write_time);
   return 0;
@@ -804,7 +809,7 @@ int rshim_boot_write(rshim_backend_t *bd, const char *user_buffer, size_t count,
       time(&tm);
       if (difftime(tm, bd->boot_write_time) > bd->boot_timeout) {
         rc = -ETIMEDOUT;
-        RSHIM_INFO("rshim%d: boot timeout\n", bd->index);
+        RSHIM_INFO("rshim%d boot timeout\n", bd->index);
       } else {
         rc = -EINTR;
       }
@@ -859,7 +864,7 @@ void rshim_boot_release(rshim_backend_t *bd)
   rshim_work_signal(bd);
   pthread_mutex_unlock(&bd->mutex);
 
-  RSHIM_INFO("rshim%d: boot close\n", bd->index);
+  RSHIM_INFO("rshim%d boot close\n", bd->index);
   rshim_deref(bd);
 }
 
