@@ -84,51 +84,51 @@ struct rshim_usb_addr {
 
 struct rshim_usb_addr bf3_wvalue_widx_pair_map[] = {
 	[RSHIM_CHANNEL] = {
-		.wvalue = 0x0400,
+		.wvalue = 0x0300,
 		.windex = 0x0000,
 	},
 	[UART0_CHANNEL] = {
-		.wvalue = 0x0400,
-		.windex = 0x4000,
+		.wvalue = 0x0301,
+		.windex = 0x0000,
 	},
 	[UART1_CHANNEL] = {
-		.wvalue = 0x0400,
-		.windex = 0x5000,
+		.wvalue = 0x0301,
+		.windex = 0x1000,
 	},
 	[DIAGUART_CHANNEL] = {
-		.wvalue = 0x0400,
-		.windex = 0x6000,
-	},
-	[OOB_CHANNEL] = {
-		.wvalue = 0x0400,
-		.windex = 0x7000,
-	},
-	[TIMER_ARM_CHANNEL] = {
-		.wvalue = 0x0400,
-		.windex = 0x8000,
+		.wvalue = 0x0301,
+		.windex = 0x2000,
 	},
 	[RSH_HUB_CHANNEL] = {
-		.wvalue = 0x0400,
-		.windex = 0x9000,
-	},
-	[TIMER_EXT_CHANNEL] = {
-		.wvalue = 0x0400,
-		.windex = 0xa000,
+		.wvalue = 0x0301,
+		.windex = 0x2400,
 	},
 	[WDOG0_CHANNEL] = {
-		.wvalue = 0x0402,
+		.wvalue = 0x0302,
 		.windex = 0x0000,
 	},
 	[WDOG1_CHANNEL] = {
-		.wvalue = 0x0404,
-		.windex = 0x0000,
-	},
-	[GIC_CHANNEL] = {
-		.wvalue = 0x0440,
+		.wvalue = 0x0304,
 		.windex = 0x0000,
 	},
 	[MCH_CORE_CHANNEL] = {
-		.wvalue = 0x0480,
+		.wvalue = 0x0306,
+		.windex = 0x0000,
+	},
+	[TIMER_ARM_CHANNEL] = {
+		.wvalue = 0x0308,
+		.windex = 0x0000,
+	},
+	[TIMER_EXT_CHANNEL] = {
+		.wvalue = 0x030a,
+		.windex = 0x0000,
+	},
+	[OOB_CHANNEL] = {
+		.wvalue = 0x030a,
+		.windex = 0x1000,
+	},
+	[YU_CHANNEL] = {
+		.wvalue = 0x0340,
 		.windex = 0x0000,
 	},
 };
