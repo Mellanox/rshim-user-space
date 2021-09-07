@@ -470,7 +470,7 @@ rshim_pcie_write(struct rshim_backend *bd, int chan, int addr, uint64_t value)
   if (pci_dev->device_id == BLUEFIELD1_DEVICE_ID) {
     if (dev->write_count == 7) {
       __sync_synchronize();
-      rshim_pcie_read(bd, chan, RSH_SCRATCHPAD, &result);
+      rshim_pcie_read(bd, chan, RSH_SCRATCHPAD1, &result);
     }
   dev->write_count++;
   }

@@ -300,7 +300,7 @@ rshim_pcie_write(rshim_backend_t *bd, int chan, int addr, uint64_t value)
   if (rshim_is_bluefield1(dev->pci_dev->device_id)) {
     if (dev->write_count == 15) {
       __sync_synchronize();
-      rshim_pcie_read(bd, chan, RSH_SCRATCHPAD, &result);
+      rshim_pcie_read(bd, chan, RSH_SCRATCHPAD1, &result);
     }
     dev->write_count++;
   }

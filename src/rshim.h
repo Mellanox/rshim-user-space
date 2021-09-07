@@ -140,9 +140,6 @@ enum {
   TMFIFO_MAX_CHAN   /* Number of channels */
 };
 
-/* Various rshim definitions. */
-#define RSH_INT_VEC0_RTC__SWINT3_MASK 0x8
-
 #define RSH_BYTE_ACC_READ_TRIGGER 0x50
 #define RSH_BYTE_ACC_SIZE_4BYTE   0x10
 #define RSH_BYTE_ACC_PENDING      0x20
