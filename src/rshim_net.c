@@ -13,14 +13,13 @@
 #ifdef __FreeBSD__
 #include <net/if.h>
 #include <net/if_tap.h>
+#include <net/ethernet.h>
 #endif
 #include <sys/epoll.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 
 #include "rshim.h"
-
-#define ETH_PKT_SIZE            1536 /* maximum non-jumbo ethernet frame size */
 
 static uint8_t rshim_net_default_mac[6] = {0x00, 0x1A, 0xCA, 0xFF, 0xFF, 0x02};
 
@@ -167,7 +166,7 @@ static int rshim_if_open(char *ifname, int index)
 
   snprintf(ifr.ifr_name, sizeof(ifr.ifr_name), "%s", ifname);
 
-  ifr.ifr_mtu = ETH_PKT_SIZE;
+  ifr.ifr_mtu = ETHERMTU;
   if (ioctl(s, SIOCSIFMTU, &ifr) < 0) {
     RSHIM_ERR("ioctl SIOCSIMTU failed");
     close(s);
