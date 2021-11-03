@@ -147,7 +147,7 @@ while true; do
   echo "${cur}" | dd bs=1 skip=${last_len} 2>/dev/null | sed '/^[[:space:]]*$/d'
   last="${cur}"
 
-  if echo ${cur} | grep -i "Reboot" >/dev/null; then
+  if echo ${cur} | grep -Ei "Reboot|finished|DPU is ready" >/dev/null; then
     break;
   fi
 done
