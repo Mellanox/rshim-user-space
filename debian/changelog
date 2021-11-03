@@ -1,3 +1,13 @@
+rshim (2.0.6-2) UNRELEASED; urgency=low
+
+  * bfb-install: Handle new indications for installation completion
+  * Clean up some un-needed register definition
+  * Fix MTU of the tmfifo_net0 interface on FreeBSD
+  * Several fixes to prevent hypervisor crash
+  * Refine some BF-2 Rev0 workaround condition
+
+ -- Liming Sun <limings@nvidia.com>  Wed, 03 Nov 2021 19:02:10 -0400
+
 rshim (2.0.6-1) UNRELEASED; urgency=low
 
   * Disable the background timer if no rshim devices
