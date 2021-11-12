@@ -40,6 +40,8 @@
 extern int rshim_log_level;
 extern bool rshim_daemon_mode;
 extern int rshim_drop_mode;
+extern int rshim_usb_reset_delay;
+extern int rshim_pcie_reset_delay;
 
 #ifndef offsetof
 #define offsetof(TYPE, MEMBER)	((size_t)&((TYPE *)0)->MEMBER)

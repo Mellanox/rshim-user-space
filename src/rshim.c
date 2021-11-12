@@ -183,6 +183,8 @@ const char *rshim_cfg_file = DEFAULT_RSHIM_CONFIG_FILE;
 static int rshim_display_level = 0;
 static int rshim_boot_timeout = 100;
 int rshim_drop_mode = -1;
+int rshim_usb_reset_delay = 3;
+int rshim_pcie_reset_delay = 10;
 
 /* Array of devices and device names. */
 rshim_backend_t *rshim_devs[RSHIM_MAX_DEV];
@@ -748,7 +750,7 @@ int rshim_boot_open(rshim_backend_t *bd)
 boot_open_done:
 
   /* Add a small delay for the reset. */
-  sleep(!bd->has_reprobe ? 10 : 1);
+  sleep(!bd->has_reprobe ? rshim_pcie_reset_delay : rshim_usb_reset_delay);
 
   rshim_ref(bd);
   pthread_mutex_unlock(&bd->mutex);
@@ -2677,6 +2679,12 @@ static int rshim_load_cfg(void)
       continue;
     } else if (!strcmp(key, "DROP_MODE")) {
       rshim_drop_mode = atoi(value);
+      continue;
+    } else if (!strcmp(key, "PCIE_RESET_DELAY")) {
+      rshim_pcie_reset_delay = atoi(value);
+      continue;
+    } else if (!strcmp(key, "USB_RESET_DELAY")) {
+      rshim_usb_reset_delay = atoi(value);
       continue;
     }
 
