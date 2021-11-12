@@ -883,7 +883,7 @@ static int rshim_fuse_misc_write(struct cuse_dev *cdev, int fflags,
 
       if (!bd->has_reprobe) {
         /* Attach. */
-        sleep(10);
+        sleep(rshim_pcie_reset_delay);
         pthread_mutex_lock(&bd->mutex);
         bd->is_booting = 0;
         rshim_notify(bd, RSH_EVENT_ATTACH, 0);
