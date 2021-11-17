@@ -503,6 +503,13 @@ static int wait_for_boot_done(rshim_backend_t *bd)
         bd->is_booting = 0;
         return 0;
       }
+
+      /*
+       * On some systems the USB up event comes too early while the system
+       * is not fully ready yet. Add a delay here to avoid race codition.
+       */
+      if (!bd->is_booting && bd->has_reprobe)
+        sleep(rshim_usb_reset_delay);
     }
 
     if (!bd->has_rshim)
@@ -749,8 +756,12 @@ int rshim_boot_open(rshim_backend_t *bd)
 
 boot_open_done:
 
-  /* Add a small delay for the reset. */
-  sleep(!bd->has_reprobe ? rshim_pcie_reset_delay : rshim_usb_reset_delay);
+  /*
+   * PCIe doesn't have the disconnect/reconnect behavior.
+   * Add a small delay for the reset.
+   */
+  if (!bd->has_reprobe)
+    sleep(rshim_pcie_reset_delay);
 
   rshim_ref(bd);
   pthread_mutex_unlock(&bd->mutex);
