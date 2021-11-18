@@ -183,7 +183,7 @@ const char *rshim_cfg_file = DEFAULT_RSHIM_CONFIG_FILE;
 static int rshim_display_level = 0;
 static int rshim_boot_timeout = 100;
 int rshim_drop_mode = -1;
-int rshim_usb_reset_delay = 3;
+int rshim_usb_reset_delay = 5;
 int rshim_pcie_reset_delay = 10;
 
 /* Array of devices and device names. */
