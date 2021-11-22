@@ -643,7 +643,7 @@ static int rshim_fuse_misc_read(struct cuse_dev *cdev, int fflags,
   pthread_mutex_lock(&bd->mutex);
 
   /* Boot mode. */
-  rc = bd->read_rshim(bd, RSHIM_CHANNEL, RSH_BOOT_CONTROL, &value);
+  rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->boot_control, &value);
   if (rc) {
     pthread_mutex_unlock(&bd->mutex);
     RSHIM_ERR("couldn't read rshim register\n");
@@ -857,7 +857,7 @@ static int rshim_fuse_misc_write(struct cuse_dev *cdev, int fflags,
       goto invalid;
 
     pthread_mutex_lock(&bd->mutex);
-    rc = bd->write_rshim(bd, RSHIM_CHANNEL, RSH_BOOT_CONTROL,
+    rc = bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->boot_control,
                          value & RSH_BOOT_CONTROL__BOOT_MODE_MASK);
     pthread_mutex_unlock(&bd->mutex);
   } else if (strcmp(key, "SW_RESET") == 0) {
