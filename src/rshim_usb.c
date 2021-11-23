@@ -16,11 +16,13 @@
 #define USB_TILERA_VENDOR_ID        0x22dc   /* Tilera Corporation */
 #define USB_BLUEFIELD_1_PRODUCT_ID  0x0004   /* Mellanox Bluefield-1 */
 #define USB_BLUEFIELD_2_PRODUCT_ID  0x0214   /* Mellanox Bluefield-2 */
-#define USB_BLUEFIELD_3_PRODUCT_ID  0x0314   /* Mellanox Bluefield-3 */
+#define USB_BLUEFIELD_3_PRODUCT_ID  0x021c   /* Mellanox Bluefield-3 */
 
 #define READ_RETRIES       5
 #define WRITE_RETRIES      5
 #define RSHIM_USB_TIMEOUT  20000
+
+#define BF_MMIO_BASE 0x1000
 
 /* Structure to hold all of our device specific stuff. */
 typedef struct {
@@ -138,7 +140,7 @@ static struct rshim_usb_addr get_wvalue_windex(int chan, int addr, uint16_t ver_
   struct rshim_usb_addr rsh_usb_addr;
 
   if (ver_id == RSHIM_BLUEFIELD_3) {
-    rsh_usb_addr.wvalue = bf3_wvalue_widx_pair_map[chan].wvalue;
+    rsh_usb_addr.wvalue = bf3_wvalue_widx_pair_map[chan].wvalue + BF_MMIO_BASE;
     rsh_usb_addr.windex = bf3_wvalue_widx_pair_map[chan].windex + addr;
   } else {
     rsh_usb_addr.wvalue = chan;
@@ -680,12 +682,15 @@ static int rshim_usb_probe_one(libusb_context *ctx, libusb_device *usb_dev,
   switch (desc->idProduct) {
     case USB_BLUEFIELD_2_PRODUCT_ID:
       bd->ver_id = RSHIM_BLUEFIELD_2;
+      bd->regs = &bf1_bf2_rshim_regs;
       break;
     case USB_BLUEFIELD_3_PRODUCT_ID:
       bd->ver_id = RSHIM_BLUEFIELD_3;
+      bd->regs = &bf3_rshim_regs;
       break;
     default:
       bd->ver_id = RSHIM_BLUEFIELD_1;
+      bd->regs = &bf1_bf2_rshim_regs;
   }
   bd->rev_id = desc->bcdDevice;
 

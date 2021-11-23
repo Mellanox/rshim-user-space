@@ -207,11 +207,11 @@ static int rshim_log_show_crash(rshim_backend_t *bd, uint64_t hdr, char *buf,
   size -= n;
 
   for (i = 0; i < len/2; i++) {
-    rc = bd->read_rshim(bd, RSHIM_CHANNEL, RSH_SCRATCH_BUF_DAT, &opcode);
+    rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->scratch_buf_dat, &opcode);
     if (rc)
       break;
 
-    rc = bd->read_rshim(bd, RSHIM_CHANNEL, RSH_SCRATCH_BUF_DAT, &data);
+    rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->scratch_buf_dat, &data);
     if (rc)
       break;
 
@@ -263,7 +263,7 @@ static int rshim_log_show_msg(rshim_backend_t *bd, uint64_t hdr, char *buf,
   p = msg;
 
   while (len--) {
-    rc = bd->read_rshim(bd, RSHIM_CHANNEL, RSH_SCRATCH_BUF_DAT, &data);
+    rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->scratch_buf_dat, &data);
     if (rc) {
       free(msg);
       return 0;
@@ -307,7 +307,7 @@ int rshim_log_show(rshim_backend_t *bd, char *buf, int size)
   /* Take the semaphore. */
   time(&t0);
   while (true) {
-    rc = bd->read_rshim(bd, RSHIM_CHANNEL, RSH_SEMAPHORE0, &data);
+    rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->semaphore0, &data);
     if (rc) {
       RSHIM_ERR("couldn't read RSH_SEMAPHORE0\n");
       return p - buf;
@@ -323,7 +323,7 @@ int rshim_log_show(rshim_backend_t *bd, char *buf, int size)
   }
 
   /* Read the current index. */
-  rc = bd->read_rshim(bd, RSHIM_CHANNEL, RSH_SCRATCH_BUF_CTL, &idx);
+  rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->scratch_buf_ctl, &idx);
   if (rc) {
     RSHIM_ERR("couldn't read RSH_SCRATCH_BUF_CTL\n");
     goto done;
@@ -333,7 +333,7 @@ int rshim_log_show(rshim_backend_t *bd, char *buf, int size)
     goto done;
 
   /* Reset the index to 0. */
-  rc = bd->write_rshim(bd, RSHIM_CHANNEL, RSH_SCRATCH_BUF_CTL, 0);
+  rc = bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->scratch_buf_ctl, 0);
   if (rc) {
     RSHIM_ERR("couldn't write RSH_SCRATCH_BUF_CTL\n");
     goto done;
@@ -341,7 +341,7 @@ int rshim_log_show(rshim_backend_t *bd, char *buf, int size)
 
   i = 0;
   while (i < idx) {
-    rc = bd->read_rshim(bd, RSHIM_CHANNEL, RSH_SCRATCH_BUF_DAT, &hdr);
+    rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->scratch_buf_dat, &hdr);
     if (rc) {
       RSHIM_ERR("couldn't read RSH_SCRATCH_BUF_DAT\n");
       goto done;
@@ -369,17 +369,17 @@ int rshim_log_show(rshim_backend_t *bd, char *buf, int size)
     default:
       /* Drain this message. */
       while (len--)
-        bd->read_rshim(bd, RSHIM_CHANNEL, RSH_SCRATCH_BUF_DAT, &data);
+        bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->scratch_buf_dat, &data);
       break;
     }
   }
 
   /* Restore the idx value. */
-  bd->write_rshim(bd, RSHIM_CHANNEL, RSH_SCRATCH_BUF_CTL, idx);
+  bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->scratch_buf_ctl, idx);
 
 done:
   /* Release the semaphore. */
-  bd->write_rshim(bd, RSHIM_CHANNEL, RSH_SEMAPHORE0, 0);
+  bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->semaphore0, 0);
 
   return p - buf;
 }

@@ -416,7 +416,38 @@ struct rshim_backend {
 
   /* API to enable the device. */
   int (*enable_device)(rshim_backend_t *bd, bool enable);
+
+  /* Platform specific register addresses */
+  struct rshim_regs *regs;
 };
+
+struct rshim_regs {
+  uint32_t boot_fifo_data;
+  uint32_t boot_fifo_count;
+  uint32_t boot_fifo_count_mask;
+  uint32_t boot_control;
+  uint32_t reset_control;
+  uint32_t scratchpad1;
+  uint32_t tm_htt_sts;
+  uint32_t tm_tth_sts;
+  uint32_t tm_htt_data;
+  uint32_t tm_tth_data;
+  uint32_t semaphore0;
+  uint32_t mem_acc_ctl;
+  uint32_t mem_acc_rsp_cnt;
+  uint32_t mem_acc_data_first_word;
+  uint32_t device_mstr_priv_lvl;
+  uint32_t device_mstr_priv_lvl_shift;
+  uint32_t fabric_dim;
+  uint32_t uptime;
+  uint32_t uptime_por;
+  uint32_t arm_wdg_control_wcs;
+  uint32_t scratch_buf_dat;
+  uint32_t scratch_buf_ctl;
+};
+
+extern struct rshim_regs bf1_bf2_rshim_regs;
+extern struct rshim_regs bf3_rshim_regs;
 
 /* Global variables. */
 
