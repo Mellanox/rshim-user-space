@@ -418,7 +418,7 @@ struct rshim_backend {
   int (*enable_device)(rshim_backend_t *bd, bool enable);
 
   /* Platform specific register addresses */
-  struct rshim_regs *regs;
+  const struct rshim_regs *regs;
 };
 
 struct rshim_regs {
@@ -446,8 +446,8 @@ struct rshim_regs {
   uint32_t scratch_buf_ctl;
 };
 
-extern struct rshim_regs bf1_bf2_rshim_regs;
-extern struct rshim_regs bf3_rshim_regs;
+extern const struct rshim_regs bf1_bf2_rshim_regs;
+extern const struct rshim_regs bf3_rshim_regs;
 
 /* Global variables. */
 
