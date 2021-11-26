@@ -1,7 +1,7 @@
 #include "rshim_regs.h"
 #include "rshim.h"
 
-struct rshim_regs bf1_bf2_rshim_regs = {
+const struct rshim_regs bf1_bf2_rshim_regs = {
   .boot_fifo_data = RSH_BOOT_FIFO_DATA,
   .boot_fifo_count = RSH_BOOT_FIFO_COUNT,
   .boot_fifo_count_mask = RSH_BOOT_FIFO_COUNT__BOOT_FIFO_COUNT_MASK,
@@ -26,7 +26,7 @@ struct rshim_regs bf1_bf2_rshim_regs = {
   .scratch_buf_ctl = RSH_SCRATCH_BUF_CTL
 };
 
-struct rshim_regs bf3_rshim_regs = {
+const struct rshim_regs bf3_rshim_regs = {
   .boot_fifo_data = BF3_RSH_BOOT_FIFO_DATA,
   .boot_fifo_count = BF3_RSH_BOOT_FIFO_COUNT,
   .boot_fifo_count_mask = BF3_RSH_BOOT_FIFO_COUNT__BOOT_FIFO_COUNT_MASK,
