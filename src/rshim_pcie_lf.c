@@ -544,10 +544,13 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
 
   switch (pci_dev->device_id) {
     case BLUEFIELD2_DEVICE_ID:
+      bd->regs = &bf1_bf2_rshim_regs;
       bd->ver_id = RSHIM_BLUEFIELD_2;
       break;
     default:
+      bd->regs = &bf1_bf2_rshim_regs;
       bd->ver_id = RSHIM_BLUEFIELD_1;
+      break;
   }
   bd->rev_id = pci_read_byte(pci_dev, PCI_REVISION_ID);
 
