@@ -1,3 +1,11 @@
+rshim (2.0.6-3) UNRELEASED; urgency=low
+
+  * Adjust the defaul value of usb_reset_delay to 5
+  * Add a delay after USB probe
+  * Make the reset delay configurable
+
+ -- Liming Sun <limings@nvidia.com>  Mon, 29 Nov 2021 09:32:10 -0400
+
 rshim (2.0.6-2) UNRELEASED; urgency=low
 
   * bfb-install: Handle new indications for installation completion

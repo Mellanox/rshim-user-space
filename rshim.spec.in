@@ -4,7 +4,7 @@
 
 Name: rshim
 Version: @VERSION@
-Release: 2%{?dist}
+Release: 3%{?dist}
 Summary: User-space driver for Mellanox BlueField SoC
 
 License: GPLv2
@@ -95,6 +95,11 @@ fi
 %{_mandir}/man8/bfb-install.8.gz
 
 %changelog
+* Mon Nov 29 2021 Liming Sun <limings@nvidia.com> - 2.0.6-3
+- Adjust the defaul value of usb_reset_delay to 5
+- Add a delay after USB probe
+- Make the reset delay configurable
+
 * Wed Nov 03 2021 Liming Sun <limings@nvidia.com> - 2.0.6-2
 - bfb-install: Handle new indications for installation completion
 - Clean up some un-needed register definition
