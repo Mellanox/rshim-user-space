@@ -41,6 +41,8 @@
 #define TILERA_VENDOR_ID            0x15b3
 #define BLUEFIELD1_DEVICE_ID        0xc2d2
 #define BLUEFIELD2_DEVICE_ID        0xc2d3
+#define BLUEFIELD2_DEVICE_ID2       0xc2d6
+#define BLUEFIELD3_DEVICE_ID        0xc2d4
 
 /* The offset in BAR2 of the RShim region. */
 #define PCI_RSHIM_WINDOW_OFFSET     0x0
@@ -180,6 +182,21 @@ typedef struct {
   uint32_t intr_cnt;
 } rshim_pcie_t;
 
+int bf3_rshim_pcie_chan_map[] = {
+	[RSHIM_CHANNEL] = 0,
+	[UART0_CHANNEL] = 0x10000,
+	[UART0_CHANNEL] = 0x11000,
+	[DIAGUART_CHANNEL] = 0x12000,
+	[RSH_HUB_CHANNEL] = 0x12400,
+	[WDOG0_CHANNEL] = 0x20000,
+	[WDOG1_CHANNEL] = 0x40000,
+	[MCH_CORE_CHANNEL] = 0x60000,
+	[TIMER_ARM_CHANNEL] = 0x80000,
+	[TIMER_EXT_CHANNEL] = 0xa0000,
+	[OOB_CHANNEL] = 0xa1000,
+	[YU_CHANNEL] = 0x400000,
+};
+
 static bool rshim_is_bluefield1(uint16_t device_id)
 {
   return (device_id == BLUEFIELD1_DEVICE_ID);
@@ -188,6 +205,11 @@ static bool rshim_is_bluefield1(uint16_t device_id)
 static bool rshim_is_bluefield2(uint16_t device_id)
 {
   return (device_id == BLUEFIELD2_DEVICE_ID);
+}
+
+static bool rshim_is_bluefield3(uint16_t device_id)
+{
+  return (device_id == BLUEFIELD3_DEVICE_ID);
 }
 
 #ifdef __linux__
@@ -802,7 +824,10 @@ rshim_pcie_read(rshim_backend_t *bd, int chan, int addr, uint64_t *result)
 
   dev->write_count = 0;
 
-  *result = readq(dev->rshim_regs + (addr | (chan << 16)));
+  if (rshim_is_bluefield3(dev->pci_dev->device_id))
+    *result = readq(dev->rshim_regs + bf3_rshim_pcie_chan_map[chan] + addr);
+  else
+    *result = readq(dev->rshim_regs + (addr | (chan << 16)));
 
   return rc;
 }
@@ -838,7 +863,10 @@ rshim_pcie_write(rshim_backend_t *bd, int chan, int addr, uint64_t value)
     }
     dev->write_count++;
   }
-  writeq(value, dev->rshim_regs + (addr | (chan << 16)));
+  if (rshim_is_bluefield3(dev->pci_dev->device_id))
+    writeq(value, dev->rshim_regs + bf3_rshim_pcie_chan_map[chan] + addr);
+  else
+    writeq(value, dev->rshim_regs + (addr | (chan << 16)));
 
   return rc;
 }
@@ -961,6 +989,10 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
   rshim_ref(bd);
 
   switch (pci_dev->device_id) {
+    case BLUEFIELD3_DEVICE_ID:
+      bd->regs = &bf3_rshim_regs;
+      bd->ver_id = RSHIM_BLUEFIELD_3;
+      break;
     case BLUEFIELD2_DEVICE_ID:
       bd->regs = &bf1_bf2_rshim_regs;
       bd->ver_id = RSHIM_BLUEFIELD_2;
@@ -1116,7 +1148,8 @@ int rshim_pcie_init(void)
 
     if (dev->vendor_id != TILERA_VENDOR_ID ||
         (!rshim_is_bluefield1(dev->device_id) &&
-         !rshim_is_bluefield2(dev->device_id)))
+         !rshim_is_bluefield2(dev->device_id) &&
+         !rshim_is_bluefield3(dev->device_id)))
       continue;
 
     rc = rshim_pcie_probe(dev);

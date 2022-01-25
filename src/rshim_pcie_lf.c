@@ -21,6 +21,7 @@
 #define TILERA_VENDOR_ID            0x15b3
 #define BLUEFIELD1_DEVICE_ID        0x0211
 #define BLUEFIELD2_DEVICE_ID        0x0214
+#define BLUEFIELD3_DEVICE_ID        0x021c
 
 /* Mellanox Address & Data Capabilities */
 #define MELLANOX_ADDR               0x58
@@ -44,6 +45,19 @@
 
 #define CRSPACE_RSH_CHANNEL1_BASE   0x310000
 
+/* MSN GW_CR_BOOT registers */
+#define MSN_GW_CR_64B_BOOT_REG0             0xae01040
+#define MSN_GW_CR_64B_BOOT_REG0_COPY        0xae01044
+#define MSN_GW_CR_64B_BOOT_LOCK             0x80000000
+#define MSN_GW_CR_64B_BOOT_BUSY             0x40000000
+#define MSN_GW_CR_64B_BOOT_ACC_TYPE         0xae0104c
+#define MSN_GW_CR_64B_BOOT_DATA_HIGH        0xae01050
+#define MSN_GW_CR_64B_BOOT_DATA_LOW         0xae01054
+#define MSN_GW_CR_64B_BOOT_ADDR             0xae01058
+#define MSN_GW_CR_64B_BOOT_ACC_WIDTH        0xae0105c
+#define MSN_GW_CR_64B_BOOT_64BIT_LINE       0x20000
+
+
 typedef struct {
   /* RShim backend structure. */
   struct rshim_backend bd;
@@ -53,6 +67,21 @@ typedef struct {
   /* Keep track of number of 8-byte word writes */
   u8 write_count;
 } rshim_pcie_lf_t;
+
+int bf3_rshim_pcie_lf_chan_map[] = {
+	[RSHIM_CHANNEL] = 0x3000000,
+	[UART0_CHANNEL] = 0x3010000,
+	[UART0_CHANNEL] = 0x3011000,
+	[DIAGUART_CHANNEL] = 0x3012000,
+	[RSH_HUB_CHANNEL] = 0x3012400,
+	[WDOG0_CHANNEL] = 0x3020000,
+	[WDOG1_CHANNEL] = 0x3040000,
+	[MCH_CORE_CHANNEL] = 0x3060000,
+	[TIMER_ARM_CHANNEL] = 0x3080000,
+	[TIMER_EXT_CHANNEL] = 0x30a0000,
+	[OOB_CHANNEL] = 0x30a1000,
+	[YU_CHANNEL] = 0x3400000,
+};
 
 /* Mechanism to access the CR space using hidden PCI capabilities */
 static int pci_cap_read(struct pci_dev *pci_dev, int offset, uint32_t *result)
@@ -91,6 +120,201 @@ static int pci_cap_write(struct pci_dev *pci_dev, int offset, uint32_t value)
     return rc;
 
   return 0;
+}
+
+/* Acquire and release the MSN GW_CR_64B lock */
+static int msn_gw_lock_acquire(struct pci_dev *pci_dev)
+{
+  uint32_t read_value;
+  time_t t0, t1;
+  int rc;
+
+  /* Wait until the MSN GW_CR_64B lock is free */
+  time(&t0);
+  do {
+    rc = pci_cap_read(pci_dev, MSN_GW_CR_64B_BOOT_REG0, &read_value);
+    if (rc)
+      return rc;
+
+    time(&t1);
+    if (difftime(t1, t0) > RSHIM_LOCK_RETRY_TIME)
+      return -ETIMEDOUT;
+  } while (read_value & MSN_GW_CR_64B_BOOT_LOCK);
+
+  return 0;
+}
+
+static int msn_gw_lock_release(struct pci_dev *pci_dev)
+{
+  int rc;
+
+  /* Release MSN GW_CR_64B lock */
+  rc = pci_cap_write(pci_dev, MSN_GW_CR_64B_BOOT_REG0, 0x0);
+
+  return rc;
+}
+
+/* Poll the MSN GW_CR_64B */
+static int msn_gw_poll_busy(struct pci_dev *pci_dev)
+{
+  uint32_t read_value;
+  time_t t0, t1;
+  int rc;
+
+  /* Wait until the MSN GW_CR_64B lock is free */
+  time(&t0);
+  do {
+    rc = pci_cap_read(pci_dev, MSN_GW_CR_64B_BOOT_REG0_COPY, &read_value);
+    if (rc)
+      return rc;
+
+    time(&t1);
+    if (difftime(t1, t0) > RSHIM_LOCK_RETRY_TIME)
+      return -ETIMEDOUT;
+  } while (read_value & MSN_GW_CR_64B_BOOT_BUSY);
+
+  return 0;
+}
+
+/*
+ * Mechanism to access RShim via the MSN GW_CR_64B gateway.
+ */
+static int msn_gw_read(struct pci_dev *pci_dev, int addr,
+                               uint64_t *result)
+{
+  uint64_t read_result;
+  uint32_t data;
+  int rc = 0;
+
+  /* Acquire MSN_GW_BOOT_LOCK */
+  rc = msn_gw_lock_acquire(pci_dev);
+  if (rc)
+    goto err;
+
+  /* Write addr to MSN_GW_ADDR */
+  rc = pci_cap_write(pci_dev, MSN_GW_CR_64B_BOOT_ADDR, (addr >> 2));
+  if (rc)
+    goto err;
+
+  /* Set access width to 64 bits */
+  rc = pci_cap_write(pci_dev, MSN_GW_CR_64B_BOOT_ACC_WIDTH,
+                     MSN_GW_CR_64B_BOOT_64BIT_LINE);
+  if (rc)
+    goto err;
+
+  /* Set access type to read */
+  rc = pci_cap_write(pci_dev, MSN_GW_CR_64B_BOOT_ACC_TYPE, 0x1);
+  if (rc)
+    goto err;
+
+  /* Set BUSY bit to trigger MSN_GW to read from addr */
+  rc = pci_cap_read(pci_dev, MSN_GW_CR_64B_BOOT_REG0, &data);
+  if (rc)
+    goto err;
+
+  data |= MSN_GW_CR_64B_BOOT_BUSY;
+
+  rc = pci_cap_write(pci_dev, MSN_GW_CR_64B_BOOT_REG0, data);
+  if (rc)
+    goto err;
+
+  /* Wait for MSN_GW_BOOT_BUSY to be cleared */
+  rc = msn_gw_poll_busy(pci_dev);
+  if (rc)
+    goto err;
+
+  /* Read lower 32-bits of data */
+  rc = pci_cap_read(pci_dev, MSN_GW_CR_64B_BOOT_DATA_LOW, &data);
+  if (rc)
+    goto err;
+  read_result = (uint64_t)data;
+
+  /* Read upper 32-bits of data */
+  rc = pci_cap_read(pci_dev, MSN_GW_CR_64B_BOOT_DATA_HIGH, &data);
+  if (rc)
+    goto err;
+  read_result |= ((uint64_t)data << 32);
+  *result = read_result;
+
+err:
+  /* Release MSN_GW_BOOT_LOCK */
+  if (msn_gw_lock_release(pci_dev))
+    RSHIM_ERR("Failed to release MSN GW lock\n");
+
+  return rc;
+}
+
+static int msn_gw_write(struct pci_dev *pci_dev, int addr,
+                               uint64_t value)
+{
+  uint32_t data;
+  int rc;
+
+  /* Acquire MSN_GW_BOOT_LOCK */
+  rc = msn_gw_lock_acquire(pci_dev);
+  if (rc)
+    goto err;
+
+  /* Write addr to MSN_GW_ADDR */
+  rc = pci_cap_write(pci_dev, MSN_GW_CR_64B_BOOT_ADDR, (addr >> 2));
+  if (rc)
+    goto err;
+
+  /* Set access width to 64 bits */
+  rc = pci_cap_write(pci_dev, MSN_GW_CR_64B_BOOT_ACC_WIDTH,
+                     MSN_GW_CR_64B_BOOT_64BIT_LINE);
+  if (rc)
+    goto err;
+
+  /* Set access type to write */
+  rc = pci_cap_write(pci_dev, MSN_GW_CR_64B_BOOT_ACC_TYPE, 0x0);
+  if (rc)
+    goto err;
+
+  /* Write lower 32 bits of data */
+  rc = pci_cap_write(pci_dev, MSN_GW_CR_64B_BOOT_DATA_LOW, (uint32_t)value);
+  if (rc)
+    goto err;
+
+  value = value >> 32;
+
+  /* Write higher 32 bits of data */
+  rc = pci_cap_write(pci_dev, MSN_GW_CR_64B_BOOT_DATA_HIGH, (uint32_t)value);
+  if (rc)
+    goto err;
+
+  /* Set BUSY bit to trigger MSN_GW to write to addr */
+  rc = pci_cap_read(pci_dev, MSN_GW_CR_64B_BOOT_REG0, &data);
+  if (rc)
+    goto err;
+
+  data |= MSN_GW_CR_64B_BOOT_BUSY;
+
+  rc = pci_cap_write(pci_dev, MSN_GW_CR_64B_BOOT_REG0, data);
+  if (rc)
+    goto err;
+
+  /*
+   * The MSN block should not be accessed when the ARM is in reset
+   * until BL1 can configure the crmaster table.
+   * WA: Add a delay before resuming the flow.
+   * TBD: RShim API should receive intimation when ARM reset happens
+   */
+  if ((pci_dev->device_id == BLUEFIELD3_DEVICE_ID) &&
+      ((addr & 0xffff) == BF3_RSH_RESET_CONTROL))
+    sleep (10);
+
+  /* Wait for MSN_GW_BOOT_BUSY to be cleared */
+  rc = msn_gw_poll_busy(pci_dev);
+  if (rc)
+    goto err;
+
+err:
+  /* Release MSN_GW_BOOT_LOCK */
+  if (msn_gw_lock_release(pci_dev))
+    RSHIM_ERR("Failed to release MSN GW lock\n");
+
+  return rc;
 }
 
 /* Acquire and release the TRIO_CR_GW_LOCK. */
@@ -436,9 +660,14 @@ rshim_pcie_read(struct rshim_backend *bd, int chan, int addr, uint64_t *result)
     return 0;
   }
 
-  dev->write_count = 0;
-
-  rc = rshim_byte_acc_read(pci_dev, RSH_CHANNEL_BASE(chan) + addr, result);
+  if (pci_dev->device_id == BLUEFIELD3_DEVICE_ID) {
+    rc = msn_gw_read(pci_dev, bf3_rshim_pcie_lf_chan_map[chan] + addr,
+                     result);
+  }
+  else {
+    dev->write_count = 0;
+    rc = rshim_byte_acc_read(pci_dev, RSH_CHANNEL_BASE(chan) + addr, result);
+  }
 
   return rc;
 }
@@ -458,27 +687,33 @@ rshim_pcie_write(struct rshim_backend *bd, int chan, int addr, uint64_t value)
   if (bd->drop_mode)
     return 0;
 
-  /*
-   * Limitation in BlueField-1
-   * We cannot stream large numbers of PCIe writes to the RShim's BAR.
-   * Instead, we must write no more than 15 8-byte words before
-   * doing a read from another register within the BAR,
-   * which forces previous writes to drain.
-   * Note that we allow a max write_count of 7 since each 8-byte
-   * write is done using 2 4-byte writes in the boot fifo case.
-   */
-  if (pci_dev->device_id == BLUEFIELD1_DEVICE_ID) {
-    if (dev->write_count == 7) {
-      __sync_synchronize();
-      rshim_pcie_read(bd, chan, RSH_SCRATCHPAD1, &result);
-    }
-  dev->write_count++;
+  if (pci_dev->device_id == BLUEFIELD3_DEVICE_ID) {
+    rc = msn_gw_write(pci_dev, bf3_rshim_pcie_lf_chan_map[chan] + addr,
+                      value);
   }
+  else {
+     /*
+     * Limitation in BlueField-1
+     * We cannot stream large numbers of PCIe writes to the RShim's BAR.
+     * Instead, we must write no more than 15 8-byte words before
+     * doing a read from another register within the BAR,
+     * which forces previous writes to drain.
+     * Note that we allow a max write_count of 7 since each 8-byte
+     * write is done using 2 4-byte writes in the boot fifo case.
+     */
+    if (pci_dev->device_id == BLUEFIELD1_DEVICE_ID) {
+      if (dev->write_count == 7) {
+        __sync_synchronize();
+        rshim_pcie_read(bd, chan, RSH_SCRATCHPAD1, &result);
+      }
+      dev->write_count++;
+    }
 
-  if (is_boot_stream)
-    rc = rshim_boot_fifo_write(pci_dev, RSH_CHANNEL_BASE(chan) + addr, value);
-  else
-    rc = rshim_byte_acc_write(pci_dev, RSH_CHANNEL_BASE(chan) + addr, value);
+    if (is_boot_stream)
+      rc = rshim_boot_fifo_write(pci_dev, RSH_CHANNEL_BASE(chan) + addr, value);
+    else
+      rc = rshim_byte_acc_write(pci_dev, RSH_CHANNEL_BASE(chan) + addr, value);
+  }
 
   return rc;
 }
@@ -533,6 +768,10 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
   rshim_ref(bd);
 
   switch (pci_dev->device_id) {
+    case BLUEFIELD3_DEVICE_ID:
+      bd->regs = &bf3_rshim_regs;
+      bd->ver_id = RSHIM_BLUEFIELD_3;
+      break;
     case BLUEFIELD2_DEVICE_ID:
       bd->regs = &bf1_bf2_rshim_regs;
       bd->ver_id = RSHIM_BLUEFIELD_2;
@@ -570,6 +809,7 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
     goto rshim_map_failed;
 
   rshim_unlock();
+
   return 0;
 
 rshim_map_failed:
@@ -599,7 +839,8 @@ int rshim_pcie_lf_init(void)
 
     if (dev->vendor_id != TILERA_VENDOR_ID ||
         (dev->device_id != BLUEFIELD1_DEVICE_ID &&
-         dev->device_id != BLUEFIELD2_DEVICE_ID))
+         dev->device_id != BLUEFIELD2_DEVICE_ID &&
+         dev->device_id != BLUEFIELD3_DEVICE_ID))
       continue;
 
     rshim_pcie_probe(dev);
