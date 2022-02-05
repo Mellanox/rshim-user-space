@@ -225,13 +225,86 @@ static int rshim_usb_write_rshim(rshim_backend_t *bd, int chan, int addr,
   return rc >= 0 ? (rc > sizeof(dev->ctrl_data) ? -EINVAL : -ENXIO) : rc;
 }
 
+static ssize_t rshim_usb_bf3_boot_write(rshim_backend_t *bd, const char *buf,
+				     size_t count)
+{
+  ssize_t avail_fifo_bytes, temp_count;
+  int transferred = 0;
+  int rc, tmp_tsfr;
+  int size_addr;
+  uint64_t reg;
+  int retries = 60;
+  int i = 0;
+  rshim_usb_t *dev = container_of(bd, rshim_usb_t, bd);
+
+  size_addr = bd->regs->boot_fifo_count;
+
+  temp_count = count;
+
+  while (temp_count) {
+
+    /* Check whether the BOOT FIFO is full. If it is, poll, until
+     * there is free space. The BOOT FIFO has a max size of
+     * is 0x400 (lines) * 8 = 8192 (bytes).
+     */
+    do {
+
+      rc = bd->read_rshim(bd, RSHIM_CHANNEL, size_addr, &reg);
+      if (rc < 0) {
+        RSHIM_ERR("read_rshim error %d\n", rc);
+        return rc;
+      }
+
+      avail_fifo_bytes = BF3_MAX_BOOT_FIFO_SIZE - (reg * 8);
+      if (avail_fifo_bytes > 0)
+        break;
+
+      /* TODO: Make this delay smaller for real HW */
+      sleep(1);
+
+    } while(retries--);
+
+    if (avail_fifo_bytes) {
+      if (temp_count < avail_fifo_bytes)
+        avail_fifo_bytes = temp_count;
+
+      rc = libusb_bulk_transfer(dev->handle,
+                                dev->boot_fifo_ep,
+                                (void *)(buf + i), avail_fifo_bytes,
+                                &tmp_tsfr, RSHIM_USB_TIMEOUT);
+
+      if (rc && (rc != LIBUSB_ERROR_TIMEOUT)) {
+        RSHIM_ERR("Boot fifo bulk transfer failed\n");
+        return rc;
+      }
+
+      i += tmp_tsfr;
+      temp_count -= tmp_tsfr;
+      transferred += tmp_tsfr;
+
+    } else {
+      RSHIM_ERR("Timeout boot fifo count\n");
+      return -EBUSY;
+    }
+  }
+
+  return transferred;
+}
+
+
 /* Boot routines */
 
-static ssize_t rshim_usb_boot_write(rshim_usb_t *dev, const char *buf,
+static ssize_t rshim_usb_boot_write(rshim_backend_t *bd, const char *buf,
                                     size_t count)
 {
+  rshim_usb_t *dev = container_of(bd, rshim_usb_t, bd);
   int transferred;
   int rc;
+
+  if (bd->ver_id == RSHIM_BLUEFIELD_3) {
+    rc = rshim_usb_bf3_boot_write(bd, buf, count);
+    return rc;
+  }
 
   rc = libusb_bulk_transfer(dev->handle,
                             dev->boot_fifo_ep,
@@ -339,12 +412,30 @@ static void rshim_usb_fifo_read(rshim_usb_t *dev, char *buffer, size_t count)
 {
   rshim_backend_t *bd = &dev->bd;
   struct libusb_transfer *urb;
+  bool send_bulk_in = false;
   int rc;
 
   if (!bd->has_rshim || !bd->has_tm || bd->drop_mode)
     return;
 
-  if ((int) *dev->intr_buf || bd->read_buf_bytes) {
+  if (bd->ver_id == RSHIM_BLUEFIELD_3) {
+    /* intr_buf is the number of "lines" that should be read from TMFIFO IN.
+     * Each line is 8 bytes.
+     * TMFIFO has a max of 256 lines so a max of 2048 bytes
+     * Send a bulk request with the exact number of bytes returned
+     * by the interrupt transfer.
+     */
+    if ((int) *dev->intr_buf) {
+      send_bulk_in = true;
+      if (count > ((int) *dev->intr_buf * 8))
+        count = (int) *dev->intr_buf * 8;
+    }
+  } else {
+    if ((int) *dev->intr_buf || bd->read_buf_bytes)
+      send_bulk_in = true;
+  }
+
+  if (send_bulk_in) {
     /* We're doing a read. */
     urb = dev->read_or_intr_urb;
 
@@ -545,7 +636,7 @@ static ssize_t rshim_usb_backend_write(rshim_backend_t *bd, int devtype,
     return rshim_usb_fifo_write(dev, buf, count);
 
   case RSH_DEV_TYPE_BOOT:
-    return rshim_usb_boot_write(dev, buf, count);
+    return rshim_usb_boot_write(bd, buf, count);
 
   default:
     RSHIM_ERR("bad devtype %d\n", devtype);

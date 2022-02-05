@@ -93,6 +93,8 @@ extern int rshim_pcie_reset_delay;
 #define WRITE_FIFO_SIZE   (4 * 1024)
 #define BOOT_BUF_SIZE     (16 * 1024)
 
+#define BF3_MAX_BOOT_FIFO_SIZE 8192 /* bytes */
+
 /* Sub-device types. */
 enum {
   RSH_DEV_TYPE_RSHIM,
