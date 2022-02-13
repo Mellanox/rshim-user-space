@@ -828,26 +828,33 @@ static int rshim_fuse_misc_write(struct cuse_dev *cdev, int fflags,
   } else if (strcmp(key, "DROP_MODE") == 0) {
     if (sscanf(p, "%d", &value) != 1)
       goto invalid;
+
     pthread_mutex_lock(&bd->mutex);
     old_value = (int)bd->drop_mode;
     bd->drop_mode = !!value;
-    if (bd->drop_mode)
-      bd->drop_pkt = 1;
+    if (bd->drop_mode == old_value) {
+      pthread_mutex_unlock(&bd->mutex);
+      goto done;
+    }
+
     if (bd->enable_device) {
-      if (bd->enable_device(bd, true))
+      if (bd->enable_device(bd, bd->drop_mode ? false : true))
         bd->drop_mode = 1;
     }
+
+    if (bd->drop_mode)
+      bd->drop_pkt = 1;
     pthread_mutex_unlock(&bd->mutex);
     /*
      * Check if another endpoint driver has already attached to the
      * same rshim device before enabling it.
      */
-    if (old_value && !bd->drop_mode) {
+    if (!bd->drop_mode) {
       rshim_lock();
       pthread_mutex_lock(&bd->mutex);
       if (rshim_access_check(bd)) {
-        RSHIM_WARN("rshim %s is not accessible\n", bd->dev_name);
-        bd->drop_mode = old_value;
+        RSHIM_WARN("rshim%d is not accessible\n", bd->index);
+        bd->drop_mode = 1;
       }
       pthread_mutex_unlock(&bd->mutex);
       rshim_unlock();
@@ -938,6 +945,7 @@ invalid:
 #endif
   }
 
+done:
 #ifdef __linux__
   if (!rc)
     fuse_reply_write(req, size);

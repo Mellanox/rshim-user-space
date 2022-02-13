@@ -182,7 +182,7 @@ char *rshim_static_dev_name;
 const char *rshim_cfg_file = DEFAULT_RSHIM_CONFIG_FILE;
 static int rshim_display_level = 0;
 static int rshim_boot_timeout = 100;
-int rshim_drop_mode = -1;
+int rshim_drop_mode = 0;
 int rshim_usb_reset_delay = 5;
 int rshim_pcie_reset_delay = 10;
 
@@ -2311,8 +2311,6 @@ int rshim_register(rshim_backend_t *bd)
   bd->registered = 1;
   bd->boot_timeout = rshim_boot_timeout;
   bd->display_level = rshim_display_level;
-  if (rshim_drop_mode >= 0)
-    bd->drop_mode = rshim_drop_mode;
 
   /* Start the keepalive timer. */
   bd->last_keepalive = rshim_timer_ticks;
@@ -2689,7 +2687,7 @@ static int rshim_load_cfg(void)
       rshim_boot_timeout = atoi(value);
       continue;
     } else if (!strcmp(key, "DROP_MODE")) {
-      rshim_drop_mode = atoi(value);
+      rshim_drop_mode = atoi(value) ? 1 : 0;
       continue;
     } else if (!strcmp(key, "PCIE_RESET_DELAY")) {
       rshim_pcie_reset_delay = atoi(value);

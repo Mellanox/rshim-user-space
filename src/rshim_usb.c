@@ -757,6 +757,7 @@ static int rshim_usb_probe_one(libusb_context *ctx, libusb_device *usb_dev,
 
     bd = &dev->bd;
     strcpy(bd->dev_name, dev_name);
+    bd->drop_mode = rshim_drop_mode;
     bd->read = rshim_usb_backend_read;
     bd->write = rshim_usb_backend_write;
     bd->cancel = rshim_usb_backend_cancel_req;
