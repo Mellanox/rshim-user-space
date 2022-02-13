@@ -162,6 +162,9 @@ static struct termios init_console_termios = {
 /* RShim global mutex. */
 static pthread_mutex_t rshim_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+/* RShim mutex for global fd read/write. */
+static pthread_mutex_t rshim_fd_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 /* Current timer ticks. */
 static int rshim_timer_ticks;
 
@@ -226,11 +229,14 @@ static int rshim_fd_full_read(int fd, void *data, int len)
   char *buf = (char *)data;
   int cc, total = 0;
 
+  pthread_mutex_lock(&rshim_fd_mutex);
+
   while (len > 0) {
     cc = read(fd, buf, len);
     if (cc < 0) {
       if (errno == EINTR || errno == EAGAIN)
         continue;
+      pthread_mutex_unlock(&rshim_fd_mutex);
       return -1;
     }
 
@@ -242,6 +248,7 @@ static int rshim_fd_full_read(int fd, void *data, int len)
     len -= cc;
   }
 
+  pthread_mutex_unlock(&rshim_fd_mutex);
   return total;
 }
 
@@ -250,6 +257,8 @@ static int rshim_fd_full_write(int fd, void *data, int len)
   int total = 0;
   char *buf = (char *)data;
 
+  pthread_mutex_lock(&rshim_fd_mutex);
+
   while (len > 0) {
     ssize_t written = write(fd, buf, len);
 
@@ -257,6 +266,7 @@ static int rshim_fd_full_write(int fd, void *data, int len)
       if (errno == EINTR || errno == EAGAIN)
         continue;
       RSHIM_ERR("fd write error %d\n", (int)written);
+      pthread_mutex_unlock(&rshim_fd_mutex);
       return written;
     }
     total += written;
@@ -264,6 +274,7 @@ static int rshim_fd_full_write(int fd, void *data, int len)
     len -= written;
   }
 
+  pthread_mutex_unlock(&rshim_fd_mutex);
   return total;
 }
 
@@ -2758,6 +2769,7 @@ static void rshim_sig_handler(int sig)
 
   case SIGTERM:
     rshim_run = false;
+    rshim_work_signal(NULL);
     break;
   }
 }
