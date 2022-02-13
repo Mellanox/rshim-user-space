@@ -831,6 +831,10 @@ static int rshim_fuse_misc_write(struct cuse_dev *cdev, int fflags,
     pthread_mutex_lock(&bd->mutex);
     old_value = (int)bd->drop_mode;
     bd->drop_mode = !!value;
+    if (bd->drop_mode == old_value) {
+      pthread_mutex_unlock(&bd->mutex);
+      goto done;
+    }
     if (bd->drop_mode)
       bd->drop_pkt = 1;
     if (bd->enable_device) {
@@ -938,6 +942,7 @@ invalid:
 #endif
   }
 
+done:
 #ifdef __linux__
   if (!rc)
     fuse_reply_write(req, size);
