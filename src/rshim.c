@@ -311,8 +311,9 @@ static ssize_t rshim_read_default(rshim_backend_t *bd, int devtype,
 
   while (total < count) {
     if (avail == 0) {
+      reg = 0;
       rc = bd->read_rshim(bd, RSHIM_CHANNEL, RSH_TM_TILE_TO_HOST_STS, &reg);
-      if (rc < 0)
+      if (rc < 0 || reg == 0xbad00acce55 || reg == (uint64_t)-1)
         break;
       avail = reg & RSH_TM_TILE_TO_HOST_STS__COUNT_MASK;
       if (avail == 0)
@@ -1076,10 +1077,13 @@ static void rshim_fifo_input(rshim_backend_t *bd)
 {
   rshim_tmfifo_msg_hdr_t *hdr;
   uint8_t rx_avail = 0;
+  time_t t0, t1;
   int rc;
 
   if (!bd->has_rshim || !bd->has_tm)
     return;
+
+  time(&t0);
 
 again:
   while (bd->read_buf_next < bd->read_buf_bytes) {
@@ -1206,7 +1210,14 @@ again:
     if (len > 0) {
       bd->read_buf_bytes = len;
       bd->read_buf_next = 0;
-      goto again;
+      time(&t1);
+      if (difftime(t1, t0) > 2) {
+        /* Reschedule it in the work handler to avoid stuck. */
+        bd->has_cons_work = 1;
+        rshim_work_signal(bd);
+      } else {
+        goto again;
+      }
     }
   }
 
@@ -2322,8 +2333,6 @@ int rshim_register(rshim_backend_t *bd)
   bd->registered = 1;
   bd->boot_timeout = rshim_boot_timeout;
   bd->display_level = rshim_display_level;
-  if (rshim_drop_mode >= 0)
-    bd->drop_mode = rshim_drop_mode;
 
   /* Start the keepalive timer. */
   bd->last_keepalive = rshim_timer_ticks;
@@ -2700,7 +2709,7 @@ static int rshim_load_cfg(void)
       rshim_boot_timeout = atoi(value);
       continue;
     } else if (!strcmp(key, "DROP_MODE")) {
-      rshim_drop_mode = atoi(value);
+      rshim_drop_mode = (atoi(value) > 0) ? 1 : 0;
       continue;
     } else if (!strcmp(key, "PCIE_RESET_DELAY")) {
       rshim_pcie_reset_delay = atoi(value);
