@@ -491,17 +491,6 @@ static void rshim_pcie_delete(struct rshim_backend *bd)
   free(dev);
 }
 
-static int rshim_pcie_enable_device(rshim_backend_t *bd, bool enable)
-{
-  rshim_pcie_lf_t *dev = container_of(bd, rshim_pcie_lf_t, bd);
-  int rc = 0;
-
-  if (dev->pci_dev)
-    rc = rshim_pcie_enable(dev->pci_dev, enable);
-
-  return rc;
-}
-
 /* Probe routine */
 static int rshim_pcie_probe(struct pci_dev *pci_dev)
 {
@@ -532,10 +521,11 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
 
     bd = &dev->bd;
     strcpy(bd->dev_name, dev_name);
+    /* Enable drop mode by default if not configured. */
+    bd->drop_mode = (rshim_drop_mode >= 0) ? rshim_drop_mode : 1;
     bd->read_rshim = rshim_pcie_read;
     bd->write_rshim = rshim_pcie_write;
     bd->destroy = rshim_pcie_delete;
-    bd->enable_device = rshim_pcie_enable_device;
     dev->write_count = 0;
     pthread_mutex_init(&bd->mutex, NULL);
   }
@@ -575,10 +565,6 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
   /* Notify that the device is attached */
   ret = rshim_notify(bd, RSH_EVENT_ATTACH, 0);
 
-  /* Enable drop mode for livefish by default if not configured. */
-  if (rshim_drop_mode < 0)
-    bd->drop_mode = 1;
-
   pthread_mutex_unlock(&bd->mutex);
   if (ret)
     goto rshim_map_failed;
@@ -617,9 +603,6 @@ int rshim_pcie_lf_init(void)
          dev->device_id != BLUEFIELD2_DEVICE_ID))
       continue;
 
-    rc = rshim_pcie_enable(dev, true);
-    if (rc)
-      continue;
     rshim_pcie_probe(dev);
     dev_present = true;
   }
