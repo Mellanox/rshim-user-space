@@ -167,7 +167,7 @@ int rshim_pcie_mmap_direct(rshim_pcie_t *dev, bool enable)
 
 int rshim_pcie_mmap_vfio(rshim_pcie_t *dev, int enable)
 {
-  int i, rc, group_id, container_fd = -1, group_fd = -1, device_fd = -1;
+  int rc, group_id, container_fd = -1, group_fd = -1, device_fd = -1;
   char path[PATH_MAX], name[PATH_MAX], *p;
   struct pci_dev *pci_dev = dev->pci_dev;
 
