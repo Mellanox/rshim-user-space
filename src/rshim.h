@@ -95,6 +95,8 @@ extern int rshim_pcie_reset_delay;
 
 #define BF3_MAX_BOOT_FIFO_SIZE 8192 /* bytes */
 
+#define RSHIM_BAD_CTRL_REG(v) (((v) == 0xbad00acce55) || ((v) == (uint64_t)-1))
+
 /* Sub-device types. */
 enum {
   RSH_DEV_TYPE_RSHIM,
@@ -430,6 +432,7 @@ struct rshim_regs {
   uint32_t boot_control;
   uint32_t reset_control;
   uint32_t scratchpad1;
+  uint32_t scratchpad6;
   uint32_t tm_htt_sts;
   uint32_t tm_tth_sts;
   uint32_t tm_htt_data;
@@ -452,8 +455,8 @@ extern const struct rshim_regs bf1_bf2_rshim_regs;
 extern const struct rshim_regs bf3_rshim_regs;
 
 /* Global variables. */
-
 extern int rshim_epoll_fd;
+extern volatile bool rshim_run;
 
 /* Common APIs. */
 

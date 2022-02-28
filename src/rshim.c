@@ -313,7 +313,7 @@ static ssize_t rshim_read_default(rshim_backend_t *bd, int devtype,
     if (avail == 0) {
       reg = 0;
       rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->tm_tth_sts, &reg);
-      if (rc < 0 || reg == 0xbad00acce55 || reg == (uint64_t)-1)
+      if (rc < 0 || RSHIM_BAD_CTRL_REG(reg))
         break;
       avail = reg & RSH_TM_TILE_TO_HOST_STS__COUNT_MASK;
       if (avail == 0)
@@ -397,7 +397,7 @@ static ssize_t rshim_write_delayed(rshim_backend_t *bd, int devtype,
     while (avail <= 0) {
       /* Calculate available space in words. */
       rc = bd->read_rshim(bd, RSHIM_CHANNEL, size_addr, &reg);
-      if (rc < 0) {
+      if (rc < 0 || RSHIM_BAD_CTRL_REG(reg)) {
         RSHIM_ERR("read_rshim error %d\n", rc);
         break;
       }
@@ -916,16 +916,16 @@ static void rshim_fifo_err(rshim_backend_t *bd, int err)
 static int rshim_fifo_tx_avail(rshim_backend_t *bd)
 {
   uint64_t word;
-  int ret, max_size, avail;
+  int rc, max_size, avail;
 
   /* Get FIFO max size. */
   max_size = RSH_TM_FIFO_SIZE;
 
   /* Calculate available size. */
-  ret = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->tm_htt_sts, &word);
-  if (ret) {
-    RSHIM_ERR("read_rshim error %d\n", ret);
-    return ret;
+  rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->tm_htt_sts, &word);
+  if (rc < 0 || RSHIM_BAD_CTRL_REG(word)) {
+    RSHIM_ERR("read_rshim error %d\n", rc);
+    return rc;
   }
   avail = max_size - (int)(word & RSH_TM_HOST_TO_TILE_STS__COUNT_MASK) -
           RSHIM_FIFO_SPACE_RESERV;
@@ -936,7 +936,7 @@ static int rshim_fifo_tx_avail(rshim_backend_t *bd)
 static int rshim_fifo_sync(rshim_backend_t *bd)
 {
   rshim_tmfifo_msg_hdr_t hdr;
-  int i, avail, ret;
+  int i, avail, rc;
 
   avail = rshim_fifo_tx_avail(bd);
   if (avail < 0)
@@ -946,10 +946,10 @@ static int rshim_fifo_sync(rshim_backend_t *bd)
   hdr.type = VIRTIO_ID_NET;
 
   for (i = 0; i < avail; i++) {
-    ret = bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->tm_htt_data,
-                          hdr.data);
-    if (ret)
-      return ret;
+    rc = bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->tm_htt_data,
+                         hdr.data);
+    if (rc)
+      return rc;
   }
 
   return 0;
@@ -2192,11 +2192,11 @@ int rshim_access_check(rshim_backend_t *bd)
    */
   for (i = 0; i < 10; i++) {
     rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->fabric_dim, &value);
-    if (!rc && value && value != 0xbad00acce55)
+    if (!rc && value && !RSHIM_BAD_CTRL_REG(value))
       break;
     usleep(100000);
   }
-  if (value == 0xbad00acce55) {
+  if (RSHIM_BAD_CTRL_REG(value)) {
     RSHIM_ERR("Unable to read from rshim\n");
     return -ETIMEDOUT;
   }
@@ -2438,6 +2438,8 @@ static void rshim_stop(void)
     if (!bd)
       continue;
     pthread_mutex_lock(&bd->mutex);
+    if (bd->enable_device)
+      bd->enable_device(bd, false);
     rshim_deregister(bd);
     pthread_mutex_unlock(&bd->mutex);
   }
