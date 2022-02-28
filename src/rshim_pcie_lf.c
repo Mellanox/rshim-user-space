@@ -583,7 +583,6 @@ int rshim_pcie_lf_init(void)
 {
   struct pci_access *pci;
   struct pci_dev *dev;
-  int rc;
   bool dev_present = false;
 
   pci = pci_alloc();

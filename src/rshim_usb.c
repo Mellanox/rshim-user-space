@@ -228,6 +228,7 @@ static int rshim_usb_write_rshim(rshim_backend_t *bd, int chan, int addr,
 static ssize_t rshim_usb_bf3_boot_write(rshim_backend_t *bd, const char *buf,
 				     size_t count)
 {
+  rshim_usb_t *dev = container_of(bd, rshim_usb_t, bd);
   ssize_t avail_fifo_bytes, temp_count;
   int transferred = 0;
   int rc, tmp_tsfr;
@@ -235,7 +236,6 @@ static ssize_t rshim_usb_bf3_boot_write(rshim_backend_t *bd, const char *buf,
   uint64_t reg;
   int retries = 60;
   int i = 0;
-  rshim_usb_t *dev = container_of(bd, rshim_usb_t, bd);
 
   size_addr = bd->regs->boot_fifo_count;
 
@@ -666,7 +666,6 @@ static void rshim_usb_backend_cancel_req(rshim_backend_t *bd, int devtype,
 static int rshim_usb_probe_one(libusb_context *ctx, libusb_device *usb_dev,
                                struct libusb_device_descriptor *desc)
 {
-  int i, rc;
   const struct libusb_interface_descriptor *iface_desc;
   const struct libusb_endpoint_descriptor *ep;
   const struct libusb_interface *interface;
@@ -676,6 +675,7 @@ static int rshim_usb_probe_one(libusb_context *ctx, libusb_device *usb_dev,
   libusb_device_handle *handle;
   rshim_usb_t *dev = NULL;
   rshim_backend_t *bd;
+  int i, rc;
 
   /* Check if already exists. */
   rshim_lock();

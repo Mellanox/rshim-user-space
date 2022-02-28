@@ -5,7 +5,7 @@
 sbin_PROGRAMS = rshim
 
 rshim_SOURCES = rshim.c rshim_log.c rshim_net.c rshim_regs.c
-rshim_CPPFLAGS = -DHAVE_RSHIM_NET
+rshim_CPPFLAGS = -Wall -DHAVE_RSHIM_NET
 
 # USB (library is already added by AC_CHECK_LIB)
 if BUILD_RSHIM_USB

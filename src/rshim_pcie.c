@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/epoll.h>
+#include <sys/eventfd.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <sys/param.h>
@@ -31,6 +32,7 @@
 #include <dirent.h>
 #include <linux/vfio.h>
 #include <sys/vfs.h>
+#include <unistd.h>
 #endif
 
 #include "rshim.h"
@@ -39,7 +41,6 @@
 #define TILERA_VENDOR_ID            0x15b3
 #define BLUEFIELD1_DEVICE_ID        0xc2d2
 #define BLUEFIELD2_DEVICE_ID        0xc2d3
-#define BLUEFIELD2_DEVICE_ID2       0xc2d6
 
 /* The offset in BAR2 of the RShim region. */
 #define PCI_RSHIM_WINDOW_OFFSET     0x0
@@ -47,18 +48,84 @@
 /* The size the RShim region. */
 #define PCI_RSHIM_WINDOW_SIZE       0x100000
 
+#define VFIO_GET_REGION_ADDR(x)     ((uint64_t) x << 40ULL)
+
 #define SYS_CLASS_IOMMU_PATH        "/sys/class/iommu"
 #define SYS_CLASS_VFIO_PCI_PATH     "/sys/module/vfio_pci"
 #define SYS_BUS_PCI_PATH            "/sys/bus/pci/devices"
 #define SYS_VFIO_PCI_PATH           "/sys/bus/pci/drivers/vfio-pci"
+#define SYS_CLASS_UIO_PCI_PATH      "/sys/module/uio_pci_generic"
+#define SYS_UIO_PCI_PATH            "/sys/bus/pci/drivers/uio_pci_generic"
 
+#define RSHIM_PCI_COMMAND           (PCI_COMMAND_MEMORY | PCI_COMMAND_MASTER)
+
+#define RSHIM_PATH_MAX              256
+#define RSHIM_CMD_MAX               256
+
+#define RSHIM_PCIE_NIC_RESET_WAIT   2
+#define RSHIM_PCIE_NIC_IRQ_RATE     32
+
+/* Different modes of memory map. */
 typedef enum {
   RSHIM_PCIE_MMAP_DIRECT,
   RSHIM_PCIE_MMAP_UIO,
   RSHIM_PCIE_MMAP_VFIO
 } rshim_pcie_mmap_mode_t;
 
+/* Reset state stored in scratchpad6. */
+enum {
+  RSHIM_PCIE_RST_STATE_NONE,
+  RSHIM_PCIE_RST_STATE_REQUEST,
+  RSHIM_PCIE_RST_STATE_START,
+  RSHIM_PCIE_RST_STATE_ABORT
+};
+
+/* Reset reply stored in scratchpad6. */
+enum {
+  RSHIM_PCIE_RST_REPLY_NONE,
+  RSHIM_PCIE_RST_REPLY_ACK,
+  RSHIM_PCIE_RST_REPLY_NACK
+};
+
+/* Reset type stored in scratchpad6. */
+enum {
+  RSHIM_PCIE_RST_TYPE_NONE,
+  RSHIM_PCIE_RST_TYPE_DPU_RESET,
+  RSHIM_PCIE_RST_TYPE_NIC_RESET
+};
+
+/* Interrupt information between NIC_FW and rshim driver. */
+typedef union {
+  struct {
+    uint64_t unused_0 : 32;
+
+    /* RSHIM_PCIE_RST_STATE_xxx (RO) */
+    uint64_t rst_state : 4;
+
+    uint64_t unused_1 : 2;
+
+    /* RSHIM_PCIE_RST_REPLY_xxx (WO) */
+    uint64_t rst_reply : 2;
+
+    /* 10’s of ms between the PCI link disable and PCI link enable (RO) */
+    uint64_t rst_downtime : 8;
+
+    uint64_t unused_2 : 4;
+
+    /* RSHIM_PCIE_RST_TYPE_xxx */
+    uint64_t rst_type : 3;
+
+    uint64_t unused_3 : 9;
+  };
+
+  uint64_t word;
+} rshim_pcie_intr_info_t;
+
 static rshim_pcie_mmap_mode_t rshim_pcie_mmap_mode = RSHIM_PCIE_MMAP_DIRECT;
+static const char *rshim_pcie_mmap_name[] = {"direct", "uio", "vfio"};
+#ifdef __linux__
+static const char *rshim_sys_pci_path;
+#endif
 
 static inline uint64_t
 readq(const volatile void *addr)
@@ -93,6 +160,22 @@ typedef struct {
   /* VFIO container/group file handle */
   int container_fd;
   int group_fd;
+
+  /* Interrupt handle and read length */
+  volatile int intr_fd;
+  uint32_t intr_len;
+
+  /* Interrupt thread */
+  pthread_t intr_thread;
+
+  /* State to indicate NIC is resetting. */
+  volatile bool nic_reset;
+
+  /* Last irq time */
+  time_t last_intr_time;
+
+  /* Number of interrupts since last irq time */
+  uint32_t intr_cnt;
 } rshim_pcie_t;
 
 static bool rshim_is_bluefield1(uint16_t device_id)
@@ -102,28 +185,73 @@ static bool rshim_is_bluefield1(uint16_t device_id)
 
 static bool rshim_is_bluefield2(uint16_t device_id)
 {
-  return (device_id == BLUEFIELD2_DEVICE_ID) ||
-         (device_id == BLUEFIELD2_DEVICE_ID2);
+  return (device_id == BLUEFIELD2_DEVICE_ID);
 }
 
 #ifdef __linux__
 
-int rshim_pcie_mmap_direct(rshim_pcie_t *dev, bool enable)
+/* Release pcie resource. */
+static void rshim_pcie_mmap_release(rshim_pcie_t *dev)
 {
-  char path[256];
+  if (dev->rshim_regs) {
+    munmap((void *)dev->rshim_regs, PCI_RSHIM_WINDOW_SIZE);
+    dev->rshim_regs = NULL;
+  }
+
+  if (dev->device_fd >= 0) {
+    close(dev->device_fd);
+    dev->device_fd = -1;
+  }
+
+  if (dev->group_fd >= 0) {
+    close(dev->group_fd);
+    dev->group_fd = -1;
+  }
+
+  if (dev->container_fd >= 0) {
+    close(dev->container_fd);
+    dev->container_fd = -1;
+  }
+
+  if (dev->intr_fd >= 0) {
+    close(dev->intr_fd);
+    dev->intr_fd = -1;
+  }
+}
+
+static void rshim_pcie_bind(rshim_pcie_t *dev, bool enable)
+{
   struct pci_dev *pci_dev = dev->pci_dev;
+  char cmd[RSHIM_CMD_MAX];
 
-  if (!enable) {
-    if (dev->device_fd >= 0) {
-      close(dev->device_fd);
-      dev->device_fd = -1;
-    }
+  if (rshim_pcie_mmap_mode == RSHIM_PCIE_MMAP_VFIO ||
+      rshim_pcie_mmap_mode == RSHIM_PCIE_MMAP_UIO) {
+    snprintf(cmd, sizeof(cmd),
+             "echo %04x:%02x:%02x.%1u > %s/%s 2>/dev/null",
+             pci_dev->domain, pci_dev->bus, pci_dev->dev, pci_dev->func,
+             rshim_sys_pci_path, enable ? "bind" : "unbind");
+    if (system(cmd) == -1)
+      RSHIM_DBG("Failed to bind/unbind device\n");
+  } else if (rshim_pcie_mmap_mode == RSHIM_PCIE_MMAP_DIRECT && enable) {
+    snprintf(cmd, sizeof(cmd), "echo 1 > %s/%04x:%02x:%02x.%1u/enable",
+             SYS_BUS_PCI_PATH, pci_dev->domain, pci_dev->bus,
+             pci_dev->dev, pci_dev->func);
+    if (system(cmd) == -1)
+      RSHIM_DBG("Failed to enable pcie\n");
+  }
+}
 
-    if (dev->rshim_regs) {
-      munmap((void *)dev->rshim_regs, PCI_RSHIM_WINDOW_SIZE);
-      dev->rshim_regs = NULL;
-    }
-    return 0;
+/* Memory map over sysfs. */
+static int rshim_pcie_mmap_direct(rshim_pcie_t *dev)
+{
+  struct pci_dev *pci_dev = dev->pci_dev;
+  char path[RSHIM_PATH_MAX];
+  uint16_t reg;
+
+  /* Some sanity check. */
+  if (pci_dev->size[0] < PCI_RSHIM_WINDOW_SIZE) {
+    RSHIM_ERR("BAR[0] size 0x%x too small\n", (int)pci_dev->size[0]);
+    return -ENOMEM;
   }
 
   snprintf(path, sizeof(path), "%s/%04x:%02x:%02x.%1u/resource0",
@@ -145,13 +273,99 @@ int rshim_pcie_mmap_direct(rshim_pcie_t *dev, bool enable)
     return -ENOMEM;
   }
 
+  /* Set PCI bus mastering */
+  reg = pci_read_word(pci_dev, PCI_COMMAND);
+  pci_write_word(pci_dev, PCI_COMMAND, reg | RSHIM_PCI_COMMAND);
+
   return 0;
 }
 
-int rshim_pcie_mmap_vfio(rshim_pcie_t *dev, int enable)
+#define IRQ_SET_BUF_LEN  (sizeof(struct vfio_irq_set) + sizeof(int))
+struct {
+  struct vfio_irq_set irq_set;
+  int32_t intr_fd;
+} irq_set_buf;
+
+#include <pci/header.h>
+static int rshim_pcie_enable_irq(rshim_pcie_t *dev, bool enable)
 {
-  int i, rc, group_id, container_fd = -1, group_fd = -1, device_fd = -1;
-  char path[PATH_MAX], name[PATH_MAX], *p;
+  struct pci_dev *pci_dev = dev->pci_dev;
+  struct vfio_irq_set *irq_set;
+  int len, ret;
+  uint16_t reg;
+
+  if (rshim_pcie_mmap_mode == RSHIM_PCIE_MMAP_UIO) {
+    reg = pci_read_word(pci_dev, PCI_COMMAND);
+    if (enable && (reg & PCI_COMMAND_DISABLE_INTx))
+      pci_write_word(pci_dev, PCI_COMMAND, reg & ~PCI_COMMAND_DISABLE_INTx);
+    else if (!enable && !(reg & PCI_COMMAND_DISABLE_INTx))
+      pci_write_word(pci_dev, PCI_COMMAND, reg | PCI_COMMAND_DISABLE_INTx);
+    return 0;
+  } else if (rshim_pcie_mmap_mode != RSHIM_PCIE_MMAP_VFIO) {
+    return 0;
+  }
+
+  /* VFIO interrupt enable/disable */
+
+  /* Mask interrupts before disabling. */
+  if (!enable) {
+    len = sizeof(struct vfio_irq_set);
+    memset(irq_set, 0, len);
+    irq_set->argsz = len;
+    irq_set->count = 1;
+    irq_set->flags = VFIO_IRQ_SET_DATA_NONE | VFIO_IRQ_SET_ACTION_MASK;
+    irq_set->index = VFIO_PCI_INTX_IRQ_INDEX;
+    irq_set->start = 0;
+
+    ret = ioctl(dev->device_fd, VFIO_DEVICE_SET_IRQS, irq_set);
+    if (ret) {
+      RSHIM_ERR("Failed to mask INTx\n");
+      return -1;
+    }
+  }
+
+  /* Enable INTx */
+  irq_set = (struct vfio_irq_set *) &irq_set_buf;
+  irq_set->argsz = sizeof(irq_set_buf);
+  irq_set->count = 1;
+  irq_set->flags = enable ? VFIO_IRQ_SET_DATA_EVENTFD : VFIO_IRQ_SET_DATA_NONE;
+  irq_set->flags |= VFIO_IRQ_SET_ACTION_TRIGGER;
+  irq_set->index = VFIO_PCI_INTX_IRQ_INDEX;
+  irq_set->start = 0;
+  irq_set_buf.intr_fd = dev->intr_fd;
+
+  ret = ioctl(dev->device_fd, VFIO_DEVICE_SET_IRQS, irq_set);
+  if (ret) {
+    RSHIM_ERR("Failed to enable INTx\n");
+    return -1;
+  }
+
+  /* Unmask INTx after enabling. */
+  if (enable) {
+    len = sizeof(struct vfio_irq_set);
+    memset(irq_set, 0, len);
+    irq_set->argsz = len;
+    irq_set->count = 1;
+    irq_set->flags = VFIO_IRQ_SET_DATA_NONE | VFIO_IRQ_SET_ACTION_UNMASK;
+    irq_set->index = VFIO_PCI_INTX_IRQ_INDEX;
+    irq_set->start = 0;
+
+    ret = ioctl(dev->device_fd, VFIO_DEVICE_SET_IRQS, irq_set);
+    if (ret) {
+      RSHIM_ERR("Failed to unmask INTx\n");
+      return -1;
+    }
+  }
+
+  return 0;
+}
+
+/* Memory map over VFIO. */
+static int rshim_pcie_mmap_vfio(rshim_pcie_t *dev)
+{
+  int rc, group_id, container_fd = -1, group_fd = -1, device_fd = -1;
+  struct vfio_irq_info irq = { .argsz = sizeof(irq) };
+  char path[RSHIM_PATH_MAX], name[PATH_MAX], *p;
   struct pci_dev *pci_dev = dev->pci_dev;
 
   struct vfio_group_status group_status = {
@@ -165,30 +379,6 @@ int rshim_pcie_mmap_vfio(rshim_pcie_t *dev, int enable)
   struct vfio_region_info region_info = {
     .argsz = sizeof(region_info)
   };
-
-  if (!enable) {
-    if (dev->rshim_regs) {
-      munmap((void *)dev->rshim_regs, PCI_RSHIM_WINDOW_SIZE);
-      dev->rshim_regs = NULL;
-    }
-
-    if (dev->device_fd >= 0) {
-      close(dev->device_fd);
-      dev->device_fd = -1;
-    }
-
-    if (dev->group_fd >= 0) {
-      close(dev->group_fd);
-      dev->group_fd = -1;
-    }
-
-    if (dev->container_fd >= 0) {
-      close(dev->container_fd);
-      dev->container_fd = -1;
-    }
-
-    return 0;
-  }
 
   container_fd = open("/dev/vfio/vfio", O_RDWR);
   if (container_fd < 0) {
@@ -292,10 +482,43 @@ int rshim_pcie_mmap_vfio(rshim_pcie_t *dev, int enable)
       rc = -1;
       goto fail;
     } else {
+      uint16_t reg = 0;
+
+      /* Set PCI bus mastering */
+      rc = pread(device_fd, &reg, sizeof(reg),
+                 VFIO_GET_REGION_ADDR(VFIO_PCI_CONFIG_REGION_INDEX) +
+                 PCI_COMMAND);
+      if (rc != sizeof(reg)) {
+        RSHIM_ERR("Failed to read command from PCI config space!\n");
+        rc = -1;
+        goto fail;
+      }
+      reg |= RSHIM_PCI_COMMAND;
+      rc = pwrite(device_fd, &reg, sizeof(reg),
+                  VFIO_GET_REGION_ADDR(VFIO_PCI_CONFIG_REGION_INDEX) +
+                  PCI_COMMAND);
+      if (rc != sizeof(reg)) {
+        RSHIM_ERR("Failed to set PCI bus mastering!\n");
+        rc = -1;
+        goto fail;
+      }
+
       dev->device_fd = device_fd;
       dev->group_fd = group_fd;
       dev->container_fd = container_fd;
       dev->rshim_regs = map;
+
+      /* Enable interrupt */
+      irq.index = VFIO_PCI_INTX_IRQ_INDEX;
+      rc = ioctl(device_fd, VFIO_DEVICE_GET_IRQ_INFO, &irq);
+      if (rc < 0 || (irq.flags & VFIO_IRQ_INFO_EVENTFD) == 0) {
+        RSHIM_WARN("Unable to get vfio IRQ\n");
+      } else {
+        dev->intr_fd = eventfd(0, EFD_CLOEXEC);
+        dev->intr_len = sizeof(uint64_t);
+        if (dev->intr_fd >= 0)
+          rshim_pcie_enable_irq(dev, true);
+      }
     }
   }
 
@@ -311,17 +534,181 @@ fail:
   return rc;
 }
 
-int rshim_pcie_mmap(rshim_pcie_t *dev, bool enable)
+/* Memory map over UIO. */
+static int rshim_pcie_mmap_uio(rshim_pcie_t *dev)
 {
+  char dirname[RSHIM_PATH_MAX], devname[RSHIM_PATH_MAX], *str;
+  struct pci_dev *pci_dev = dev->pci_dev;
+  struct dirent *e;
+  int uio_num, rc;
+  DIR *dir;
+
+  /* Find the uio number. */
+  snprintf(dirname, sizeof(dirname), "%s/%04x:%02x:%02x.%1u/uio",
+           SYS_BUS_PCI_PATH, pci_dev->domain, pci_dev->bus,
+           pci_dev->dev, pci_dev->func);
+  dir = opendir(dirname);
+  if (!dir) {
+    snprintf(dirname, sizeof(dirname), "%s/%04x:%02x:%02x.%1u",
+             SYS_BUS_PCI_PATH, pci_dev->domain, pci_dev->bus,
+             pci_dev->dev, pci_dev->func);
+    dir = opendir(dirname);
+    if (!dir)
+      return -ENOENT;
+  }
+  while ((e = readdir(dir)) != NULL) {
+    if ((str = strstr(e->d_name, "uio:uio")) != NULL)
+      str += strlen("uio:uio");
+    else if ((str = strstr(e->d_name, "uio")) != NULL)
+      str += strlen("uio");
+
+    if (str)
+      break;
+  }
+  closedir(dir);
+
+  if (!str)
+    return -ENOENT;
+
+  /* Memory map. */
+  rc = rshim_pcie_mmap_direct(dev);
+  if (rc)
+    return rc;
+
+  /* Open the control fd to handle interrupt. */
+  uio_num = atoi(str);
+  snprintf(devname, sizeof(devname), "/dev/uio%u", uio_num);
+  dev->intr_fd = open(devname, O_RDWR);
+  dev->intr_len = sizeof(uint32_t);
+  rshim_pcie_enable_irq(dev, true);
+
+  return 0;
+}
+
+static int rshim_pcie_mmap(rshim_pcie_t *dev, bool enable)
+{
+  int rc = -EINVAL;
+
+  if (!enable) {
+    rshim_pcie_mmap_release(dev);
+    return 0;
+  }
+
   if (rshim_pcie_mmap_mode == RSHIM_PCIE_MMAP_VFIO)
-    return rshim_pcie_mmap_vfio(dev, enable);
-  else
-    return rshim_pcie_mmap_direct(dev, enable);
+    rc = rshim_pcie_mmap_vfio(dev);
+  else if (rshim_pcie_mmap_mode == RSHIM_PCIE_MMAP_UIO)
+    rc = rshim_pcie_mmap_uio(dev);
+  else if (rshim_pcie_mmap_mode == RSHIM_PCIE_MMAP_DIRECT)
+    rc = rshim_pcie_mmap_direct(dev);
+
+  return rc;
+}
+
+static void rshim_pcie_intr(rshim_pcie_t *dev)
+{
+  rshim_pcie_intr_info_t info = {.word = 0};
+  rshim_backend_t *bd = &dev->bd;
+  int rc, drop_mode;
+  time_t t;
+
+  /* Add some protection for interrupt flooding. */
+  time(&t);
+  if (difftime(t, dev->last_intr_time) > 1) {
+    dev->last_intr_time = t;
+    dev->intr_cnt = 0;
+  }
+  dev->intr_cnt++;
+  if (dev->intr_cnt > RSHIM_PCIE_NIC_IRQ_RATE)
+    return;
+
+  RSHIM_INFO("Receive interrupt for %s reset\n",
+    (info.rst_type == RSHIM_PCIE_RST_TYPE_NIC_RESET) ? "NIC" :
+    ((info.rst_type == RSHIM_PCIE_RST_TYPE_DPU_RESET) ? "DPU" : ""));
+
+  rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad6, &info.word);
+  if (rc || RSHIM_BAD_CTRL_REG(info.word)) {
+    RSHIM_WARN("Failed to read irq request\n");
+    return;
+  }
+
+  /* Only handles NIC reset for now. */
+  if (info.rst_type != RSHIM_PCIE_RST_TYPE_NIC_RESET &&
+      info.rst_type != RSHIM_PCIE_RST_TYPE_DPU_RESET) {
+    RSHIM_ERR("Unknown reset info 0x%lx\n", info.word);
+    return;
+  }
+
+  if (info.rst_reply == RSHIM_PCIE_RST_REPLY_NONE) {
+    RSHIM_INFO("NIC reset ACK\n");
+    info.rst_reply = RSHIM_PCIE_RST_REPLY_ACK;
+    dev->nic_reset = true;
+    __sync_synchronize();
+    bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad6, info.word);
+    sleep(RSHIM_PCIE_NIC_RESET_WAIT);
+    dev->nic_reset = false;
+  }
+
+  rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad6, &info.word);
+  if (rc || RSHIM_BAD_CTRL_REG(info.word)) {
+    RSHIM_WARN("Failed to read irq request\n");
+    return;
+  }
+
+  if (info.rst_state == RSHIM_PCIE_RST_STATE_ABORT) {
+    RSHIM_INFO("NIC reset ABORT\n");
+    info.word &= 0xFFFFFFFFUL;
+    bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad6, info.word);
+  } else if (info.rst_type == RSHIM_PCIE_RST_TYPE_DPU_RESET) {
+    /*
+     * Both NIC and ARM reset.
+     * - Set drop_mode to prevent further read/write;
+     * - Take the mutex so the main thread is not in Rx/Tx loop;
+     * - Clear FIFO state;
+     * - Add a small delay for ARM to be ready;
+     */
+    drop_mode = bd->drop_mode;
+    bd->drop_mode = 1;
+    pthread_mutex_lock(&bd->mutex);
+    rshim_fifo_reset(bd);
+    sleep(2);
+    bd->drop_mode = drop_mode;
+    pthread_mutex_unlock(&bd->mutex);
+  }
+
+  rshim_pcie_enable_irq(dev, true);
+}
+
+static void *rshim_pcie_intr_thread(void *arg)
+{
+  rshim_pcie_t *dev = arg;
+  uint8_t intr_buf[16];
+  int rc;
+
+  while (rshim_run) {
+    if (dev->intr_fd < 0) {
+      sleep(1);
+      continue;
+    }
+
+    rc = read(dev->intr_fd, intr_buf, dev->intr_len);
+    if (rc < 0) {
+      if (errno == EINTR)
+        continue;
+    } else if (rc == 0) {
+      sleep(1);
+      continue;
+    }
+
+    /* Interrupt handler. */
+    rshim_pcie_intr(dev);
+  }
+
+  return NULL;
 }
 
 #elif defined(__FreeBSD__)
 
-int rshim_pcie_mmap(rshim_pcie_t *dev, bool enable)
+static int rshim_pcie_mmap(rshim_pcie_t *dev, bool enable)
 {
   struct pci_dev *pci_dev = dev->pci_dev;
   struct pci_bar_mmap pbm = {
@@ -385,6 +772,9 @@ rshim_pcie_read(rshim_backend_t *bd, int chan, int addr, uint64_t *result)
   if (!bd->has_rshim || !bd->has_tm)
     return -ENODEV;
 
+  if (dev->nic_reset && addr != bd->regs->scratchpad6)
+    sleep(RSHIM_PCIE_NIC_RESET_WAIT);
+
   if (bd->drop_mode) {
     *result = 0;
     return 0;
@@ -406,6 +796,9 @@ rshim_pcie_write(rshim_backend_t *bd, int chan, int addr, uint64_t value)
 
   if (!bd->has_rshim || !bd->has_tm)
     return -ENODEV;
+
+  if (dev->nic_reset && addr != bd->regs->scratchpad6)
+    sleep(RSHIM_PCIE_NIC_RESET_WAIT);
 
   if (bd->drop_mode)
     return 0;
@@ -439,80 +832,36 @@ static void rshim_pcie_delete(rshim_backend_t *bd)
 /* Enable RSHIM PF and setup memory map. */
 static int rshim_pcie_enable(rshim_backend_t *bd, bool enable)
 {
-  int rc = 0;
   rshim_pcie_t *dev = container_of(bd, rshim_pcie_t, bd);
-#ifdef __linux__
-  struct pci_dev *pci_dev = dev->pci_dev;
-  char path[256];
-  DIR* dir;
-  int fd;
+  int rc = 0;
 
-  if (!pci_dev)
+#ifdef __linux__
+  if (!dev->pci_dev)
     return -ENODEV;
 
   /* Unmap existing resource first. */
   rshim_pcie_mmap(dev, false);
 
-  if (rshim_pcie_mmap_mode == RSHIM_PCIE_MMAP_DIRECT) {
-    /* Some sanity check. */
-    if (!pci_dev->size[0]) {
-      RSHIM_ERR("BAR[0] unassigned, run 'lspci -v'\n");
-      return -ENOMEM;
-    }
-    if (pci_dev->size[0] < PCI_RSHIM_WINDOW_SIZE) {
-      RSHIM_ERR("BAR[0] size 0x%x too small\n", (int)pci_dev->size[0]);
-      return -ENOMEM;
-    }
-
-    /* Check whether it's being attached by other driver. */
-    snprintf(path, sizeof(path), "%s/%04x:%02x:%02x.%1u/driver",
-             SYS_BUS_PCI_PATH, pci_dev->domain, pci_dev->bus,
-             pci_dev->dev, pci_dev->func);
-    dir = opendir(path);
-    if (dir) {
-      RSHIM_ERR("Rshim is used by %s\n", path);
-      closedir(dir);
-      return -EBUSY;
-    }
-
-    /* Set the enable attribute in sysfs. */
-    snprintf(path, sizeof(path), "%s/%04x:%02x:%02x.%1u/enable",
-             SYS_BUS_PCI_PATH, pci_dev->domain, pci_dev->bus,
-             pci_dev->dev, pci_dev->func);
-    fd = open(path, O_RDWR | O_CLOEXEC);
-    if (fd == -1) {
-      RSHIM_ERR("Failed to open %s\n", path);
-      return -errno;
-    }
-    if (write(fd, enable ? "1" : "0", 1) < 0)
-      rc = -errno;
-    close(fd);
-    if (rc) {
-      RSHIM_ERR("Failed to write to %s\n", path);
-      return rc;
-    }
-
-    /* Enable Master and BAR access. */
-    pci_write_word(pci_dev, PCI_COMMAND, PCI_COMMAND_MEMORY | PCI_COMMAND_MASTER);
-  } else if (rshim_pcie_mmap_mode == RSHIM_PCIE_MMAP_VFIO) {
-    snprintf(path, sizeof(path),
-             "echo %04x:%02x:%02x.%1u > " SYS_VFIO_PCI_PATH "/%s 2>/dev/null",
-             pci_dev->domain, pci_dev->bus, pci_dev->dev, pci_dev->func,
-             enable ? "bind" : "unbind");
-    if (system(path) == -1)
-      RSHIM_DBG("Failed to bind/unbind device\n");
-  } else {
-    RSHIM_ERR("Unknown PCIE mmap mode\n");
-    return -EINVAL;
-  }
+  /* Bind/unbind the device. */
+  rshim_pcie_bind(dev, enable);
 
   /* Remap the resource. */
   if (enable) {
     rc = rshim_pcie_mmap(dev, true);
+
+    /* Fall-back to direct map if failed. */
+    if (rc < 0 && rshim_pcie_mmap_mode != RSHIM_PCIE_MMAP_DIRECT) {
+      RSHIM_INFO("Fall-back to direct io\n");
+      rshim_pcie_bind(dev, false);
+      rshim_sys_pci_path = NULL;
+      rshim_pcie_mmap_mode = RSHIM_PCIE_MMAP_DIRECT;
+      rc = rshim_pcie_mmap(dev, true);
+    }
   }
 #else
   /* Unmap existing resource then remap it. */
   rshim_pcie_mmap(dev, false);
+
   if (enable)
     rc = rshim_pcie_mmap(dev, true);
 #endif /* __linux__ */
@@ -536,8 +885,8 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
   if (!rshim_allow_device(dev_name))
     return -EACCES;
 
-  RSHIM_INFO("Probing %s%s\n", dev_name,
-    (rshim_pcie_mmap_mode == RSHIM_PCIE_MMAP_VFIO) ? " (vfio)":"");
+  RSHIM_INFO("Probing %s(%s)\n", dev_name,
+             rshim_pcie_mmap_name[rshim_pcie_mmap_mode]);
 
   rshim_lock();
 
@@ -564,6 +913,8 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
     dev->device_fd = -1;
     dev->group_fd = -1;
     dev->container_fd = -1;
+    dev->intr_fd = -1;
+    time(&dev->last_intr_time);
     pthread_mutex_init(&bd->mutex, NULL);
   }
 
@@ -571,7 +922,6 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
 
   switch (pci_dev->device_id) {
     case BLUEFIELD2_DEVICE_ID:
-    case BLUEFIELD2_DEVICE_ID2:
       bd->regs = &bf1_bf2_rshim_regs;
       bd->ver_id = RSHIM_BLUEFIELD_2;
       break;
@@ -609,10 +959,19 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
   if (rc)
     goto rshim_probe_failed;
 
+#ifdef __linux__
+  /* Create interrupt handling thread for BlueField-2 and above. */
+  if (pci_dev->device_id != BLUEFIELD1_DEVICE_ID) {
+    rc = pthread_create(&dev->intr_thread, NULL, rshim_pcie_intr_thread, dev);
+    if (rc)
+      RSHIM_ERR("Failed to create intr thread\n");
+  }
+#endif
+
   rshim_unlock();
   return 0;
 
- rshim_probe_failed:
+rshim_probe_failed:
    rshim_deref(bd);
    rshim_unlock();
    return rc;
@@ -621,9 +980,9 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
 #ifdef __linux__
 static bool rshim_pcie_has_vfio(void)
 {
-  int rc;
   struct dirent* d;
   DIR* dir;
+  int rc;
 
   rc = system("modprobe vfio_pci");
   if (rc == -1)
@@ -645,10 +1004,26 @@ static bool rshim_pcie_has_vfio(void)
   return (d != NULL);
 }
 
+static bool rshim_pcie_has_uio(void)
+{
+  DIR* dir;
+  int rc;
+
+  rc = system("modprobe uio_pci_generic");
+  if (rc == -1)
+    RSHIM_DBG("Failed to load the uio_pci_generic module %m\n");
+  dir = opendir(SYS_CLASS_UIO_PCI_PATH);
+  if (!dir)
+    return false;
+  closedir(dir);
+
+  return true;
+}
+
 static bool kernel_lock_down_enabled(void)
 {
-  FILE *file;
   char buf[64] = { 0 }, *p;
+  FILE *file;
 
   file = fopen("/sys/kernel/security/lockdown", "rt");
   if (!file)
@@ -663,23 +1038,42 @@ static bool kernel_lock_down_enabled(void)
 
 int rshim_pcie_init(void)
 {
+  bool dev_present = false;
   struct pci_access *pci;
   struct pci_dev *dev;
   int rc;
-  bool dev_present = false;
 
 #ifdef __linux__
   if (rshim_pcie_has_vfio()) {
     rshim_pcie_mmap_mode = RSHIM_PCIE_MMAP_VFIO;
-    rc = system("echo 15b3 c2d3 > " SYS_VFIO_PCI_PATH "/new_id 2>/dev/null");
+    rshim_sys_pci_path = SYS_VFIO_PCI_PATH;
+  } else {
+    /* Linux kernel lock_down requires VFIO. */
+    if (kernel_lock_down_enabled()) {
+      RSHIM_ERR("Need to enable IOMMU/VFIO for kernel lock-down\n");
+      return -ENOTSUP;
+    }
+
+    if (rshim_pcie_has_uio()) {
+      rshim_pcie_mmap_mode = RSHIM_PCIE_MMAP_UIO;
+      rshim_sys_pci_path = SYS_UIO_PCI_PATH;
+    }
+  }
+
+  if (rshim_sys_pci_path != NULL) {
+    char cmd[RSHIM_CMD_MAX];
+
+    snprintf(cmd, sizeof(cmd), "echo '%x %x' > %s/new_id 2>/dev/null",
+             TILERA_VENDOR_ID, BLUEFIELD1_DEVICE_ID, rshim_sys_pci_path);
+    rc = system(cmd);
     if (rc == -1)
-      RSHIM_DBG("Failed to vdio device id %m\n");
-    rc = system("echo 15b3 c2d2 > " SYS_VFIO_PCI_PATH "/new_id 2>/dev/null");
+      RSHIM_DBG("Failed to write device id %m\n");
+
+    snprintf(cmd, sizeof(cmd), "echo '%x %x' > %s/new_id 2>/dev/null",
+             TILERA_VENDOR_ID, BLUEFIELD2_DEVICE_ID, rshim_sys_pci_path);
+    rc = system(cmd);
     if (rc == -1)
-      RSHIM_DBG("Failed to vdio device id %m\n");
-  } else if (kernel_lock_down_enabled()) {
-    RSHIM_ERR("Need to enable IOMMU/VFIO for kernel lock-down\n");
-    return -ENOTSUP;
+      RSHIM_DBG("Failed to write device id %m\n");
   }
 #endif /* __linux__ */
 

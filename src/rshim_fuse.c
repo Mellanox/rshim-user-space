@@ -1185,7 +1185,6 @@ int rshim_fuse_init(rshim_backend_t *bd)
                           [RSH_DEV_TYPE_RSHIM] = &rshim_rshim_fops,
                           [RSH_DEV_TYPE_MISC] = &rshim_misc_fops,
                           };
-  static const char * const argv[] = {"./rshim", "-f"};
   int i, rc;
 
 #if defined(__FreeBSD__)
@@ -1195,6 +1194,8 @@ int rshim_fuse_init(rshim_backend_t *bd)
 
   for (i = 0; i < RSH_DEV_TYPES; i++) {
 #ifdef __linux__
+    static const char * const argv[] = {"./rshim", "-f"};
+
     name = rshim_dev_minor_names[i];
 
     /*
