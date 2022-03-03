@@ -60,22 +60,6 @@ typedef enum {
 
 static rshim_pcie_mmap_mode_t rshim_pcie_mmap_mode = RSHIM_PCIE_MMAP_DIRECT;
 
-#ifndef __LP64__
-static inline uint32_t
-readl(const volatile void *addr)
-{
-  uint32_t value = *(const volatile uint32_t *)addr;
-  __sync_synchronize();
-  return value;
-}
-
-static inline void
-writel(uint32_t value, volatile void *addr)
-{
-  __sync_synchronize();
-  *(volatile uint32_t *)addr = value;
-}
-#else
 static inline uint64_t
 readq(const volatile void *addr)
 {
@@ -90,7 +74,6 @@ writeq(uint64_t value, volatile void *addr)
   __sync_synchronize();
   *(volatile uint64_t *)addr = value;
 }
-#endif /* __LP64__ */
 
 typedef struct {
   /* RShim backend structure. */
@@ -392,160 +375,6 @@ rshim_map_failed:
 #error "Platform not supported"
 #endif /* __linux__ */
 
-#ifndef __LP64__
-/* Wait until the RSH_BYTE_ACC_CTL pending bit is cleared */
-static int rshim_byte_acc_pending_wait(rshim_pcie_t *dev)
-{
-  uint32_t read_value;
-  int retry = 0;
-  time_t t0, t1;
-
-  time(&t0);
-  do {
-    read_value = readl(dev->rshim_regs +
-                       (RSH_BYTE_ACC_CTL | (RSHIM_CHANNEL << 16)));
-
-    time(&t1);
-    if (difftime(t1, t0) > RSHIM_LOCK_RETRY_TIME)
-      return -ETIMEDOUT;
-
-  } while (read_value & RSH_BYTE_ACC_PENDING);
-
-  return 0;
-}
-
-/* Acquire BAW Interlock */
-static int rshim_byte_acc_lock_acquire(rshim_pcie_t *dev)
-{
-  uint32_t read_value;
-  int retry = 0;
-  time_t t0, t1;
-
-  do {
-    time(&t1);
-    if (difftime(t1, t0) > RSHIM_LOCK_RETRY_TIME)
-      return -ETIMEDOUT;
-
-    read_value = readl(dev->rshim_regs +
-                      (RSH_BYTE_ACC_INTERLOCK | (RSHIM_CHANNEL << 16)));
-  } while (!(read_value & 0x1));
-
-  return 0;
-}
-
-/* Release BAW Interlock */
-static void rshim_byte_acc_lock_release(rshim_pcie_t *dev)
-{
-  writel(0, dev->rshim_regs + (RSH_BYTE_ACC_INTERLOCK | (RSHIM_CHANNEL << 16)));
-}
-
-/*
- * RShim read/write methods for 32-bit systems
- * Mechanism to do an 8-byte access to the Rshim using
- * two 4-byte accesses through the Rshim Byte Access Widget.
- */
-static int rshim_byte_acc_read(rshim_pcie_t *dev, int addr, uint64_t *result)
-{
-  uint64_t read_result;
-  uint32_t read_value;
-  int rc;
-
-  /* Wait for RSH_BYTE_ACC_CTL pending bit to be cleared */
-  rc = rshim_byte_acc_pending_wait(dev);
-  if (rc)
-    return rc;
-
-  if (rshim_is_bluefield2(dev->pci_dev->device_id)) {
-    /* Acquire RSH_BYTE_ACC_INTERLOCK */
-    rc = rshim_byte_acc_lock_acquire(dev);
-    if (rc)
-      return rc;
-  }
-
-  /* Write target address to RSH_BYTE_ACC_ADDR */
-  writel(addr, dev->rshim_regs + (RSH_BYTE_ACC_ADDR | (RSHIM_CHANNEL << 16)));
-
-  /* Write control and trigger bits to perform read */
-  writel(RSH_BYTE_ACC_SIZE_4BYTE | RSH_BYTE_ACC_READ_TRIGGER,
-         dev->rshim_regs + (RSH_BYTE_ACC_CTL | (RSHIM_CHANNEL << 16)));
-
-  /* Wait for RSH_BYTE_ACC_CTL pending bit to be cleared */
-  rc = rshim_byte_acc_pending_wait(dev);
-  if (rc)
-    goto exit_read;
-
-  /* Read RSH_BYTE_ACC_RDAT to read lower 32-bits of data */
-  read_value = readl(dev->rshim_regs +
-                     (RSH_BYTE_ACC_RDAT | (RSHIM_CHANNEL << 16)));
-
-  read_result = (uint64_t)read_value << 32;
-
-  /* Wait for RSH_BYTE_ACC_CTL pending bit to be cleared */
-  rc = rshim_byte_acc_pending_wait(dev);
-  if (rc)
-    goto exit_read;
-
-  /* Read RSH_BYTE_ACC_RDAT to read upper 32-bits of data */
-  read_value = readl(dev->rshim_regs +
-                     (RSH_BYTE_ACC_RDAT | (RSHIM_CHANNEL << 16)));
-
-  read_result |= (uint64_t)read_value;
-  *result = be64toh(read_result);
-
-exit_read:
-  /* Release RSH_BYTE_ACC_INTERLOCK */
-  if (rshim_is_bluefield2(dev->pci_dev->device_id))
-    rshim_byte_acc_lock_release(dev);
-
-  return rc;
-}
-
-static int rshim_byte_acc_write(rshim_pcie_t *dev, int addr, uint64_t value)
-{
-  int rc;
-
-  /* Wait for RSH_BYTE_ACC_CTL pending bit to be cleared */
-  rc = rshim_byte_acc_pending_wait(dev);
-  if (rc)
-    return rc;
-
-  if (rshim_is_bluefield2(dev->pci_dev->device_id)) {
-    /* Acquire RSH_BYTE_ACC_INTERLOCK */
-    rc = rshim_byte_acc_lock_acquire(dev);
-    if (rc)
-      return rc;
-  }
-
-  /* Write target address to RSH_BYTE_ACC_ADDR */
-  writel(addr, dev->rshim_regs +
-         (RSH_BYTE_ACC_ADDR | (RSHIM_CHANNEL << 16)));
-
-  /* Write control bits to RSH_BYTE_ACC_CTL */
-  writel(RSH_BYTE_ACC_SIZE_4BYTE, dev->rshim_regs +
-         (RSH_BYTE_ACC_CTL | (RSHIM_CHANNEL << 16)));
-
-  /* Write lower 32 bits of data to TRIO_CR_GW_DATA */
-  writel((uint32_t)(value >> 32), dev->rshim_regs +
-         (RSH_BYTE_ACC_WDAT | (RSHIM_CHANNEL << 16)));
-
-  /* Wait for RSH_BYTE_ACC_CTL pending bit to be cleared */
-  rc = rshim_byte_acc_pending_wait(dev);
-  if (rc)
-    goto exit_write;
-
-  /* Write upper 32 bits of data to TRIO_CR_GW_DATA */
-  writel((uint32_t)(value), dev->rshim_regs +
-         (RSH_BYTE_ACC_WDAT | (RSHIM_CHANNEL << 16)));
-
-exit_write:
-  /* Release RSH_BYTE_ACC_INTERLOCK */
-  if (rshim_is_bluefield2(dev->pci_dev->device_id))
-    rshim_byte_acc_lock_release(dev);
-
-  return rc;
-}
-#endif /* __LP64__ */
-
 /* RShim read/write routines */
 static int __attribute__ ((noinline))
 rshim_pcie_read(rshim_backend_t *bd, int chan, int addr, uint64_t *result)
@@ -563,11 +392,7 @@ rshim_pcie_read(rshim_backend_t *bd, int chan, int addr, uint64_t *result)
 
   dev->write_count = 0;
 
-#ifndef __LP64__
-  rc = rshim_byte_acc_read(dev, RSH_CHANNEL_BASE(chan) + addr, result);
-#else
   *result = readq(dev->rshim_regs + (addr | (chan << 16)));
-#endif /* __LP64__ */
 
   return rc;
 }
@@ -598,11 +423,7 @@ rshim_pcie_write(rshim_backend_t *bd, int chan, int addr, uint64_t value)
     }
     dev->write_count++;
   }
-#ifndef __LP64__
-  rc = rshim_byte_acc_write(dev, RSH_CHANNEL_BASE(chan) + addr, value);
-#else
   writeq(value, dev->rshim_regs + (addr | (chan << 16)));
-#endif /* __LP64__ */
 
   return rc;
 }
