@@ -4,7 +4,7 @@
 
 Name: rshim
 Version: @VERSION@
-Release: 2%{?dist}
+Release: 5%{?dist}
 Summary: User-space driver for Mellanox BlueField SoC
 
 License: GPLv2
@@ -95,6 +95,19 @@ fi
 %{_mandir}/man8/bfb-install.8.gz
 
 %changelog
+* Fri Mar 18 2022 Liming Sun <limings@nvidia.com> - 2.0.6-5
+- PCIe: Add UIO and IRQ support
+- PCIe: Remove 32-bit support
+
+* Fri Feb 28 2022 Liming Sun <limings@nvidia.com> - 2.0.6-4
+- VFIO support
+- Fix potential race in rshim_work_signal
+
+* Mon Nov 29 2021 Liming Sun <limings@nvidia.com> - 2.0.6-3
+- Adjust the defaul value of usb_reset_delay to 5
+- Add a delay after USB probe
+- Make the reset delay configurable
+
 * Wed Nov 03 2021 Liming Sun <limings@nvidia.com> - 2.0.6-2
 - bfb-install: Handle new indications for installation completion
 - Clean up some un-needed register definition

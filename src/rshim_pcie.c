@@ -769,7 +769,7 @@ rshim_pcie_read(rshim_backend_t *bd, int chan, int addr, uint64_t *result)
   rshim_pcie_t *dev = container_of(bd, rshim_pcie_t, bd);
   int rc = 0;
 
-  if (!bd->has_rshim || !bd->has_tm)
+  if (!bd->has_rshim || !bd->has_tm || !dev->rshim_regs)
     return -ENODEV;
 
   if (dev->nic_reset && addr != bd->regs->scratchpad6)
@@ -794,7 +794,7 @@ rshim_pcie_write(rshim_backend_t *bd, int chan, int addr, uint64_t value)
   uint64_t result;
   int rc = 0;
 
-  if (!bd->has_rshim || !bd->has_tm)
+  if (!bd->has_rshim || !bd->has_tm || !dev->rshim_regs)
     return -ENODEV;
 
   if (dev->nic_reset && addr != bd->regs->scratchpad6)
@@ -857,6 +857,9 @@ static int rshim_pcie_enable(rshim_backend_t *bd, bool enable)
       rshim_pcie_mmap_mode = RSHIM_PCIE_MMAP_DIRECT;
       rc = rshim_pcie_mmap(dev, true);
     }
+  } else {
+    /* Clear scratchpad1 since it's checked by FW for rshim driver. */
+    rshim_pcie_write(bd, RSHIM_CHANNEL, bd->regs->scratchpad1, 0);
   }
 #else
   /* Unmap existing resource then remap it. */
