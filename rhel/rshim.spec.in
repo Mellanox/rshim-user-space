@@ -58,7 +58,7 @@ via the virtual console or network interface.
 - PCIe: Add UIO and IRQ support
 - PCIe: Remove 32-bit support
 
-* Fri Feb 28 2022 Liming Sun <limings@nvidia.com> - 2.0.6-4
+* Mon Feb 28 2022 Liming Sun <limings@nvidia.com> - 2.0.6-4
 - VFIO support
 - Fix potential race in rshim_work_signal
 
