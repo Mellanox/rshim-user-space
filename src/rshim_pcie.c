@@ -127,6 +127,8 @@ static const char *rshim_pcie_mmap_name[] = {"direct", "uio", "vfio"};
 static const char *rshim_sys_pci_path;
 #endif
 
+static bool rshim_pcie_has_uio(void);
+
 static inline uint64_t
 readq(const volatile void *addr)
 {
@@ -223,9 +225,24 @@ static void rshim_pcie_bind(rshim_pcie_t *dev, bool enable)
 {
   struct pci_dev *pci_dev = dev->pci_dev;
   char cmd[RSHIM_CMD_MAX];
+  int rc;
 
   if (rshim_pcie_mmap_mode == RSHIM_PCIE_MMAP_VFIO ||
       rshim_pcie_mmap_mode == RSHIM_PCIE_MMAP_UIO) {
+    snprintf(cmd, sizeof(cmd), "echo '%x %x' > %s/%s 2>/dev/null",
+             TILERA_VENDOR_ID, BLUEFIELD1_DEVICE_ID, rshim_sys_pci_path,
+             enable ? "new_id" : "remove_id");
+    rc = system(cmd);
+    if (rc == -1)
+      RSHIM_DBG("Failed to write device id %m\n");
+
+    snprintf(cmd, sizeof(cmd), "echo '%x %x' > %s/%s 2>/dev/null",
+             TILERA_VENDOR_ID, BLUEFIELD2_DEVICE_ID, rshim_sys_pci_path,
+             enable ? "new_id" : "remove_id");
+    rc = system(cmd);
+    if (rc == -1)
+      RSHIM_DBG("Failed to write device id %m\n");
+
     snprintf(cmd, sizeof(cmd),
              "echo %04x:%02x:%02x.%1u > %s/%s 2>/dev/null",
              pci_dev->domain, pci_dev->bus, pci_dev->dev, pci_dev->func,
@@ -421,7 +438,7 @@ static int rshim_pcie_mmap_vfio(rshim_pcie_t *dev)
   snprintf(path, sizeof(path), "/dev/vfio/%d", group_id);
   group_fd = open(path, O_RDWR);
   if (group_fd < 0) {
-    RSHIM_ERR("Failed to open %s, %d (%s)\n",
+    RSHIM_DBG("Failed to open %s, %d (%s)\n",
               path, group_fd, strerror(errno));
     rc = group_fd;
     goto fail;
@@ -434,7 +451,7 @@ static int rshim_pcie_mmap_vfio(rshim_pcie_t *dev)
   }
 
   if (!(group_status.flags & VFIO_GROUP_FLAGS_VIABLE)) {
-    RSHIM_ERR("VFIO group not viable\n");
+    RSHIM_DBG("VFIO group not viable\n");
     rc = -1;
     goto fail;
   }
@@ -621,10 +638,6 @@ static void rshim_pcie_intr(rshim_pcie_t *dev)
   if (dev->intr_cnt > RSHIM_PCIE_NIC_IRQ_RATE)
     return;
 
-  RSHIM_INFO("Receive interrupt for %s reset\n",
-    (info.rst_type == RSHIM_PCIE_RST_TYPE_NIC_RESET) ? "NIC" :
-    ((info.rst_type == RSHIM_PCIE_RST_TYPE_DPU_RESET) ? "DPU" : ""));
-
   rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad6, &info.word);
   if (rc || RSHIM_BAD_CTRL_REG(info.word)) {
     RSHIM_WARN("Failed to read irq request\n");
@@ -634,9 +647,12 @@ static void rshim_pcie_intr(rshim_pcie_t *dev)
   /* Only handles NIC reset for now. */
   if (info.rst_type != RSHIM_PCIE_RST_TYPE_NIC_RESET &&
       info.rst_type != RSHIM_PCIE_RST_TYPE_DPU_RESET) {
-    RSHIM_ERR("Unknown reset info 0x%lx\n", info.word);
     return;
   }
+
+  RSHIM_INFO("Receive interrupt for %s reset\n",
+    (info.rst_type == RSHIM_PCIE_RST_TYPE_NIC_RESET) ? "NIC" :
+    ((info.rst_type == RSHIM_PCIE_RST_TYPE_DPU_RESET) ? "DPU" : ""));
 
   if (info.rst_reply == RSHIM_PCIE_RST_REPLY_NONE) {
     RSHIM_INFO("NIC reset ACK\n");
@@ -769,7 +785,7 @@ rshim_pcie_read(rshim_backend_t *bd, int chan, int addr, uint64_t *result)
   rshim_pcie_t *dev = container_of(bd, rshim_pcie_t, bd);
   int rc = 0;
 
-  if (!bd->has_rshim || !bd->has_tm || !dev->rshim_regs)
+  if (!bd->has_rshim || !bd->has_tm)
     return -ENODEV;
 
   if (dev->nic_reset && addr != bd->regs->scratchpad6)
@@ -778,6 +794,8 @@ rshim_pcie_read(rshim_backend_t *bd, int chan, int addr, uint64_t *result)
   if (bd->drop_mode) {
     *result = 0;
     return 0;
+  } else if (!dev->rshim_regs) {
+    return -ENODEV;
   }
 
   dev->write_count = 0;
@@ -794,7 +812,7 @@ rshim_pcie_write(rshim_backend_t *bd, int chan, int addr, uint64_t value)
   uint64_t result;
   int rc = 0;
 
-  if (!bd->has_rshim || !bd->has_tm || !dev->rshim_regs)
+  if (!bd->has_rshim || !bd->has_tm)
     return -ENODEV;
 
   if (dev->nic_reset && addr != bd->regs->scratchpad6)
@@ -802,6 +820,8 @@ rshim_pcie_write(rshim_backend_t *bd, int chan, int addr, uint64_t value)
 
   if (bd->drop_mode)
     return 0;
+  else if (!dev->rshim_regs)
+    return -ENODEV;
 
   /*
    * We cannot stream large numbers of PCIe writes to the RShim's BAR.
@@ -849,8 +869,19 @@ static int rshim_pcie_enable(rshim_backend_t *bd, bool enable)
   if (enable) {
     rc = rshim_pcie_mmap(dev, true);
 
+    /* Fall-back to uio if failed. */
+    if (rc < 0 && rshim_pcie_mmap_mode == RSHIM_PCIE_MMAP_VFIO &&
+        rshim_pcie_has_uio()) {
+      RSHIM_INFO("Fall-back to uio\n");
+      rshim_pcie_bind(dev, false);
+      rshim_sys_pci_path = SYS_UIO_PCI_PATH;
+      rshim_pcie_mmap_mode = RSHIM_PCIE_MMAP_UIO;
+      rshim_pcie_bind(dev, true);
+      rc = rshim_pcie_mmap(dev, true);
+    }
+
     /* Fall-back to direct map if failed. */
-    if (rc < 0 && rshim_pcie_mmap_mode != RSHIM_PCIE_MMAP_DIRECT) {
+    if (rc < 0 && rshim_pcie_mmap_mode == RSHIM_PCIE_MMAP_UIO) {
       RSHIM_INFO("Fall-back to direct io\n");
       rshim_pcie_bind(dev, false);
       rshim_sys_pci_path = NULL;
@@ -1063,21 +1094,6 @@ int rshim_pcie_init(void)
     }
   }
 
-  if (rshim_sys_pci_path != NULL) {
-    char cmd[RSHIM_CMD_MAX];
-
-    snprintf(cmd, sizeof(cmd), "echo '%x %x' > %s/new_id 2>/dev/null",
-             TILERA_VENDOR_ID, BLUEFIELD1_DEVICE_ID, rshim_sys_pci_path);
-    rc = system(cmd);
-    if (rc == -1)
-      RSHIM_DBG("Failed to write device id %m\n");
-
-    snprintf(cmd, sizeof(cmd), "echo '%x %x' > %s/new_id 2>/dev/null",
-             TILERA_VENDOR_ID, BLUEFIELD2_DEVICE_ID, rshim_sys_pci_path);
-    rc = system(cmd);
-    if (rc == -1)
-      RSHIM_DBG("Failed to write device id %m\n");
-  }
 #endif /* __linux__ */
 
   pci = pci_alloc();
