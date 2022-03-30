@@ -286,6 +286,7 @@ static int rshim_pcie_mmap_direct(rshim_pcie_t *dev)
                          dev->device_fd,
                          PCI_RSHIM_WINDOW_OFFSET);
   if (dev->rshim_regs == MAP_FAILED) {
+    dev->rshim_regs = NULL;
     RSHIM_ERR("Failed to map RShim registers\n");
     return -ENOMEM;
   }
@@ -761,6 +762,7 @@ static int rshim_pcie_mmap(rshim_pcie_t *dev, bool enable)
   dev->rshim_regs = (void *)((uintptr_t)pbm.pbm_map_base +
       (uintptr_t)pbm.pbm_bar_off + PCI_RSHIM_WINDOW_OFFSET);
   if (pbm.pbm_bar_length < PCI_RSHIM_WINDOW_SIZE) {
+    dev->rshim_regs = NULL;
     RSHIM_ERR("BAR length is too small\n");
     rc = -ENOMEM;
     goto rshim_map_failed;
@@ -859,6 +861,13 @@ static int rshim_pcie_enable(rshim_backend_t *bd, bool enable)
   if (!dev->pci_dev)
     return -ENODEV;
 
+  /*
+   * Clear scratchpad1 since it's checked by FW for rshim driver.
+   * This needs to be done before the resources are unmapped.
+   */
+  if (!enable)
+    rshim_pcie_write(bd, RSHIM_CHANNEL, bd->regs->scratchpad1, 0);
+
   /* Unmap existing resource first. */
   rshim_pcie_mmap(dev, false);
 
@@ -888,9 +897,6 @@ static int rshim_pcie_enable(rshim_backend_t *bd, bool enable)
       rshim_pcie_mmap_mode = RSHIM_PCIE_MMAP_DIRECT;
       rc = rshim_pcie_mmap(dev, true);
     }
-  } else {
-    /* Clear scratchpad1 since it's checked by FW for rshim driver. */
-    rshim_pcie_write(bd, RSHIM_CHANNEL, bd->regs->scratchpad1, 0);
   }
 #else
   /* Unmap existing resource then remap it. */
