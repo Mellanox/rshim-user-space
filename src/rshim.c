@@ -767,6 +767,7 @@ int rshim_boot_open(rshim_backend_t *bd)
     RSHIM_ERR("boot_open: got error %d on reset write\n", rc);
 
 boot_open_done:
+  rshim_ref(bd);
 
   /*
    * PCIe doesn't have the disconnect/reconnect behavior.
@@ -775,10 +776,9 @@ boot_open_done:
   if (!bd->has_reprobe)
     sleep(rshim_pcie_reset_delay);
 
-  rshim_ref(bd);
+  time(&bd->boot_write_time);
   pthread_mutex_unlock(&bd->mutex);
 
-  time(&bd->boot_write_time);
   return 0;
 }
 
