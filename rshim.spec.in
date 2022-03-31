@@ -4,7 +4,7 @@
 
 Name: rshim
 Version: @VERSION@
-Release: 5%{?dist}
+Release: 6%{?dist}
 Summary: User-space driver for Mellanox BlueField SoC
 
 License: GPLv2
@@ -95,6 +95,10 @@ fi
 %{_mandir}/man8/bfb-install.8.gz
 
 %changelog
+* Wed Mar 30 2022 Liming Sun <limings@nvidia.com> - 2.0.6-6
+- Clear scratchpad1 to 0 before PCI resources are unmapped
+- Fallback to UIO if VFIO failed
+
 * Fri Mar 18 2022 Liming Sun <limings@nvidia.com> - 2.0.6-5
 - PCIe: Add UIO and IRQ support
 - PCIe: Remove 32-bit support
