@@ -3,7 +3,7 @@ rshim (2.0.6-7) UNRELEASED; urgency=low
   * Keep intr_fd during rshim_pcie disable/enable
   * Mustang: Add support for rshim over pcie and pcie_lf
 
- -- Liming Sun <limings@nvidia.com>  Thu, 07 April 2022 12:27:30 -0400
+ -- Liming Sun <limings@nvidia.com>  Thu, 07 Apr 2022 12:27:30 -0400
 
 rshim (2.0.6-6) UNRELEASED; urgency=low
 
