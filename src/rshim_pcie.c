@@ -214,9 +214,13 @@ static bool rshim_is_bluefield3(uint16_t device_id)
 
 #ifdef __linux__
 
+static int rshim_pcie_enable_irq(rshim_pcie_t *dev, bool enable);
+
 /* Release pcie resource. */
 static void rshim_pcie_mmap_release(rshim_pcie_t *dev)
 {
+  rshim_pcie_enable_irq(dev, false);
+
   if (dev->rshim_regs) {
     munmap((void *)dev->rshim_regs, PCI_RSHIM_WINDOW_SIZE);
     dev->rshim_regs = NULL;
@@ -235,11 +239,6 @@ static void rshim_pcie_mmap_release(rshim_pcie_t *dev)
   if (dev->container_fd >= 0) {
     close(dev->container_fd);
     dev->container_fd = -1;
-  }
-
-  if (dev->intr_fd >= 0) {
-    close(dev->intr_fd);
-    dev->intr_fd = -1;
   }
 }
 
@@ -330,7 +329,7 @@ struct {
 static int rshim_pcie_enable_irq(rshim_pcie_t *dev, bool enable)
 {
   struct pci_dev *pci_dev = dev->pci_dev;
-  struct vfio_irq_set *irq_set;
+  struct vfio_irq_set *irq_set = (struct vfio_irq_set *) &irq_set_buf;
   int len, ret;
   uint16_t reg;
 
@@ -346,6 +345,8 @@ static int rshim_pcie_enable_irq(rshim_pcie_t *dev, bool enable)
   }
 
   /* VFIO interrupt enable/disable */
+  if (dev->device_fd == -1)
+    return 0;
 
   /* Mask interrupts before disabling. */
   if (!enable) {
@@ -365,7 +366,6 @@ static int rshim_pcie_enable_irq(rshim_pcie_t *dev, bool enable)
   }
 
   /* Enable INTx */
-  irq_set = (struct vfio_irq_set *) &irq_set_buf;
   irq_set->argsz = sizeof(irq_set_buf);
   irq_set->count = 1;
   irq_set->flags = enable ? VFIO_IRQ_SET_DATA_EVENTFD : VFIO_IRQ_SET_DATA_NONE;
@@ -554,7 +554,8 @@ static int rshim_pcie_mmap_vfio(rshim_pcie_t *dev)
       if (rc < 0 || (irq.flags & VFIO_IRQ_INFO_EVENTFD) == 0) {
         RSHIM_WARN("Unable to get vfio IRQ\n");
       } else {
-        dev->intr_fd = eventfd(0, EFD_CLOEXEC);
+        if (dev->intr_fd < 0)
+          dev->intr_fd = eventfd(0, EFD_CLOEXEC);
         dev->intr_len = sizeof(uint64_t);
         if (dev->intr_fd >= 0)
           rshim_pcie_enable_irq(dev, true);
@@ -714,7 +715,8 @@ static void rshim_pcie_intr(rshim_pcie_t *dev)
     pthread_mutex_unlock(&bd->mutex);
   }
 
-  rshim_pcie_enable_irq(dev, true);
+  if (!bd->drop_mode)
+    rshim_pcie_enable_irq(dev, true);
 }
 
 static void *rshim_pcie_intr_thread(void *arg)
