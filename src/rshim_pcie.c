@@ -508,7 +508,7 @@ static int rshim_pcie_mmap_vfio(rshim_pcie_t *dev)
   rc = ioctl(device_fd, VFIO_DEVICE_GET_REGION_INFO, &region_info);
   if (rc) {
     RSHIM_ERR("Failed to get vfio region info\n");
-    return -1;
+    goto fail;
   }
 
   if (region_info.flags & VFIO_REGION_INFO_FLAG_MMAP) {
@@ -578,7 +578,7 @@ fail:
 /* Memory map over UIO. */
 static int rshim_pcie_mmap_uio(rshim_pcie_t *dev)
 {
-  char dirname[RSHIM_PATH_MAX], devname[RSHIM_PATH_MAX], *str;
+  char dirname[RSHIM_PATH_MAX], devname[RSHIM_PATH_MAX], *str = NULL;
   struct pci_dev *pci_dev = dev->pci_dev;
   struct dirent *e;
   int uio_num, rc;
