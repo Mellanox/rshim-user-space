@@ -129,6 +129,9 @@ static const char *rshim_pcie_mmap_name[] = {"direct", "uio", "vfio"};
 static const char *rshim_sys_pci_path;
 #endif
 
+/* Interrupt polling interval in milliseconds for direct-mapping mode. */
+int rshim_pcie_intr_poll_interval = 10;
+
 static bool rshim_pcie_has_uio(void);
 
 static inline uint64_t
@@ -719,6 +722,19 @@ static void rshim_pcie_intr(rshim_pcie_t *dev)
     rshim_pcie_enable_irq(dev, true);
 }
 
+static void rshim_pcie_intr_poll(rshim_pcie_t *dev)
+{
+  struct pci_dev *pci_dev = dev->pci_dev;
+  uint16_t reg;
+
+  usleep(rshim_pcie_intr_poll_interval * 1000);
+
+  reg = pci_read_word(pci_dev, PCI_STATUS);
+  if (reg & PCI_STATUS_INTx) {
+    rshim_pcie_intr(dev);
+  }
+}
+
 static void *rshim_pcie_intr_thread(void *arg)
 {
   rshim_pcie_t *dev = arg;
@@ -727,7 +743,10 @@ static void *rshim_pcie_intr_thread(void *arg)
 
   while (rshim_run) {
     if (dev->intr_fd < 0) {
-      sleep(1);
+      if (rshim_pcie_mmap_mode == RSHIM_PCIE_MMAP_DIRECT)
+        rshim_pcie_intr_poll(dev);
+      else
+        sleep(1);
       continue;
     }
 
