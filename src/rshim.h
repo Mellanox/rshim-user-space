@@ -42,6 +42,7 @@ extern bool rshim_daemon_mode;
 extern int rshim_drop_mode;
 extern int rshim_usb_reset_delay;
 extern int rshim_pcie_reset_delay;
+extern int rshim_pcie_intr_poll_interval;
 
 #ifndef offsetof
 #define offsetof(TYPE, MEMBER)	((size_t)&((TYPE *)0)->MEMBER)

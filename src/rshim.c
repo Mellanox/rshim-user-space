@@ -2719,6 +2719,9 @@ static int rshim_load_cfg(void)
     } else if (!strcmp(key, "USB_RESET_DELAY")) {
       rshim_usb_reset_delay = atoi(value);
       continue;
+    } else if (!strcmp(key, "PCIE_INTR_POLL_INTERVAL")) {
+      rshim_pcie_intr_poll_interval = atoi(value);
+      continue;
     }
 
     if (strncmp(key, "rshim", 5) && strcmp(key, "none"))
