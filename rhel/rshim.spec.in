@@ -4,7 +4,7 @@
 
 Name: rshim
 Version: @VERSION@
-Release: 7%{?dist}
+Release: 8%{?dist}
 Summary: User-space driver for Mellanox BlueField SoC
 
 License: GPLv2
@@ -54,6 +54,10 @@ via the virtual console or network interface.
 %{_mandir}/man8/rshim.8.gz
 
 %changelog
+* Mon Apr 18 2022 Liming Sun <limings@nvidia.com> - 2.0.6-8
+- Add interrupt polling for direct mmap() mode
+- Fix several coverity warnings
+
 * Thu Apr 07 2022 Liming Sun <limings@nvidia.com> - 2.0.6-7
 - Keep intr_fd during rshim_pcie disable/enable
 - Mustang: Add support for rshim over pcie and pcie_lf

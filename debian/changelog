@@ -1,3 +1,10 @@
+rshim (2.0.6-8) UNRELEASED; urgency=low
+
+  * Add interrupt polling for direct mmap() mode
+  * Fix several coverity warnings
+
+ -- Liming Sun <limings@nvidia.com>  Mon, 18 Apr 2022 23:31:20 -0400
+
 rshim (2.0.6-7) UNRELEASED; urgency=low
 
   * Keep intr_fd during rshim_pcie disable/enable
