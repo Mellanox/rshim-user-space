@@ -1,3 +1,9 @@
+rshim (2.0.6-9) UNRELEASED; urgency=low
+
+  * Use per-device memory-map mode
+
+ -- Liming Sun <limings@nvidia.com>  Thu, 28 Apr 2022 15:12:10 -0400
+
 rshim (2.0.6-8) UNRELEASED; urgency=low
 
   * Add interrupt polling for direct mmap() mode

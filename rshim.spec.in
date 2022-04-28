@@ -4,7 +4,7 @@
 
 Name: rshim
 Version: @VERSION@
-Release: 8%{?dist}
+Release: 9%{?dist}
 Summary: User-space driver for Mellanox BlueField SoC
 
 License: GPLv2
@@ -95,6 +95,9 @@ fi
 %{_mandir}/man8/bfb-install.8.gz
 
 %changelog
+* Thu Apr 28 2022 Liming Sun <limings@nvidia.com> - 2.0.6-9
+- Use per-device memory-map mode
+
 * Mon Apr 18 2022 Liming Sun <limings@nvidia.com> - 2.0.6-8
 - Add interrupt polling for direct mmap() mode
 - Fix several coverity warnings
