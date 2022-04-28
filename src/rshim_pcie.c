@@ -183,6 +183,10 @@ typedef struct {
 
   /* Number of interrupts since last irq time */
   uint32_t intr_cnt;
+
+  /* Memory map and PCI sysfs path. */
+  int mmap_mode;
+  const char *pci_path;
 } rshim_pcie_t;
 
 int bf3_rshim_pcie_chan_map[] = {
@@ -251,17 +255,17 @@ static void rshim_pcie_bind(rshim_pcie_t *dev, bool enable)
   char cmd[RSHIM_CMD_MAX];
   int rc;
 
-  if (rshim_pcie_mmap_mode == RSHIM_PCIE_MMAP_VFIO ||
-      rshim_pcie_mmap_mode == RSHIM_PCIE_MMAP_UIO) {
+  if (dev->mmap_mode == RSHIM_PCIE_MMAP_VFIO ||
+      dev->mmap_mode == RSHIM_PCIE_MMAP_UIO) {
     snprintf(cmd, sizeof(cmd), "echo '%x %x' > %s/%s 2>/dev/null",
-             TILERA_VENDOR_ID, BLUEFIELD1_DEVICE_ID, rshim_sys_pci_path,
+             TILERA_VENDOR_ID, BLUEFIELD1_DEVICE_ID, dev->pci_path,
              enable ? "new_id" : "remove_id");
     rc = system(cmd);
     if (rc == -1)
       RSHIM_DBG("Failed to write device id %m\n");
 
     snprintf(cmd, sizeof(cmd), "echo '%x %x' > %s/%s 2>/dev/null",
-             TILERA_VENDOR_ID, BLUEFIELD2_DEVICE_ID, rshim_sys_pci_path,
+             TILERA_VENDOR_ID, BLUEFIELD2_DEVICE_ID, dev->pci_path,
              enable ? "new_id" : "remove_id");
     rc = system(cmd);
     if (rc == -1)
@@ -270,10 +274,10 @@ static void rshim_pcie_bind(rshim_pcie_t *dev, bool enable)
     snprintf(cmd, sizeof(cmd),
              "echo %04x:%02x:%02x.%1u > %s/%s 2>/dev/null",
              pci_dev->domain, pci_dev->bus, pci_dev->dev, pci_dev->func,
-             rshim_sys_pci_path, enable ? "bind" : "unbind");
+             dev->pci_path, enable ? "bind" : "unbind");
     if (system(cmd) == -1)
       RSHIM_DBG("Failed to bind/unbind device\n");
-  } else if (rshim_pcie_mmap_mode == RSHIM_PCIE_MMAP_DIRECT && enable) {
+  } else if (dev->mmap_mode == RSHIM_PCIE_MMAP_DIRECT && enable) {
     snprintf(cmd, sizeof(cmd), "echo 1 > %s/%04x:%02x:%02x.%1u/enable",
              SYS_BUS_PCI_PATH, pci_dev->domain, pci_dev->bus,
              pci_dev->dev, pci_dev->func);
@@ -336,14 +340,14 @@ static int rshim_pcie_enable_irq(rshim_pcie_t *dev, bool enable)
   int len, ret;
   uint16_t reg;
 
-  if (rshim_pcie_mmap_mode == RSHIM_PCIE_MMAP_UIO) {
+  if (dev->mmap_mode == RSHIM_PCIE_MMAP_UIO) {
     reg = pci_read_word(pci_dev, PCI_COMMAND);
     if (enable && (reg & PCI_COMMAND_DISABLE_INTx))
       pci_write_word(pci_dev, PCI_COMMAND, reg & ~PCI_COMMAND_DISABLE_INTx);
     else if (!enable && !(reg & PCI_COMMAND_DISABLE_INTx))
       pci_write_word(pci_dev, PCI_COMMAND, reg | PCI_COMMAND_DISABLE_INTx);
     return 0;
-  } else if (rshim_pcie_mmap_mode != RSHIM_PCIE_MMAP_VFIO) {
+  } else if (dev->mmap_mode != RSHIM_PCIE_MMAP_VFIO) {
     return 0;
   }
 
@@ -425,7 +429,7 @@ static int rshim_pcie_mmap_vfio(rshim_pcie_t *dev)
 
   container_fd = open("/dev/vfio/vfio", O_RDWR);
   if (container_fd < 0) {
-    printf("Failed to open /dev/vfio/vfio, %d (%s)\n",
+    RSHIM_DBG("Failed to open /dev/vfio/vfio, %d (%s)\n",
            container_fd, strerror(errno));
     rc = container_fd;
     goto fail;
@@ -638,11 +642,11 @@ static int rshim_pcie_mmap(rshim_pcie_t *dev, bool enable)
     return 0;
   }
 
-  if (rshim_pcie_mmap_mode == RSHIM_PCIE_MMAP_VFIO)
+  if (dev->mmap_mode == RSHIM_PCIE_MMAP_VFIO)
     rc = rshim_pcie_mmap_vfio(dev);
-  else if (rshim_pcie_mmap_mode == RSHIM_PCIE_MMAP_UIO)
+  else if (dev->mmap_mode == RSHIM_PCIE_MMAP_UIO)
     rc = rshim_pcie_mmap_uio(dev);
-  else if (rshim_pcie_mmap_mode == RSHIM_PCIE_MMAP_DIRECT)
+  else if (dev->mmap_mode == RSHIM_PCIE_MMAP_DIRECT)
     rc = rshim_pcie_mmap_direct(dev);
 
   return rc;
@@ -743,7 +747,7 @@ static void *rshim_pcie_intr_thread(void *arg)
 
   while (rshim_run) {
     if (dev->intr_fd < 0) {
-      if (rshim_pcie_mmap_mode == RSHIM_PCIE_MMAP_DIRECT)
+      if (dev->mmap_mode == RSHIM_PCIE_MMAP_DIRECT)
         rshim_pcie_intr_poll(dev);
       else
         sleep(1);
@@ -928,22 +932,22 @@ static int rshim_pcie_enable(rshim_backend_t *bd, bool enable)
     rc = rshim_pcie_mmap(dev, true);
 
     /* Fall-back to uio if failed. */
-    if (rc < 0 && rshim_pcie_mmap_mode == RSHIM_PCIE_MMAP_VFIO &&
+    if (rc < 0 && dev->mmap_mode == RSHIM_PCIE_MMAP_VFIO &&
         rshim_pcie_has_uio()) {
       RSHIM_INFO("Fall-back to uio\n");
       rshim_pcie_bind(dev, false);
-      rshim_sys_pci_path = SYS_UIO_PCI_PATH;
-      rshim_pcie_mmap_mode = RSHIM_PCIE_MMAP_UIO;
+      dev->pci_path = SYS_UIO_PCI_PATH;
+      dev->mmap_mode = RSHIM_PCIE_MMAP_UIO;
       rshim_pcie_bind(dev, true);
       rc = rshim_pcie_mmap(dev, true);
     }
 
     /* Fall-back to direct map if failed. */
-    if (rc < 0 && rshim_pcie_mmap_mode == RSHIM_PCIE_MMAP_UIO) {
+    if (rc < 0 && dev->mmap_mode == RSHIM_PCIE_MMAP_UIO) {
       RSHIM_INFO("Fall-back to direct io\n");
       rshim_pcie_bind(dev, false);
-      rshim_sys_pci_path = NULL;
-      rshim_pcie_mmap_mode = RSHIM_PCIE_MMAP_DIRECT;
+      dev->pci_path = NULL;
+      dev->mmap_mode = RSHIM_PCIE_MMAP_DIRECT;
       rc = rshim_pcie_mmap(dev, true);
     }
   }
@@ -955,7 +959,7 @@ static int rshim_pcie_enable(rshim_backend_t *bd, bool enable)
     rc = rshim_pcie_mmap(dev, true);
 #endif /* __linux__ */
 
-  RSHIM_INFO("rshim%d %s\n", bd->index, enable ? "enable" : "disable");
+  RSHIM_INFO("rshim %s %s\n", bd->dev_name, enable ? "enable" : "disable");
 
   return rc;
 }
@@ -1003,6 +1007,8 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
     dev->group_fd = -1;
     dev->container_fd = -1;
     dev->intr_fd = -1;
+    dev->mmap_mode = rshim_pcie_mmap_mode;
+    dev->pci_path = rshim_sys_pci_path;
     time(&dev->last_intr_time);
     pthread_mutex_init(&bd->mutex, NULL);
   }
