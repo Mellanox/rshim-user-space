@@ -23,7 +23,7 @@
 
 #include "rshim.h"
 
-#define REVISION "9"
+#define REVISION "10"
 
 /* Maximum number of devices supported. */
 #define RSHIM_MAX_DEV 64

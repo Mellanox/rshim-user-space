@@ -1,3 +1,9 @@
+rshim (2.0.6-10) UNRELEASED; urgency=low
+
+  * Fix several compiling issues for FreeBSD
+
+ -- Liming Sun <limings@nvidia.com>  Mon, 02 May 2022 09:52:10 -0400
+
 rshim (2.0.6-9) UNRELEASED; urgency=low
 
   * Use per-device memory-map mode
