@@ -12,7 +12,6 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/epoll.h>
-#include <sys/eventfd.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <sys/param.h>
@@ -31,6 +30,7 @@
 #ifdef __linux__
 #include <dirent.h>
 #include <linux/vfio.h>
+#include <sys/eventfd.h>
 #include <sys/vfs.h>
 #include <unistd.h>
 #endif
@@ -127,12 +127,11 @@ static rshim_pcie_mmap_mode_t rshim_pcie_mmap_mode = RSHIM_PCIE_MMAP_DIRECT;
 static const char *rshim_pcie_mmap_name[] = {"direct", "uio", "vfio"};
 #ifdef __linux__
 static const char *rshim_sys_pci_path;
+static bool rshim_pcie_has_uio(void);
 #endif
 
 /* Interrupt polling interval in milliseconds for direct-mapping mode. */
 int rshim_pcie_intr_poll_interval = 10;
-
-static bool rshim_pcie_has_uio(void);
 
 static inline uint64_t
 readq(const volatile void *addr)
@@ -189,10 +188,10 @@ typedef struct {
   const char *pci_path;
 } rshim_pcie_t;
 
-int bf3_rshim_pcie_chan_map[] = {
+static const int bf3_rshim_pcie_chan_map[] = {
 	[RSHIM_CHANNEL] = 0,
 	[UART0_CHANNEL] = 0x10000,
-	[UART0_CHANNEL] = 0x11000,
+	[UART1_CHANNEL] = 0x11000,
 	[DIAGUART_CHANNEL] = 0x12000,
 	[RSH_HUB_CHANNEL] = 0x12400,
 	[WDOG0_CHANNEL] = 0x20000,
@@ -1008,7 +1007,9 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
     dev->container_fd = -1;
     dev->intr_fd = -1;
     dev->mmap_mode = rshim_pcie_mmap_mode;
+#ifdef __linux__
     dev->pci_path = rshim_sys_pci_path;
+#endif
     time(&dev->last_intr_time);
     pthread_mutex_init(&bd->mutex, NULL);
   }
