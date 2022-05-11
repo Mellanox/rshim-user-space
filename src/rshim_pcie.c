@@ -254,6 +254,16 @@ static void rshim_pcie_bind(rshim_pcie_t *dev, bool enable)
   char cmd[RSHIM_CMD_MAX];
   int rc;
 
+  /*
+   * Linux kernel prior 4.18 has a bug which could cause crash when uio is
+   * unregistered (see commit 57c5f4df0a5a uio: fix crash after the device
+   * is unregistered). Below is a workaround to avoid such crash for uio.
+   * The rshim probing order is vfio->uio->direct. The uio unbind won't
+   * affect the operation of direct mapping.
+   */
+  if (!enable && (dev->mmap_mode == RSHIM_PCIE_MMAP_UIO))
+    return;
+
   if (dev->mmap_mode == RSHIM_PCIE_MMAP_VFIO ||
       dev->mmap_mode == RSHIM_PCIE_MMAP_UIO) {
     snprintf(cmd, sizeof(cmd), "echo '%x %x' > %s/%s 2>/dev/null",
