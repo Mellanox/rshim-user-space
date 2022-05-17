@@ -4,7 +4,7 @@
 
 Name: rshim
 Version: @VERSION@
-Release: 10%{?dist}
+Release: 11%{?dist}
 Summary: User-space driver for Mellanox BlueField SoC
 
 License: GPLv2
@@ -54,6 +54,9 @@ via the virtual console or network interface.
 %{_mandir}/man8/rshim.8.gz
 
 %changelog
+* Mon May 16 2022 Liming Sun <limings@nvidia.com> - 2.0.6-11
+- Avoid kernel crash when unbind rshim from uio
+
 * Mon May 02 2022 Liming Sun <limings@nvidia.com> - 2.0.6-10
 - Fix several compiling issues for FreeBSD
 
