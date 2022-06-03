@@ -549,14 +549,15 @@ bool rshim_allow_device(const char *devname);
 /* USB backend APIs. */
 #ifdef HAVE_RSHIM_USB
 int rshim_usb_init(int epoll_fd);
-void rshim_usb_poll(void);
+void rshim_usb_poll(bool blocking);
 #else
 static inline int rshim_usb_init(int epoll_fd)
 {
   return -1;
 }
-static inline void rshim_usb_poll(void)
+static inline void rshim_usb_poll(bool blocking)
 {
+  (void)blocking;
 }
 #endif
 

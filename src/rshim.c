@@ -2612,9 +2612,6 @@ static void rshim_main(int argc, char *argv[])
       }
     }
 
-    /* Check USB for timeout or unhandled fd. */
-    rshim_usb_poll();
-
     /* Delayed initialization for livefish probe. */
     if (!rshim_pcie_lf_init_done) {
       time(&t1);
@@ -2631,6 +2628,9 @@ static void rshim_main(int argc, char *argv[])
       } else if (rshim_timer_interval) {
           rshim_set_timer(timer_fd, 0);
       }
+
+      /* Check USB for timeout or unhandled fd. */
+      rshim_usb_poll(rshim_dev_bitmask ? false : true);
     }
   }
 
