@@ -58,7 +58,7 @@ typedef struct {
 
 static libusb_context *rshim_usb_ctx;
 static int rshim_usb_epoll_fd;
-static bool rshim_usb_need_probe, rshim_usb_need_poll;
+static bool rshim_usb_need_probe;
 
 static int rshim_usb_product_ids[] = {
   USB_BLUEFIELD_1_PRODUCT_ID,
@@ -1042,8 +1042,6 @@ static int rshim_usb_add_poll(libusb_context *ctx)
 
   free(usb_pollfd);
 
-  rshim_usb_need_poll = true;
-
   /* Notify the polling thread. */
   rshim_work_signal(NULL);
 
@@ -1185,8 +1183,9 @@ int rshim_usb_init(int epoll_fd)
   return 0;
 }
 
-void rshim_usb_poll(void)
+void rshim_usb_poll(bool blocking)
 {
+  bool found = false;
   struct timeval tv = {0, 0};
 
   if (!rshim_usb_ctx)
@@ -1195,9 +1194,16 @@ void rshim_usb_poll(void)
   if (rshim_usb_need_probe) {
     rshim_usb_need_probe = false;
     __sync_synchronize();
-    rshim_usb_probe();
+    found = rshim_usb_probe();
   }
 
-  if (rshim_usb_need_poll)
+  if (blocking && !found) {
+    /* Handle USB events (like hot-plugin) in blocking mode. */
+    libusb_handle_events_completed(rshim_usb_ctx, NULL);
+
+    /* Wake up the main thread. */
+    rshim_work_signal(NULL);
+  } else {
     libusb_handle_events_timeout_completed(rshim_usb_ctx, &tv, NULL);
+  }
 }
