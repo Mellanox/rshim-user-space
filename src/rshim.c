@@ -208,7 +208,6 @@ volatile bool rshim_run = true;
 static uint32_t rshim_timer_interval = RSHIM_TIMER_INTERVAL;
 
 /* Global lock / unlock. */
-
 void rshim_lock(void)
 {
   pthread_mutex_lock(&rshim_mutex);
