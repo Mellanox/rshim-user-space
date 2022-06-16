@@ -25,7 +25,7 @@
 
 #define REVISION "11"
 
-/* Maximum number of devices supported. */
+/* Maximum number of devices supported (currently it's limited to 64). */
 #define RSHIM_MAX_DEV 64
 
 /* RShim timer interval in milliseconds. */
@@ -281,13 +281,18 @@ static int rshim_fd_full_write(int fd, void *data, int len)
 /* Wake up the epoll loop or worker function. */
 void rshim_work_signal(rshim_backend_t *bd)
 {
+  uint8_t index = (uint8_t)-1;
+  bool update = true;
+
   if (bd) {
     if (__sync_bool_compare_and_swap(&bd->work_pending, false, true))
-      rshim_fd_full_write(rshim_work_fd[1], &bd->index, sizeof(bd->index));
-  } else {
-    int index = -1;
-    rshim_fd_full_write(rshim_work_fd[1], &index, sizeof(index));
+      index = (uint8_t)bd->index;
+    else
+      update = false;
   }
+
+  if (update)
+    rshim_fd_full_write(rshim_work_fd[1], &index, sizeof(index));
 }
 
 /*
@@ -2461,8 +2466,9 @@ static void rshim_set_timer(int timer_fd, int interval)
 
 static void rshim_main(int argc, char *argv[])
 {
-  int i, fd, num, rc, epoll_fd, timer_fd, index;
+  int i, fd, num, rc, epoll_fd, timer_fd;
   bool rshim_pcie_lf_init_done = false;
+  uint8_t index;
 #ifdef __FreeBSD__
   const int MAXEVENTS = 16;
 #else
