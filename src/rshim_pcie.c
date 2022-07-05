@@ -41,8 +41,8 @@
 #define TILERA_VENDOR_ID            0x15b3
 #define BLUEFIELD1_DEVICE_ID        0xc2d2
 #define BLUEFIELD2_DEVICE_ID        0xc2d3
-#define BLUEFIELD2_DEVICE_ID2       0xc2d6
 #define BLUEFIELD3_DEVICE_ID        0xc2d4
+#define BLUEFIELD3_DEVICE_ID2       0xc2d5
 
 /* The offset in BAR2 of the RShim region. */
 #define PCI_RSHIM_WINDOW_OFFSET     0x0
@@ -215,7 +215,8 @@ static bool rshim_is_bluefield2(uint16_t device_id)
 
 static bool rshim_is_bluefield3(uint16_t device_id)
 {
-  return (device_id == BLUEFIELD3_DEVICE_ID);
+  return ((device_id == BLUEFIELD3_DEVICE_ID) ||
+          (device_id == BLUEFIELD3_DEVICE_ID2));
 }
 
 #ifdef __linux__
@@ -1028,6 +1029,7 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
 
   switch (pci_dev->device_id) {
     case BLUEFIELD3_DEVICE_ID:
+    case BLUEFIELD3_DEVICE_ID2:
       bd->regs = &bf3_rshim_regs;
       bd->ver_id = RSHIM_BLUEFIELD_3;
       break;
