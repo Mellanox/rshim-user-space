@@ -15,7 +15,7 @@ Source0: https://github.com/mellanox/rshim-user-space/archive/%{name}-%{version}
 BuildRequires: gcc, autoconf, automake, pkgconfig, make
 BuildRequires: pkgconfig(libpci), pkgconfig(libusb-1.0), pkgconfig(fuse)
 
-%if 0%{?rhel} >= 8 || 0%{?fedora} > 0
+%if (0%{?rhel} >= 8 || 0%{?fedora} > 0) && "0%{?ctyunos}" == "0"
 Requires: kernel-modules-extra
 %endif
 
