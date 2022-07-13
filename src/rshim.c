@@ -402,15 +402,17 @@ static ssize_t rshim_write_delayed(rshim_backend_t *bd, int devtype,
       /* Calculate available space in words. */
       rc = bd->read_rshim(bd, RSHIM_CHANNEL, size_addr, &reg);
       if (rc < 0 || RSHIM_BAD_CTRL_REG(reg)) {
-        RSHIM_ERR("read_rshim error %d\n", rc);
-        break;
+        RSHIM_ERR("rshim%d read_rshim error addr=0x%x, reg=0x%lx, rc=%d\n",
+                  bd->index, size_addr, reg, rc);
+        usleep(10000);
+        return count;
       }
       avail = max_size - (int)(reg & size_mask) - RSHIM_FIFO_SPACE_RESERV;
       if (avail > 0)
         break;
 
       if (devtype == RSH_DEV_TYPE_BOOT)
-        return (byte_cnt > count) ? count : byte_cnt;
+        goto done;
 
       time(&t1);
       if (difftime(t1, t0) > 3) {
@@ -440,6 +442,7 @@ static ssize_t rshim_write_delayed(rshim_backend_t *bd, int devtype,
   }
 
   /* Return number shouldn't count the padded bytes. */
+done:
   return (byte_cnt > count) ? count : byte_cnt;
 }
 
@@ -928,7 +931,8 @@ static int rshim_fifo_tx_avail(rshim_backend_t *bd)
   /* Calculate available size. */
   rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->tm_htt_sts, &word);
   if (rc < 0 || RSHIM_BAD_CTRL_REG(word)) {
-    RSHIM_ERR("read_rshim error %d\n", rc);
+    RSHIM_ERR("rshim%d read_rshim error %d\n", bd->index, rc);
+    usleep(10000);
     return rc;
   }
   avail = max_size - (int)(word & RSH_TM_HOST_TO_TILE_STS__COUNT_MASK) -

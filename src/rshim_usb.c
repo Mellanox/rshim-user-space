@@ -140,8 +140,13 @@ static struct rshim_usb_addr get_wvalue_windex(int chan, int addr, uint16_t ver_
   struct rshim_usb_addr rsh_usb_addr;
 
   if (ver_id == RSHIM_BLUEFIELD_3) {
-    rsh_usb_addr.wvalue = bf3_wvalue_widx_pair_map[chan].wvalue + BF_MMIO_BASE;
-    rsh_usb_addr.windex = bf3_wvalue_widx_pair_map[chan].windex + addr;
+    if (chan <= 0xF) {
+      rsh_usb_addr.wvalue = bf3_wvalue_widx_pair_map[chan].wvalue + BF_MMIO_BASE;
+      rsh_usb_addr.windex = bf3_wvalue_widx_pair_map[chan].windex + addr;
+    } else {
+      rsh_usb_addr.wvalue = chan;
+      rsh_usb_addr.windex = addr;
+    }
   } else {
     rsh_usb_addr.wvalue = chan;
     rsh_usb_addr.windex = addr;
