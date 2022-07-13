@@ -1019,6 +1019,7 @@ static void rshim_fuse_rshim_ioctl(fuse_req_t req, int cmd, void *arg,
   rshim_ioctl_msg msg;
   struct iovec iov;
   uint64_t data = 0;
+  uint16_t chan, offset;
   int rc = 0;
 
   if (!bd) {
@@ -1049,19 +1050,25 @@ static void rshim_fuse_rshim_ioctl(fuse_req_t req, int cmd, void *arg,
 
     memcpy(&msg, in_buf, sizeof(msg));
 
+    /*
+     * Get channel and offset from the 32-bit address.
+     * For BlueField-3 USB, it also supports passing the linear CR-space
+     * address where upper 16-bit is saved in 'chan' and lower 16-bit is
+     * saved in 'offset'.
+     */
+    chan = msg.addr >> 16;
+    offset = msg.addr & 0xFFFF;
+    if (bd->ver_id <= RSHIM_BLUEFIELD_2 || strncmp(bd->dev_name, "usb", 3)) {
+      chan &= 0xF;
+    }
+
     if (cmd == RSHIM_IOC_WRITE) {
       pthread_mutex_lock(&bd->mutex);
-      rc = bd->write_rshim(bd,
-                           (msg.addr >> 16) & 0xF, /* channel # */
-                           msg.addr & 0xFFFF, /* addr */
-                           msg.data);
+      rc = bd->write_rshim(bd, chan, offset, msg.data);
       pthread_mutex_unlock(&bd->mutex);
     } else {
       pthread_mutex_lock(&bd->mutex);
-      rc = bd->read_rshim(bd,
-                           (msg.addr >> 16) & 0xF, /* channel # */
-                           msg.addr & 0xFFFF, /* addr */
-                           &data);
+      rc = bd->read_rshim(bd, chan, offset, &data);
       msg.data = data;
       pthread_mutex_unlock(&bd->mutex);
     }
