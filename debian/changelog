@@ -1,3 +1,10 @@
+rshim (2.0.6-13) UNRELEASED; urgency=low
+
+  * BF3: Support 32-bit CR-space access via USB
+  * Avoid kernel-modules-extra dependency on ctyunos
+
+ -- Liming Sun <limings@nvidia.com>  Sun, 17 Jul 2022 17:01:15 -0400
+
 rshim (2.0.6-12) UNRELEASED; urgency=low
 
   * Optimize the rshim_work_fd

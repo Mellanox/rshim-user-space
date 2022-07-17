@@ -4,7 +4,7 @@
 
 Name: rshim
 Version: @VERSION@
-Release: 12%{?dist}
+Release: 13%{?dist}
 Summary: User-space driver for Mellanox BlueField SoC
 
 License: GPLv2
@@ -54,6 +54,10 @@ via the virtual console or network interface.
 %{_mandir}/man8/rshim.8.gz
 
 %changelog
+* Sun Jul 17 2022 Liming Sun <limings@nvidia.com> - 2.0.6-13
+- BF3: Support 32-bit CR-space access via USB
+- Avoid kernel-modules-extra dependency on ctyunos
+
 * Thu Jun 16 2022 Liming Sun <limings@nvidia.com> - 2.0.6-12
 - Optimize the rshim_work_fd
 - Detect new USB/rshim hot plugin
