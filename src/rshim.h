@@ -411,13 +411,13 @@ struct rshim_backend {
   /* API to destroy the backend. */
   void (*destroy)(rshim_backend_t *bd);
 
-  /* API to read 8 bytes from RShim. */
+  /* API to read <size> bytes from RShim. */
   int (*read_rshim)(rshim_backend_t *bd, int chan, int addr,
-                    uint64_t *value);
+                    uint64_t *value, int size);
 
-  /* API to write 8 bytes to RShim. */
+  /* API to write <size> bytes to RShim. */
   int (*write_rshim)(rshim_backend_t *bd, int chan, int addr,
-                     uint64_t value);
+                     uint64_t value, int size);
 
   /* API to enable the device. */
   int (*enable_device)(rshim_backend_t *bd, bool enable);
@@ -425,6 +425,8 @@ struct rshim_backend {
   /* Platform specific register addresses */
   const struct rshim_regs *regs;
 };
+
+#define RSHIM_REG_SIZE_8B 8
 
 struct rshim_regs {
   uint32_t boot_fifo_data;

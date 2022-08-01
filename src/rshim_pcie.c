@@ -678,7 +678,7 @@ static void rshim_pcie_intr(rshim_pcie_t *dev)
   if (dev->intr_cnt > RSHIM_PCIE_NIC_IRQ_RATE)
     return;
 
-  rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad6, &info.word);
+  rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad6, &info.word, RSHIM_REG_SIZE_8B);
   if (rc || RSHIM_BAD_CTRL_REG(info.word)) {
     RSHIM_WARN("Failed to read irq request\n");
     return;
@@ -699,12 +699,12 @@ static void rshim_pcie_intr(rshim_pcie_t *dev)
     info.rst_reply = RSHIM_PCIE_RST_REPLY_ACK;
     dev->nic_reset = true;
     __sync_synchronize();
-    bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad6, info.word);
+    bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad6, info.word, RSHIM_REG_SIZE_8B);
     sleep(RSHIM_PCIE_NIC_RESET_WAIT);
     dev->nic_reset = false;
   }
 
-  rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad6, &info.word);
+  rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad6, &info.word, RSHIM_REG_SIZE_8B);
   if (rc || RSHIM_BAD_CTRL_REG(info.word)) {
     RSHIM_WARN("Failed to read irq request\n");
     return;
@@ -713,7 +713,7 @@ static void rshim_pcie_intr(rshim_pcie_t *dev)
   if (info.rst_state == RSHIM_PCIE_RST_STATE_ABORT) {
     RSHIM_INFO("NIC reset ABORT\n");
     info.word &= 0xFFFFFFFFUL;
-    bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad6, info.word);
+    bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad6, info.word, RSHIM_REG_SIZE_8B);
   } else if (info.rst_type == RSHIM_PCIE_RST_TYPE_DPU_RESET) {
     /*
      * Both NIC and ARM reset.
@@ -838,7 +838,7 @@ rshim_map_failed:
 
 /* RShim read/write routines */
 static int __attribute__ ((noinline))
-rshim_pcie_read(rshim_backend_t *bd, int chan, int addr, uint64_t *result)
+rshim_pcie_read(rshim_backend_t *bd, int chan, int addr, uint64_t *result, int size)
 {
   rshim_pcie_t *dev = container_of(bd, rshim_pcie_t, bd);
   int rc = 0;
@@ -867,7 +867,7 @@ rshim_pcie_read(rshim_backend_t *bd, int chan, int addr, uint64_t *result)
 }
 
 static int __attribute__ ((noinline))
-rshim_pcie_write(rshim_backend_t *bd, int chan, int addr, uint64_t value)
+rshim_pcie_write(rshim_backend_t *bd, int chan, int addr, uint64_t value, int size)
 {
   rshim_pcie_t *dev = container_of(bd, rshim_pcie_t, bd);
   uint64_t result;
@@ -893,7 +893,7 @@ rshim_pcie_write(rshim_backend_t *bd, int chan, int addr, uint64_t value)
   if (rshim_is_bluefield1(dev->pci_dev->device_id)) {
     if (dev->write_count == 15) {
       __sync_synchronize();
-      rshim_pcie_read(bd, chan, RSH_SCRATCHPAD1, &result);
+      rshim_pcie_read(bd, chan, RSH_SCRATCHPAD1, &result, rc);
     }
     dev->write_count++;
   }
@@ -928,7 +928,7 @@ static int rshim_pcie_enable(rshim_backend_t *bd, bool enable)
    * This needs to be done before the resources are unmapped.
    */
   if (!enable)
-    rshim_pcie_write(bd, RSHIM_CHANNEL, bd->regs->scratchpad1, 0);
+    rshim_pcie_write(bd, RSHIM_CHANNEL, bd->regs->scratchpad1, 0, RSHIM_REG_SIZE_8B);
 
   /* Unmap existing resource first. */
   rshim_pcie_mmap(dev, false);

@@ -646,7 +646,7 @@ static int rshim_boot_fifo_write(struct pci_dev *pci_dev, int addr,
 
 /* RShim read/write routines */
 static int __attribute__ ((noinline))
-rshim_pcie_read(struct rshim_backend *bd, int chan, int addr, uint64_t *result)
+rshim_pcie_read(struct rshim_backend *bd, int chan, int addr, uint64_t *result, int size)
 {
   rshim_pcie_lf_t *dev = container_of(bd, rshim_pcie_lf_t, bd);
   struct pci_dev *pci_dev = dev->pci_dev;
@@ -673,7 +673,7 @@ rshim_pcie_read(struct rshim_backend *bd, int chan, int addr, uint64_t *result)
 }
 
 static int __attribute__ ((noinline))
-rshim_pcie_write(struct rshim_backend *bd, int chan, int addr, uint64_t value)
+rshim_pcie_write(struct rshim_backend *bd, int chan, int addr, uint64_t value, int size)
 {
   rshim_pcie_lf_t *dev = container_of(bd, rshim_pcie_lf_t, bd);
   struct pci_dev *pci_dev = dev->pci_dev;
@@ -704,7 +704,7 @@ rshim_pcie_write(struct rshim_backend *bd, int chan, int addr, uint64_t value)
     if (pci_dev->device_id == BLUEFIELD1_DEVICE_ID) {
       if (dev->write_count == 7) {
         __sync_synchronize();
-        rshim_pcie_read(bd, chan, RSH_SCRATCHPAD1, &result);
+        rshim_pcie_read(bd, chan, RSH_SCRATCHPAD1, &result, rc);
       }
       dev->write_count++;
     }
