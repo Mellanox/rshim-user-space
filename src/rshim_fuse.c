@@ -643,7 +643,7 @@ static int rshim_fuse_misc_read(struct cuse_dev *cdev, int fflags,
   pthread_mutex_lock(&bd->mutex);
 
   /* Boot mode. */
-  rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->boot_control, &value);
+  rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->boot_control, &value, RSHIM_REG_SIZE_8B);
   if (rc) {
     pthread_mutex_unlock(&bd->mutex);
     RSHIM_ERR("couldn't read rshim register\n");
@@ -865,7 +865,8 @@ static int rshim_fuse_misc_write(struct cuse_dev *cdev, int fflags,
 
     pthread_mutex_lock(&bd->mutex);
     rc = bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->boot_control,
-                         value & RSH_BOOT_CONTROL__BOOT_MODE_MASK);
+                         value & RSH_BOOT_CONTROL__BOOT_MODE_MASK,
+                         RSHIM_REG_SIZE_8B);
     pthread_mutex_unlock(&bd->mutex);
   } else if (strcmp(key, "SW_RESET") == 0) {
     if (sscanf(p, "%x", &value) != 1)
@@ -1004,9 +1005,20 @@ typedef struct {
   uint64_t data;
 } __attribute__((packed)) rshim_ioctl_msg;
 
+/* ioctl message header for Mustang. Unlike BF1 and BF2, Mustang
+ * HW enables different USB transfer sizes: 1B, 2B, 4B and 8B.
+ */
+typedef struct {
+  uint32_t addr;
+  uint64_t data;
+  uint8_t data_size;
+} __attribute__((packed)) rshim_ioctl_msg2;
+
 enum {
   RSHIM_IOC_READ = _IOWR('R', 0, rshim_ioctl_msg),
   RSHIM_IOC_WRITE = _IOWR('R', 1, rshim_ioctl_msg),
+  RSHIM_IOC_READ2 = _IOWR('R', 0, rshim_ioctl_msg2),
+  RSHIM_IOC_WRITE2 = _IOWR('R', 1, rshim_ioctl_msg2),
 };
 
 #ifdef __linux__
@@ -1017,6 +1029,7 @@ static void rshim_fuse_rshim_ioctl(fuse_req_t req, int cmd, void *arg,
 {
   rshim_backend_t *bd = fuse_req_userdata(req);
   rshim_ioctl_msg msg;
+  rshim_ioctl_msg2 msg2;
   struct iovec iov;
   uint64_t data = 0;
   uint16_t chan, offset;
@@ -1064,17 +1077,68 @@ static void rshim_fuse_rshim_ioctl(fuse_req_t req, int cmd, void *arg,
 
     if (cmd == RSHIM_IOC_WRITE) {
       pthread_mutex_lock(&bd->mutex);
-      rc = bd->write_rshim(bd, chan, offset, msg.data);
+      rc = bd->write_rshim(bd, chan, offset, msg.data, RSHIM_REG_SIZE_8B);
       pthread_mutex_unlock(&bd->mutex);
     } else {
       pthread_mutex_lock(&bd->mutex);
-      rc = bd->read_rshim(bd, chan, offset, &data);
+      rc = bd->read_rshim(bd, chan, offset, &data, RSHIM_REG_SIZE_8B);
       msg.data = data;
       pthread_mutex_unlock(&bd->mutex);
     }
 
     if (!rc)
       fuse_reply_ioctl(req, 0, &msg, sizeof(msg));
+    else
+      fuse_reply_err(req, -rc);
+    break;
+
+  case RSHIM_IOC_READ2:
+  case RSHIM_IOC_WRITE2:
+    iov.iov_base = arg;
+    iov.iov_len = sizeof(msg2);
+
+    if (!in_bufsz) {
+      fuse_reply_ioctl_retry(req, &iov, 1, NULL, 0);
+      return;
+    }
+
+    if (in_bufsz != sizeof(msg2)) {
+      fuse_reply_err(req, EINVAL);
+      return;
+    }
+
+    if (!out_bufsz) {
+      fuse_reply_ioctl_retry(req, &iov, 1, &iov, 1);
+      return;
+    }
+
+    memcpy(&msg2, in_buf, sizeof(msg2));
+
+    /*
+     * Get channel and offset from the 32-bit address.
+     * For BlueField-3 USB, it also supports passing the linear CR-space
+     * address where upper 16-bit is saved in 'chan' and lower 16-bit is
+     * saved in 'offset'.
+     */
+    chan = msg2.addr >> 16;
+    offset = msg2.addr & 0xFFFF;
+    if (bd->ver_id <= RSHIM_BLUEFIELD_2 || strncmp(bd->dev_name, "usb", 3)) {
+      chan &= 0xF;
+    }
+
+    if (cmd == RSHIM_IOC_WRITE2) {
+      pthread_mutex_lock(&bd->mutex);
+      rc = bd->write_rshim(bd, chan, offset, msg2.data, msg2.data_size);
+      pthread_mutex_unlock(&bd->mutex);
+    } else {
+      pthread_mutex_lock(&bd->mutex);
+      rc = bd->read_rshim(bd, chan, offset, &data, msg2.data_size);
+      msg2.data = data;
+      pthread_mutex_unlock(&bd->mutex);
+    }
+
+    if (!rc)
+      fuse_reply_ioctl(req, 0, &msg2, sizeof(msg2));
     else
       fuse_reply_err(req, -rc);
     break;
@@ -1091,6 +1155,7 @@ static int rshim_fuse_rshim_ioctl(struct cuse_dev *cdev, int fflags,
   rshim_backend_t *bd = cuse_dev_get_priv0(cdev);
   int rc = CUSE_ERR_INVALID;
   rshim_ioctl_msg msg;
+  rshim_ioctl_msg2 msg2;
   uint64_t data;
 
   pthread_mutex_lock(&bd->mutex);
@@ -1103,7 +1168,7 @@ static int rshim_fuse_rshim_ioctl(struct cuse_dev *cdev, int fflags,
       rc = bd->read_rshim(bd,
                            (msg.addr >> 16) & 0xF, /* channel # */
                            msg.addr & 0xFFFF, /* addr */
-                           &data);
+                           &data, RSHIM_REG_SIZE_8B);
       if (!rc)
         rc = cuse_copy_out(&msg, peer_data, sizeof(msg));
       else
@@ -1117,7 +1182,33 @@ static int rshim_fuse_rshim_ioctl(struct cuse_dev *cdev, int fflags,
     rc = bd->write_rshim(bd,
                          (msg.addr >> 16) & 0xF, /* channel # */
                          msg.addr & 0xFFFF, /* addr */
-                         msg.data);
+                         msg.data, RSHIM_REG_SIZE_8B);
+    if (rc)
+      rc = CUSE_ERR_INVALID;
+    break;
+
+  case RSHIM_IOC_READ2:
+    rc = cuse_copy_in(peer_data, &msg2, sizeof(msg2));
+    if (rc == CUSE_ERR_NONE) {
+      data = msg2.data;
+      rc = bd->read_rshim(bd,
+                           (msg2.addr >> 16) & 0xF, /* channel # */
+                           msg2.addr & 0xFFFF, /* addr */
+                           &data, msg2.data_size);
+      if (!rc)
+        rc = cuse_copy_out(&msg2, peer_data, sizeof(msg2));
+      else
+        rc = CUSE_ERR_INVALID;
+    }
+    break;
+
+  case RSHIM_IOC_WRITE2:
+    rc = cuse_copy_in(peer_data, &msg2, sizeof(msg2));
+
+    rc = bd->write_rshim(bd,
+                         (msg2.addr >> 16) & 0xF, /* channel # */
+                         msg2.addr & 0xFFFF, /* addr */
+                         msg2.data, msg2.data_size);
     if (rc)
       rc = CUSE_ERR_INVALID;
     break;

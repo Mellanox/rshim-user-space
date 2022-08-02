@@ -158,7 +158,7 @@ static struct rshim_usb_addr get_wvalue_windex(int chan, int addr, uint16_t ver_
 /* Rshim read/write routines */
 
 static int rshim_usb_read_rshim(rshim_backend_t *bd, int chan, int addr,
-                                uint64_t *result)
+                                uint64_t *result, int size)
 {
   rshim_usb_t *dev = container_of(bd, rshim_usb_t, bd);
   struct rshim_usb_addr rsh_usb_addr;
@@ -166,6 +166,9 @@ static int rshim_usb_read_rshim(rshim_backend_t *bd, int chan, int addr,
 
   if (!bd->has_rshim)
     return -ENODEV;
+
+  if (bd->ver_id != RSHIM_BLUEFIELD_3)
+    size = RSHIM_REG_SIZE_8B;
 
   rsh_usb_addr = get_wvalue_windex(chan, addr, bd->ver_id);
 
@@ -175,8 +178,7 @@ static int rshim_usb_read_rshim(rshim_backend_t *bd, int chan, int addr,
                                LIBUSB_REQUEST_TYPE_VENDOR |
                                LIBUSB_RECIPIENT_ENDPOINT,
                                0, rsh_usb_addr.wvalue, rsh_usb_addr.windex,
-                               (unsigned char *)&dev->ctrl_data,
-                               sizeof(dev->ctrl_data),
+                               (unsigned char *)&dev->ctrl_data, size,
                                RSHIM_USB_TIMEOUT);
 
   /*
@@ -185,7 +187,7 @@ static int rshim_usb_read_rshim(rshim_backend_t *bd, int chan, int addr,
    * cores.
    */
   *result = le64toh(dev->ctrl_data);
-  if (rc == sizeof(dev->ctrl_data))
+  if (rc == size)
     return 0;
 
   /*
@@ -193,11 +195,11 @@ static int rshim_usb_read_rshim(rshim_backend_t *bd, int chan, int addr,
    * the USB stack doesn't use so that we can identify short/long
    * reads.
    */
-  return rc >= 0 ? (rc > sizeof(dev->ctrl_data) ? -EINVAL : -ENXIO) : rc;
+  return rc >= 0 ? (rc > size ? -EINVAL : -ENXIO) : rc;
 }
 
 static int rshim_usb_write_rshim(rshim_backend_t *bd, int chan, int addr,
-                                 uint64_t value)
+                                 uint64_t value, int size)
 {
   rshim_usb_t *dev = container_of(bd, rshim_usb_t, bd);
   struct rshim_usb_addr rsh_usb_addr;
@@ -205,6 +207,9 @@ static int rshim_usb_write_rshim(rshim_backend_t *bd, int chan, int addr,
 
   if (!bd->has_rshim)
     return -ENODEV;
+
+  if (bd->ver_id != RSHIM_BLUEFIELD_3)
+    size = RSHIM_REG_SIZE_8B;
 
   rsh_usb_addr = get_wvalue_windex(chan, addr, bd->ver_id);
 
@@ -215,11 +220,10 @@ static int rshim_usb_write_rshim(rshim_backend_t *bd, int chan, int addr,
                                LIBUSB_REQUEST_TYPE_VENDOR |
                                LIBUSB_RECIPIENT_ENDPOINT,
                                0, rsh_usb_addr.wvalue, rsh_usb_addr.windex,
-                               (unsigned char *)&dev->ctrl_data,
-                               sizeof(dev->ctrl_data),
+                               (unsigned char *)&dev->ctrl_data, size,
                                RSHIM_USB_TIMEOUT);
 
-  if (rc == sizeof(dev->ctrl_data))
+  if (rc == size)
     return 0;
 
   /*
@@ -227,7 +231,7 @@ static int rshim_usb_write_rshim(rshim_backend_t *bd, int chan, int addr,
    * the USB stack doesn't use so that we can identify short/long
    * writes.
    */
-  return rc >= 0 ? (rc > sizeof(dev->ctrl_data) ? -EINVAL : -ENXIO) : rc;
+  return rc >= 0 ? (rc > size ? -EINVAL : -ENXIO) : rc;
 }
 
 static ssize_t rshim_usb_bf3_boot_write(rshim_backend_t *bd, const char *buf,
@@ -254,7 +258,7 @@ static ssize_t rshim_usb_bf3_boot_write(rshim_backend_t *bd, const char *buf,
      */
     do {
 
-      rc = bd->read_rshim(bd, RSHIM_CHANNEL, size_addr, &reg);
+      rc = bd->read_rshim(bd, RSHIM_CHANNEL, size_addr, &reg, RSHIM_REG_SIZE_8B);
       if (rc < 0) {
         RSHIM_ERR("read_rshim error %d\n", rc);
         return rc;
