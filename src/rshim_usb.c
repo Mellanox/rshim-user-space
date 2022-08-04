@@ -167,7 +167,9 @@ static int rshim_usb_read_rshim(rshim_backend_t *bd, int chan, int addr,
   if (!bd->has_rshim)
     return -ENODEV;
 
-  if (bd->ver_id != RSHIM_BLUEFIELD_3)
+  if ((bd->ver_id == RSHIM_BLUEFIELD_3) && (size <= RSHIM_REG_SIZE_4B))
+    size = RSHIM_REG_SIZE_4B;
+  else
     size = RSHIM_REG_SIZE_8B;
 
   rsh_usb_addr = get_wvalue_windex(chan, addr, bd->ver_id);
@@ -208,7 +210,9 @@ static int rshim_usb_write_rshim(rshim_backend_t *bd, int chan, int addr,
   if (!bd->has_rshim)
     return -ENODEV;
 
-  if (bd->ver_id != RSHIM_BLUEFIELD_3)
+  if ((bd->ver_id == RSHIM_BLUEFIELD_3) && (size <= RSHIM_REG_SIZE_4B))
+    size = RSHIM_REG_SIZE_4B;
+  else
     size = RSHIM_REG_SIZE_8B;
 
   rsh_usb_addr = get_wvalue_windex(chan, addr, bd->ver_id);
