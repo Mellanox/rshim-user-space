@@ -403,7 +403,7 @@ static ssize_t rshim_write_delayed(rshim_backend_t *bd, int devtype,
       rc = bd->read_rshim(bd, RSHIM_CHANNEL, size_addr, &reg, RSHIM_REG_SIZE_8B);
       if (rc < 0 || RSHIM_BAD_CTRL_REG(reg)) {
         RSHIM_ERR("rshim%d read_rshim error addr=0x%x, reg=0x%lx, rc=%d\n",
-                  bd->index, size_addr, reg, rc);
+                  bd->index, size_addr, (long unsigned int)reg, rc);
         usleep(10000);
         return count;
       }
@@ -2731,9 +2731,11 @@ static int rshim_load_cfg(void)
     } else if (!strcmp(key, "USB_RESET_DELAY")) {
       rshim_usb_reset_delay = atoi(value);
       continue;
+#ifdef HAVE_RSHIM_PCIE
     } else if (!strcmp(key, "PCIE_INTR_POLL_INTERVAL")) {
       rshim_pcie_intr_poll_interval = atoi(value);
       continue;
+#endif
     }
 
     if (strncmp(key, "rshim", 5) && strcmp(key, "none"))
