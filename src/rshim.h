@@ -426,6 +426,7 @@ struct rshim_backend {
   const struct rshim_regs *regs;
 };
 
+#define RSHIM_REG_SIZE_4B 4
 #define RSHIM_REG_SIZE_8B 8
 
 struct rshim_regs {
