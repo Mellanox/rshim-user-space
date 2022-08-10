@@ -43,6 +43,8 @@ extern int rshim_drop_mode;
 extern int rshim_usb_reset_delay;
 extern int rshim_pcie_reset_delay;
 extern int rshim_pcie_intr_poll_interval;
+extern int rshim_pcie_enable_vfio;
+extern int rshim_pcie_enable_uio;
 
 #ifndef offsetof
 #define offsetof(TYPE, MEMBER)	((size_t)&((TYPE *)0)->MEMBER)

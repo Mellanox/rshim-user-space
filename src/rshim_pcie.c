@@ -130,9 +130,6 @@ static const char *rshim_sys_pci_path;
 static bool rshim_pcie_has_uio(void);
 #endif
 
-/* Interrupt polling interval in milliseconds for direct-mapping mode. */
-int rshim_pcie_intr_poll_interval = 10;
-
 static inline uint64_t
 readq(const volatile void *addr)
 {
@@ -1094,6 +1091,9 @@ static bool rshim_pcie_has_vfio(void)
   DIR* dir;
   int rc;
 
+  if (!rshim_pcie_enable_vfio)
+    return false;
+
   rc = system("modprobe vfio_pci");
   if (rc == -1)
     RSHIM_DBG("Failed to load the vfio_pci module %m\n");
@@ -1118,6 +1118,9 @@ static bool rshim_pcie_has_uio(void)
 {
   DIR* dir;
   int rc;
+
+  if (!rshim_pcie_enable_uio)
+    return false;
 
   rc = system("modprobe uio_pci_generic");
   if (rc == -1)
