@@ -188,6 +188,9 @@ static int rshim_boot_timeout = 100;
 int rshim_drop_mode = -1;
 int rshim_usb_reset_delay = 5;
 int rshim_pcie_reset_delay = 10;
+int rshim_pcie_enable_vfio = 1;
+int rshim_pcie_enable_uio = 1;
+int rshim_pcie_intr_poll_interval = 10;  /* Interrupt polling in milliseconds */
 
 /* Array of devices and device names. */
 rshim_backend_t *rshim_devs[RSHIM_MAX_DEV];
@@ -2725,17 +2728,21 @@ static int rshim_load_cfg(void)
     } else if (!strcmp(key, "DROP_MODE")) {
       rshim_drop_mode = (atoi(value) > 0) ? 1 : 0;
       continue;
-    } else if (!strcmp(key, "PCIE_RESET_DELAY")) {
-      rshim_pcie_reset_delay = atoi(value);
-      continue;
     } else if (!strcmp(key, "USB_RESET_DELAY")) {
       rshim_usb_reset_delay = atoi(value);
       continue;
-#ifdef HAVE_RSHIM_PCIE
+    } else if (!strcmp(key, "PCIE_RESET_DELAY")) {
+      rshim_pcie_reset_delay = atoi(value);
+      continue;
     } else if (!strcmp(key, "PCIE_INTR_POLL_INTERVAL")) {
       rshim_pcie_intr_poll_interval = atoi(value);
       continue;
-#endif
+    } else if (!strcmp(key, "PCIE_HAS_VFIO")) {
+      rshim_pcie_enable_vfio = atoi(value);
+      continue;
+    } else if (!strcmp(key, "PCIE_HAS_UIO")) {
+      rshim_pcie_enable_uio = atoi(value);
+      continue;
     }
 
     if (strncmp(key, "rshim", 5) && strcmp(key, "none"))
