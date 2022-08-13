@@ -1,0 +1,302 @@
+#!/bin/bash
+
+###############################################################################
+#
+# Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES, ALL RIGHTS RESERVED.
+#
+# This software product is a proprietary product of NVIDIA CORPORATION &
+# AFFILIATES (the "Company") and all right, title, and interest in and to the
+# software product, including all associated intellectual property rights, are
+# and shall remain exclusively with the Company.
+#
+# This software product is governed by the End User License Agreement
+# provided with the software product.
+#
+###############################################################################
+
+
+prog=`basename $0`
+usage()
+{
+	cat << EOF
+$prog --bfb|-b <BFBFILE>  --password|-p <PASS>
+EOF
+}
+
+options=`getopt -n bfb-multi-install-ubuntu -o b:p:h -l bfb:,password:,help -- "$@"`
+eval set -- $options
+while [ "$1" != -- ]; do
+  case $1 in
+    --help|-h) usage; exit 0 ;;
+    --bfb|-b) shift; bfb=$1 ;;
+    --password|-p) shift; password=$1 ;;
+  esac
+  shift
+done
+shift
+
+if [ -z "$bfb" ]; then
+	usage
+	exit 1
+fi
+
+if [ -z "${password}" ]; then 
+	usage
+	exit 2 
+fi
+
+PATH="/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin"
+
+CLOUD_INIT_NET_CONFIG="/mnt/var/lib/cloud/seed/nocloud-net/network-config"
+
+RSHIM_MAC_PREF="00:1a:ca:ff:ff:"
+BF2_DEVID="15b3:a2d6"
+FIRST_MAC="03"
+MAC_STEP=2
+IPv4_PREF="192.168.100"
+FIRST_IP=2
+
+bf_devs=$(lspci -nD -d ${BF2_DEVID} | awk '{print $1}')
+bf_devs_num=$(lspci -nD -d ${BF2_DEVID} | awk '{print $1}' | wc -l)
+
+# Execute command w/ echo and exit if it fail
+ex()
+{
+        echo "$@"
+        if ! "$@"; then
+                printf "\nFailed executing $@\n\n"
+                exit 1
+        fi
+}
+
+echo "Reset RSHIM service..."
+ex systemctl stop rshim.service
+killall rshim > /dev/null 2>&1
+sleep 1
+ex systemctl start rshim.service
+var=$(lspci | grep -i nox | grep -i dma | wc -l)
+rshim_devs=$(/bin/ls -1 /dev/rshim*/boot 2> /dev/null | wc -l)
+while [ $rshim_devs -lt $var ]
+do
+	sleep 1
+	#rshim_devs=$(/bin/ls -1 /dev/rshim*/boot 2> /dev/null | wc -l)
+	rshim_devs=$(( rshim_devs+1 ))
+done
+
+RSHIM_DEVS=$(mktemp /tmp/XXXXXXXX)
+grep -H DEV_NAME /dev/rshim*/misc > $RSHIM_DEVS
+
+ex systemctl stop rshim.service
+sleep 1
+has=$(printf "%s" ${password} |openssl passwd -1 -noverify -stdin)
+echo $has
+i=0
+while read -r line
+do
+	bfcfg=`mktemp /tmp/XXXXXXXX`
+	MAC_SFX=$((16#$FIRST_MAC+16#${MAC_STEP}*i))
+
+	MAC=$RSHIM_MAC_PREF$(printf "%02x\n" $MAC_SFX)
+	IP=${IPv4_PREF}.$(($FIRST_IP + $i))
+	rshim_dev=$(echo $line | cut -d '/' -f 3)
+	rshim_idx=${rshim_dev/rshim/}
+	pcie_dev=$(echo $line | cut -d ' ' -f 2)
+
+	ex rshim -d $pcie_dev -i $rshim_idx &
+	while [ ! -e "/dev/$rshim_dev/boot" ]
+	do
+		sleep 1
+	done
+
+	#echo ubuntu_PASSWORD=\''$1$HBP9plt5$nQCG6/HPovdPPTdBdnxgv/'\' > $bfcfg
+	echo ubuntu_PASSWORD=\' $has \' > $bfcfg
+	cat >> $bfcfg << EOF
+NET_RSHIM_MAC=$MAC
+
+bfb_modify_os()
+{
+	log ===================== bfb_modify_os =====================
+	sed -i -e "s@192.168.100.2/30@$IP/24@" $CLOUD_INIT_NET_CONFIG
+}
+
+EOF
+
+
+
+cat > /tmp/bf$((i+1)).log << EOF
+========================
+Installing BFB on BF #$((i+1))
+Device: $pcie_dev
+MAC: $MAC
+IP: $IP
+RSHIM: $rshim_dev
+User: ubuntu
+Password: $password
+LOG: /tmp/bf$((i+1)).log
+========================
+EOF
+
+	cat /tmp/bf$((i+1)).log
+
+	(
+	echo "bfb-install -b $bfb -c $bfcfg -r $rshim_dev" | tee -a /tmp/bf$((i+1)).log
+	bfb-install -b $bfb -c $bfcfg -r $rshim_dev >> /tmp/bf$((i+1)).log 2>&1
+	if [ $? -ne 0 ]; then
+		echo "ERROR: Installation of $((i+1)) failed. See /tmp/bf$((i+1)).log"
+	fi
+	/bin/rm -f $bfcfg
+	echo "BF #$((i+1)) Installation finished"
+	) &
+
+
+	let i=i+1
+done < $RSHIM_DEVS
+
+echo "Please wait..."
+
+wait
+
+/bin/rm -f $RSHIM_DEVS
+
+
+
+
+
+#__________________
+conf_ubuntu(){
+  echo "Setting Ubuntu Networking"
+  if ! command -v netplan > /dev/null 2>&1; then
+    apt-get install netplan.io -y
+  fi
+  # Verify if seetings not already set.
+  if (grep --include=\*.yaml -rnw /etc/netplan/20-tmfifo.yaml -e 'tmfifo_net0'); then
+      echo "Static IP already set, skipping to avoid brake current settings"
+  else
+    echo create new /etc/netplan/20-tmfifo.yaml file
+    touch /etc/netplan/20-tmfifo.yaml
+    cat  > /etc/netplan/20-tmfifo.yaml <<- EOF
+network:
+  version: 2
+  renderer: networkd
+  ethernets:
+
+EOF
+    y=" "
+
+    until [ $x -gt $var ]
+    do
+      cat  >> /etc/netplan/20-tmfifo.yaml <<- EOF
+
+    tmfifo_net$x:
+      dhcp4: no
+EOF
+      y="$y""tmfifo_net""$x, "
+      x=$((x+1))
+    done
+    y="[$y]"
+    cat <<- EOF >> /etc/netplan/20-tmfifo.yaml
+  bridges:
+    tm-br:
+            interfaces: $y
+            addresses: [192.168.100.1/24]
+            dhcp4: no
+EOF
+  fi
+  netplan generate && netplan apply
+  echo "Done settings for Ubuntu"
+}
+
+conf_centos7(){
+  # Host tmfifo_net interfaces configuration
+  i=0
+  until [ $x -gt $var ]
+  do
+	  if [ ! -e /etc/sysconfig/network-scripts/ifcfg-tmfifo_net$x ]; then
+		  cat <<- EOF > /etc/sysconfig/network-scripts/ifcfg-tmfifo_net$x 
+DEVICE=tmfifo_net$i
+BOOTPROTO=none
+ONBOOT=yes
+NM_CONTROLLED=no
+BRIDGE=br_tmfifo
+EOF
+	      
+    fi
+	  x=$((x+1))
+    i=$((i+1))
+  done
+  if [ ! -e /etc/sysconfig/network-scripts/ifcfg-br_tmfifo ]; then
+    cat > /etc/sysconfig/network-scripts/ifcfg-br_tmfifo << EOF
+DEVICE="br_tmfifo"
+BOOTPROTO="static"
+IPADDR="192.168.100.1"
+NETMASK="255.255.255.0"
+ONBOOT="yes"
+TYPE="Bridge"
+NM_CONTROLLED="no"
+EOF
+  fi
+  systemctl restart network
+}
+
+conf_centos8(){
+  if ! command -v brctl show > /dev/null 2>&1; then
+    yum install -y bridge-utils
+  fi
+  until [ $x -gt $var ]
+  do
+    bridge=$(brctl show | grep -i tm-br)
+	  if [[ -z "$bridge" ]]; then
+		  brctl addbr tm-br
+
+	  else
+		  echo "bridge exists"
+	  fi
+	  brctl addif tm-br tmfifo_net$x
+	  let x=x+1
+  done
+  ifconfig tm-br 192.168.100.1/28
+  ifconfig tm-br up
+  
+}
+
+
+
+
+# ----Bridges configuration ----
+
+# Verify OS distrobution type
+if command -v lsb_release > /dev/null 2>&1; then
+  LINUX_DISTRO=$(lsb_release -i | cut -d: -f2 | sed s/'^\t'//)
+  export LINUX_DISTRO
+else
+  LINUX_OS=$(awk -F= '/^NAME/{print $2}' /etc/os-release)
+  if [[ $LINUX_OS = *"Ubuntu"* ]] ; then
+    LINUX_DISTRO="Ubuntu"
+	export LINUX_DISTRO
+  elif [[ $LINUX_OS = *"CentOS Linux"* ]] ; then
+    LINUX_DISTRO="CentOS Linux"
+	export LINUX_DISTRO
+  fi
+echo "Discovred OS - $LINUX_DISTRO"
+fi
+
+x=0
+var=$((rshim_devs-1))
+# Settings for Ubuntu
+if [ "$LINUX_DISTRO" = "Ubuntu" ]; then
+  conf_ubuntu
+
+elif [[ "$LINUX_DISTRO" = "CentOS Linux" ]] || [[ "$LINUX_DISTRO" = *"Red Hat Enterprise Linux Server"* ]] || [[ "$LINUX_DISTRO" = *"Red Hat Enterprise Linux"* ]]; then
+  VER=$(awk -F= '/^VERSION_ID/{print $2}' /etc/os-release)
+  echo "Setting $LINUX_DISTRO $VER Networking"
+  if [[ $VER = *"7"* ]]; then
+    conf_centos7
+
+  elif [[ $VER = *"8"* ]]; then
+    conf_centos8
+  fi
+
+fi
+
+
+echo "Please allow few more minutes for all BlueField cards to finish the first boot and load initial configuration"
