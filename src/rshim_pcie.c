@@ -222,11 +222,14 @@ static int rshim_pcie_enable_irq(rshim_pcie_t *dev, bool enable);
 /* Release pcie resource. */
 static void rshim_pcie_mmap_release(rshim_pcie_t *dev)
 {
+  volatile void *ptr;
   rshim_pcie_enable_irq(dev, false);
 
-  if (dev->rshim_regs) {
-    munmap((void *)dev->rshim_regs, PCI_RSHIM_WINDOW_SIZE);
+  ptr = dev->rshim_regs;
+  if (ptr) {
     dev->rshim_regs = NULL;
+    __sync_synchronize();
+    munmap((void *)ptr, PCI_RSHIM_WINDOW_SIZE);
   }
 
   if (dev->device_fd >= 0) {
@@ -840,7 +843,7 @@ rshim_pcie_read(rshim_backend_t *bd, int chan, int addr, uint64_t *result, int s
   rshim_pcie_t *dev = container_of(bd, rshim_pcie_t, bd);
   int rc = 0;
 
-  if (!bd->has_rshim || !bd->has_tm)
+  if (!bd->has_rshim || !bd->has_tm || !dev->rshim_regs)
     return -ENODEV;
 
   if (dev->nic_reset && addr != bd->regs->scratchpad6)
@@ -870,7 +873,7 @@ rshim_pcie_write(rshim_backend_t *bd, int chan, int addr, uint64_t value, int si
   uint64_t result;
   int rc = 0;
 
-  if (!bd->has_rshim || !bd->has_tm)
+  if (!bd->has_rshim || !bd->has_tm || !dev->rshim_regs)
     return -ENODEV;
 
   if (dev->nic_reset && addr != bd->regs->scratchpad6)
@@ -1044,7 +1047,9 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
 
   /* Enable the device and setup memory map. */
   if (!bd->drop_mode) {
+    pthread_mutex_lock(&bd->mutex);
     rc = bd->enable_device(bd, true);
+    pthread_mutex_unlock(&bd->mutex);
     if (rc)
       goto rshim_probe_failed;
   }
