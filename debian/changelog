@@ -1,3 +1,12 @@
+rshim (2.0.6-14) UNRELEASED; urgency=low
+
+  * Avoid potential race when stopping the rshim process
+  * Add configuration option to enable/disable PCIe VFIO/UIO
+  * Fix warnings for compiling on 32-bit BMC
+  * Mustang rshim usb supports for 4B and 8B transactions
+
+ -- Liming Sun <limings@nvidia.com>  Tue, 16 Aug 2022 15:40:15 -0400
+
 rshim (2.0.6-13) UNRELEASED; urgency=low
 
   * BF3: Support 32-bit CR-space access via USB
