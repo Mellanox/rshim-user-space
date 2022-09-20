@@ -662,12 +662,18 @@ static void rshim_usb_backend_cancel_req(rshim_backend_t *bd, int devtype,
 {
   rshim_usb_t *dev = container_of(bd, rshim_usb_t, bd);
 
+  if (!dev->handle)
+    return;
+
   switch (devtype) {
   case RSH_DEV_TYPE_TMFIFO:
-    if (is_write)
-      libusb_cancel_transfer(dev->write_urb);
-    else
-      libusb_cancel_transfer(dev->read_or_intr_urb);
+    if (is_write) {
+      if (dev->write_urb)
+        libusb_cancel_transfer(dev->write_urb);
+    } else {
+      if (dev->read_or_intr_urb)
+        libusb_cancel_transfer(dev->read_or_intr_urb);
+    }
     break;
 
   default:
