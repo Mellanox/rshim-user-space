@@ -98,7 +98,8 @@ extern int rshim_pcie_enable_uio;
 
 #define BF3_MAX_BOOT_FIFO_SIZE 8192 /* bytes */
 
-#define RSHIM_BAD_CTRL_REG(v) (((v) == 0xbad00acce55) || ((v) == (uint64_t)-1))
+#define RSHIM_BAD_CTRL_REG(v) \
+  (((v) == 0xbad00acce55) || ((v) == (uint64_t)-1) || ((v) == 0xbadacce55))
 
 /* Sub-device types. */
 enum {
