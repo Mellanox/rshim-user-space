@@ -1,3 +1,12 @@
+rshim (2.0.6-15) UNRELEASED; urgency=low
+
+  * Add dependency of libfuse2 for .deb
+  * rshim-pcie: add a new bad-access code
+  * Fix a potential NULL pointer access during USB disonnect
+  * Adjust default boot timeout to 150s
+
+ -- Liming Sun <limings@nvidia.com>  Thu, 29 Sep 2022 10:26:15 -0400
+
 rshim (2.0.6-14) UNRELEASED; urgency=low
 
   * Avoid potential race when stopping the rshim process

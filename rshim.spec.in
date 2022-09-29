@@ -4,7 +4,7 @@
 
 Name: rshim
 Version: @VERSION@
-Release: 14%{?dist}
+Release: 15%{?dist}
 Summary: User-space driver for Mellanox BlueField SoC
 
 License: GPLv2
@@ -95,6 +95,12 @@ fi
 %{_mandir}/man8/bfb-install.8.gz
 
 %changelog
+* Thu Sep 29 2022 Liming Sun <limings@nvidia.com> - 2.0.6-15
+- Add dependency of libfuse2 for .deb
+- rshim-pcie: add a new bad-access code
+- Fix a potential NULL pointer access during USB disconnect
+- Adjust default boot timeout to 150s
+
 * Tue Aug 16 2022 Liming Sun <limings@nvidia.com> - 2.0.6-14
 - Avoid potential race when stopping the rshim process
 - Add configuration option to enable/disable PCIe VFIO/UIO
