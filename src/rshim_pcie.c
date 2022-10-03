@@ -267,6 +267,15 @@ static void rshim_pcie_bind(rshim_pcie_t *dev, bool enable)
 
   if (dev->mmap_mode == RSHIM_PCIE_MMAP_VFIO ||
       dev->mmap_mode == RSHIM_PCIE_MMAP_UIO) {
+    if (!enable) {
+      snprintf(cmd, sizeof(cmd),
+               "echo %04x:%02x:%02x.%1u > %s/unbind 2>/dev/null",
+               pci_dev->domain, pci_dev->bus, pci_dev->dev, pci_dev->func,
+               dev->pci_path);
+      if (system(cmd) == -1)
+        RSHIM_DBG("Failed to unbind device\n");
+    }
+
     snprintf(cmd, sizeof(cmd), "echo '%x %x' > %s/%s 2>/dev/null",
              TILERA_VENDOR_ID, BLUEFIELD1_DEVICE_ID, dev->pci_path,
              enable ? "new_id" : "remove_id");
@@ -281,14 +290,32 @@ static void rshim_pcie_bind(rshim_pcie_t *dev, bool enable)
     if (rc == -1)
       RSHIM_DBG("Failed to write device id %m\n");
 
+    if (enable) {
+      snprintf(cmd, sizeof(cmd),
+               "echo %04x:%02x:%02x.%1u > %s/bind 2>/dev/null",
+               pci_dev->domain, pci_dev->bus, pci_dev->dev, pci_dev->func,
+               dev->pci_path);
+      if (system(cmd) == -1)
+        RSHIM_DBG("Failed to bind device\n");
+    }
+  } else if (dev->mmap_mode == RSHIM_PCIE_MMAP_DIRECT) {
+    if (enable) {
+      snprintf(cmd, sizeof(cmd), "echo 1 > %s/%04x:%02x:%02x.%1u/enable",
+               SYS_BUS_PCI_PATH, pci_dev->domain, pci_dev->bus,
+               pci_dev->dev, pci_dev->func);
+      if (system(cmd) == -1)
+        RSHIM_DBG("Failed to enable pcie\n");
+    }
+
+    /*
+     * There is no driver in direct map mode. Set a faked driver name here
+     * to prevent the "new_id" command from reassigning driver automatically
+     * for this rshim PF. This is to avoid issues when there multiple rshim
+     * devices exist with mixed mode.
+     */
     snprintf(cmd, sizeof(cmd),
-             "echo %04x:%02x:%02x.%1u > %s/%s 2>/dev/null",
-             pci_dev->domain, pci_dev->bus, pci_dev->dev, pci_dev->func,
-             dev->pci_path, enable ? "bind" : "unbind");
-    if (system(cmd) == -1)
-      RSHIM_DBG("Failed to bind/unbind device\n");
-  } else if (dev->mmap_mode == RSHIM_PCIE_MMAP_DIRECT && enable) {
-    snprintf(cmd, sizeof(cmd), "echo 1 > %s/%04x:%02x:%02x.%1u/enable",
+             "echo %s > %s/%04x:%02x:%02x.%1u/driver_override 2>/dev/null",
+             enable ? "rshim" : "",
              SYS_BUS_PCI_PATH, pci_dev->domain, pci_dev->bus,
              pci_dev->dev, pci_dev->func);
     if (system(cmd) == -1)
@@ -958,6 +985,7 @@ static int rshim_pcie_enable(rshim_backend_t *bd, bool enable)
       rshim_pcie_bind(dev, false);
       dev->pci_path = NULL;
       dev->mmap_mode = RSHIM_PCIE_MMAP_DIRECT;
+      rshim_pcie_bind(dev, true);
       rc = rshim_pcie_mmap(dev, true);
     }
   }
