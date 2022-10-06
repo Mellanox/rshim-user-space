@@ -1,3 +1,9 @@
+rshim (2.0.6-16) UNRELEASED; urgency=low
+
+  * pcie: Support mixed vfio and direct mapping mode
+
+ -- Liming Sun <limings@nvidia.com>  Thu, 06 Oct 2022 08:23:10 -0400
+
 rshim (2.0.6-15) UNRELEASED; urgency=low
 
   * Add dependency of libfuse2 for .deb

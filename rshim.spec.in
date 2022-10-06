@@ -4,7 +4,7 @@
 
 Name: rshim
 Version: @VERSION@
-Release: 15%{?dist}
+Release: 16%{?dist}
 Summary: User-space driver for Mellanox BlueField SoC
 
 License: GPLv2
@@ -95,6 +95,9 @@ fi
 %{_mandir}/man8/bfb-install.8.gz
 
 %changelog
+* Thu Oct 06 2022 Liming Sun <limings@nvidia.com> - 2.0.6-16
+- pcie: Support mixed vfio and direct mapping mode
+
 * Thu Sep 29 2022 Liming Sun <limings@nvidia.com> - 2.0.6-15
 - Add dependency of libfuse2 for .deb
 - rshim-pcie: add a new bad-access code
