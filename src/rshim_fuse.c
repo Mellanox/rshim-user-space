@@ -645,14 +645,8 @@ static int rshim_fuse_misc_read(struct cuse_dev *cdev, int fflags,
   /* Boot mode. */
   rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->boot_control, &value, RSHIM_REG_SIZE_8B);
   if (rc) {
-    pthread_mutex_unlock(&bd->mutex);
-    RSHIM_ERR("couldn't read rshim register\n");
-#ifdef __linux__
-    fuse_reply_err(req, -rc);
-    return;
-#elif defined(__FreeBSD__)
-    return CUSE_ERR_INVALID;
-#endif
+    RSHIM_ERR("couldn't read BOOT_CONTROL register\n");
+    value = 0;
   }
 
   p = rm->buffer;
