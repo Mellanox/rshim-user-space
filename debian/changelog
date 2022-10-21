@@ -1,3 +1,10 @@
+rshim (2.0.6-17) UNRELEASED; urgency=low
+
+  * pcie: Avoid using cached pci_dev
+  * rshim_fuse: display misc file even when rshim is not accessible
+
+ -- Liming Sun <limings@nvidia.com>  Thu, 20 Oct 2022 22:08:20 -0400
+
 rshim (2.0.6-16) UNRELEASED; urgency=low
 
   * pcie: Support mixed vfio and direct mapping mode
