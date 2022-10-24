@@ -911,18 +911,16 @@ rshim_pcie_read(rshim_backend_t *bd, int chan, int addr, uint64_t *result, int s
   rshim_pcie_t *dev = container_of(bd, rshim_pcie_t, bd);
   int rc = 0;
 
-  if (!bd->has_rshim || !bd->has_tm || !dev->rshim_regs)
-    return -ENODEV;
-
   if (dev->nic_reset && addr != bd->regs->scratchpad6)
     sleep(RSHIM_PCIE_NIC_RESET_WAIT);
 
   if (bd->drop_mode) {
     *result = 0;
     return 0;
-  } else if (!dev->rshim_regs) {
-    return -ENODEV;
   }
+
+  if (!bd->has_rshim || !bd->has_tm || !dev->rshim_regs)
+    return -ENODEV;
 
   dev->write_count = 0;
 
@@ -941,15 +939,13 @@ rshim_pcie_write(rshim_backend_t *bd, int chan, int addr, uint64_t value, int si
   uint64_t result;
   int rc = 0;
 
-  if (!bd->has_rshim || !bd->has_tm || !dev->rshim_regs)
-    return -ENODEV;
-
   if (dev->nic_reset && addr != bd->regs->scratchpad6)
     sleep(RSHIM_PCIE_NIC_RESET_WAIT);
 
   if (bd->drop_mode)
     return 0;
-  else if (!dev->rshim_regs)
+
+  if (!bd->has_rshim || !bd->has_tm || !dev->rshim_regs)
     return -ENODEV;
 
   /*
