@@ -1,3 +1,9 @@
+rshim (2.0.6-18) UNRELEASED; urgency=low
+
+  * pcie: fix initialization issue when setting DROP_MODE in rshim.conf
+
+ -- Liming Sun <limings@nvidia.com>  Tue, 25 Oct 2022 11:56:20 -0400
+
 rshim (2.0.6-17) UNRELEASED; urgency=low
 
   * pcie: Avoid using cached pci_dev
