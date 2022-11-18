@@ -84,7 +84,7 @@ struct rshim_usb_addr {
 	uint16_t windex;
 };
 
-struct rshim_usb_addr bf3_wvalue_widx_pair_map[] = {
+struct rshim_usb_addr bf3_wval_widx_pair_map[] = {
 	[RSHIM_CHANNEL] = {
 		.wvalue = 0x0300,
 		.windex = 0x0000,
@@ -135,14 +135,15 @@ struct rshim_usb_addr bf3_wvalue_widx_pair_map[] = {
 	},
 };
 
-static struct rshim_usb_addr get_wvalue_windex(int chan, int addr, uint16_t ver_id)
+static struct rshim_usb_addr get_wvalue_windex(int chan, int addr,
+                                               uint16_t ver_id)
 {
   struct rshim_usb_addr rsh_usb_addr;
 
   if (ver_id == RSHIM_BLUEFIELD_3) {
     if (chan <= 0xF) {
-      rsh_usb_addr.wvalue = bf3_wvalue_widx_pair_map[chan].wvalue + BF_MMIO_BASE;
-      rsh_usb_addr.windex = bf3_wvalue_widx_pair_map[chan].windex + addr;
+      rsh_usb_addr.wvalue = bf3_wval_widx_pair_map[chan].wvalue + BF_MMIO_BASE;
+      rsh_usb_addr.windex = bf3_wval_widx_pair_map[chan].windex + addr;
     } else {
       rsh_usb_addr.wvalue = chan;
       rsh_usb_addr.windex = addr;
@@ -157,8 +158,8 @@ static struct rshim_usb_addr get_wvalue_windex(int chan, int addr, uint16_t ver_
 
 /* Rshim read/write routines */
 
-static int rshim_usb_read_rshim(rshim_backend_t *bd, int chan, int addr,
-                                uint64_t *result, int size)
+static int rshim_usb_read_rshim(rshim_backend_t *bd, uint32_t chan,
+                                uint32_t addr, uint64_t *result, int size)
 {
   rshim_usb_t *dev = container_of(bd, rshim_usb_t, bd);
   struct rshim_usb_addr rsh_usb_addr;
@@ -175,6 +176,7 @@ static int rshim_usb_read_rshim(rshim_backend_t *bd, int chan, int addr,
   rsh_usb_addr = get_wvalue_windex(chan, addr, bd->ver_id);
 
   /* Do a blocking control read and endian conversion. */
+  dev->ctrl_data = 0;
   rc = libusb_control_transfer(dev->handle,
                                LIBUSB_ENDPOINT_IN |
                                LIBUSB_REQUEST_TYPE_VENDOR |
@@ -200,8 +202,8 @@ static int rshim_usb_read_rshim(rshim_backend_t *bd, int chan, int addr,
   return rc >= 0 ? (rc > size ? -EINVAL : -ENXIO) : rc;
 }
 
-static int rshim_usb_write_rshim(rshim_backend_t *bd, int chan, int addr,
-                                 uint64_t value, int size)
+static int rshim_usb_write_rshim(rshim_backend_t *bd, uint32_t chan,
+                                 uint32_t addr, uint64_t value, int size)
 {
   rshim_usb_t *dev = container_of(bd, rshim_usb_t, bd);
   struct rshim_usb_addr rsh_usb_addr;
