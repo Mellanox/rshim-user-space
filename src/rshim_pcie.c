@@ -45,11 +45,9 @@
 #define BLUEFIELD3_DEVICE_ID        0xc2d4
 #define BLUEFIELD3_DEVICE_ID2       0xc2d5
 
-/* The offset in BAR2 of the RShim region. */
-#define PCI_RSHIM_WINDOW_OFFSET     0x0
-
 /* The size the RShim region. */
 #define PCI_RSHIM_WINDOW_SIZE       0x100000
+#define BF3_PCI_RSHIM_WINDOW_SIZE   0x800000
 
 #define VFIO_GET_REGION_ADDR(x)     ((uint64_t) x << 40ULL)
 
@@ -146,6 +144,21 @@ writeq(uint64_t value, volatile void *addr)
   *(volatile uint64_t *)addr = value;
 }
 
+static inline uint32_t
+readl(const volatile void *addr)
+{
+  uint32_t value = *(const volatile uint32_t *)addr;
+  __sync_synchronize();
+  return value;
+}
+
+static inline void
+writel(uint32_t value, volatile void *addr)
+{
+  __sync_synchronize();
+  *(volatile uint32_t *)addr = value;
+}
+
 typedef struct {
   /* RShim backend structure. */
   rshim_backend_t bd;
@@ -189,6 +202,9 @@ typedef struct {
   /* Memory map and PCI sysfs path. */
   int mmap_mode;
   const char *pci_path;
+
+  /* BAR size */
+  uint32_t bar_size;
 } rshim_pcie_t;
 
 static const int bf3_rshim_pcie_chan_map[] = {
@@ -278,7 +294,7 @@ static void rshim_pcie_mmap_release(rshim_pcie_t *dev)
   if (ptr) {
     dev->rshim_regs = NULL;
     __sync_synchronize();
-    munmap((void *)ptr, PCI_RSHIM_WINDOW_SIZE);
+    munmap((void *)ptr, dev->bar_size);
   }
 
   if (dev->device_fd >= 0) {
@@ -385,11 +401,11 @@ static int rshim_pcie_mmap_direct(rshim_pcie_t *dev)
     RSHIM_ERR("Failed to open %s\n", path);
     return -ENODEV;
   }
-  dev->rshim_regs = mmap(NULL, PCI_RSHIM_WINDOW_SIZE,
+  dev->rshim_regs = mmap(NULL, dev->bar_size,
                          PROT_READ | PROT_WRITE,
                          MAP_SHARED | MAP_LOCKED,
                          dev->device_fd,
-                         PCI_RSHIM_WINDOW_OFFSET);
+                         0);
   if (dev->rshim_regs == MAP_FAILED) {
     dev->rshim_regs = NULL;
     RSHIM_ERR("Failed to map RShim registers\n");
@@ -747,7 +763,8 @@ static void rshim_pcie_intr(rshim_pcie_t *dev)
 
   pthread_mutex_lock(&bd->mutex);
 
-  rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad6, &info.word, RSHIM_REG_SIZE_8B);
+  rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad6,
+                      &info.word, RSHIM_REG_SIZE_8B);
   if (rc || RSHIM_BAD_CTRL_REG(info.word)) {
     if (!bd->drop_mode)
       RSHIM_WARN("Failed to read irq request\n");
@@ -769,12 +786,14 @@ static void rshim_pcie_intr(rshim_pcie_t *dev)
     info.rst_reply = RSHIM_PCIE_RST_REPLY_ACK;
     dev->nic_reset = true;
     __sync_synchronize();
-    bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad6, info.word, RSHIM_REG_SIZE_8B);
+    bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad6,
+                    info.word, RSHIM_REG_SIZE_8B);
     sleep(RSHIM_PCIE_NIC_RESET_WAIT);
     dev->nic_reset = false;
   }
 
-  rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad6, &info.word, RSHIM_REG_SIZE_8B);
+  rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad6,
+                      &info.word, RSHIM_REG_SIZE_8B);
   if (rc || RSHIM_BAD_CTRL_REG(info.word)) {
     RSHIM_WARN("Failed to read irq request\n");
     goto intr_done;
@@ -783,7 +802,8 @@ static void rshim_pcie_intr(rshim_pcie_t *dev)
   if (info.rst_state == RSHIM_PCIE_RST_STATE_ABORT) {
     RSHIM_INFO("NIC reset ABORT\n");
     info.word &= 0xFFFFFFFFUL;
-    bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad6, info.word, RSHIM_REG_SIZE_8B);
+    bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad6,
+                    info.word, RSHIM_REG_SIZE_8B);
   } else if (info.rst_type == RSHIM_PCIE_RST_TYPE_DPU_RESET) {
     /*
      * Both NIC and ARM reset.
@@ -884,8 +904,8 @@ static int rshim_pcie_mmap(rshim_pcie_t *dev, bool enable)
   }
 
   dev->rshim_regs = (void *)((uintptr_t)pbm.pbm_map_base +
-      (uintptr_t)pbm.pbm_bar_off + PCI_RSHIM_WINDOW_OFFSET);
-  if (pbm.pbm_bar_length < PCI_RSHIM_WINDOW_SIZE) {
+      (uintptr_t)pbm.pbm_bar_off);
+  if (pbm.pbm_bar_length < dev->bar_size) {
     dev->rshim_regs = NULL;
     RSHIM_ERR("BAR length is too small\n");
     rc = -ENOMEM;
@@ -904,14 +924,27 @@ rshim_map_failed:
 #error "Platform not supported"
 #endif /* __linux__ */
 
+static uint32_t
+rshim_pcie_bf3_chan_addr_convert(uint32_t chan, uint32_t addr)
+{
+  if (chan < 0xF)
+    addr += bf3_rshim_pcie_chan_map[chan] + BF3_RSH_BASE_ADDR;
+  else
+    addr = (chan << 16) + addr;
+
+  return addr;
+}
+
 /* RShim read/write routines */
 static int __attribute__ ((noinline))
-rshim_pcie_read(rshim_backend_t *bd, int chan, int addr, uint64_t *result, int size)
+rshim_pcie_read(rshim_backend_t *bd, uint32_t chan, uint32_t addr,
+                uint64_t *result, int size)
 {
   rshim_pcie_t *dev = container_of(bd, rshim_pcie_t, bd);
   int rc = 0;
 
-  if (dev->nic_reset && addr != bd->regs->scratchpad6)
+  if (dev->nic_reset &&
+      (chan != RSHIM_CHANNEL || addr != bd->regs->scratchpad6))
     sleep(RSHIM_PCIE_NIC_RESET_WAIT);
 
   if (bd->drop_mode) {
@@ -924,22 +957,36 @@ rshim_pcie_read(rshim_backend_t *bd, int chan, int addr, uint64_t *result, int s
 
   dev->write_count = 0;
 
-  if (rshim_is_bluefield3(dev->device_id))
-    *result = readq(dev->rshim_regs + bf3_rshim_pcie_chan_map[chan] + addr);
+  if (rshim_is_bluefield3(dev->device_id)) {
+    addr = rshim_pcie_bf3_chan_addr_convert(chan, addr);
+    if (addr < BF3_RSH_BASE_ADDR ||
+        addr >= (BF3_RSH_BASE_ADDR + BF3_PCI_RSHIM_WINDOW_SIZE))
+      return -EINVAL;
+    addr -= BF3_RSH_BASE_ADDR;
+  } else {
+    addr = addr | (chan << 16);
+  }
+
+  if (size == 4)
+    *result = readl(dev->rshim_regs + addr);
+  else if (size == 8)
+    *result = readq(dev->rshim_regs + addr);
   else
-    *result = readq(dev->rshim_regs + (addr | (chan << 16)));
+    rc = -EINVAL;
 
   return rc;
 }
 
 static int __attribute__ ((noinline))
-rshim_pcie_write(rshim_backend_t *bd, int chan, int addr, uint64_t value, int size)
+rshim_pcie_write(rshim_backend_t *bd, uint32_t chan, uint32_t addr,
+                 uint64_t value, int size)
 {
   rshim_pcie_t *dev = container_of(bd, rshim_pcie_t, bd);
   uint64_t result;
   int rc = 0;
 
-  if (dev->nic_reset && addr != bd->regs->scratchpad6)
+  if (dev->nic_reset &&
+      (chan != RSHIM_CHANNEL || addr != bd->regs->scratchpad6))
     sleep(RSHIM_PCIE_NIC_RESET_WAIT);
 
   if (bd->drop_mode)
@@ -961,10 +1008,23 @@ rshim_pcie_write(rshim_backend_t *bd, int chan, int addr, uint64_t value, int si
     }
     dev->write_count++;
   }
-  if (rshim_is_bluefield3(dev->device_id))
-    writeq(value, dev->rshim_regs + bf3_rshim_pcie_chan_map[chan] + addr);
+
+  if (rshim_is_bluefield3(dev->device_id)) {
+    addr = rshim_pcie_bf3_chan_addr_convert(chan, addr);
+    if (addr < BF3_RSH_BASE_ADDR ||
+        addr >= (BF3_RSH_BASE_ADDR + BF3_PCI_RSHIM_WINDOW_SIZE))
+      return -EINVAL;
+    addr -= BF3_RSH_BASE_ADDR;
+  } else {
+    addr = addr | (chan << 16);
+  }
+
+  if (size == 4)
+    writel(value, dev->rshim_regs + addr);
+  else if (size == 8)
+    writeq(value, dev->rshim_regs + addr);
   else
-    writeq(value, dev->rshim_regs + (addr | (chan << 16)));
+    rc = -EINVAL;
 
   return rc;
 }
@@ -991,8 +1051,10 @@ static int rshim_pcie_enable(rshim_backend_t *bd, bool enable)
    * Clear scratchpad1 since it's checked by FW for rshim driver.
    * This needs to be done before the resources are unmapped.
    */
-  if (!enable)
-    rshim_pcie_write(bd, RSHIM_CHANNEL, bd->regs->scratchpad1, 0, RSHIM_REG_SIZE_8B);
+  if (!enable) {
+    rshim_pcie_write(bd, RSHIM_CHANNEL, bd->regs->scratchpad1, 0,
+                     RSHIM_REG_SIZE_8B);
+  }
 
   /* Unmap existing resource first. */
   rshim_pcie_mmap(dev, false);
@@ -1096,14 +1158,17 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
     case BLUEFIELD3_DEVICE_ID2:
       bd->regs = &bf3_rshim_regs;
       bd->ver_id = RSHIM_BLUEFIELD_3;
+      dev->bar_size = BF3_PCI_RSHIM_WINDOW_SIZE;
       break;
     case BLUEFIELD2_DEVICE_ID:
       bd->regs = &bf1_bf2_rshim_regs;
       bd->ver_id = RSHIM_BLUEFIELD_2;
+      dev->bar_size = PCI_RSHIM_WINDOW_SIZE;
       break;
     default:
       bd->regs = &bf1_bf2_rshim_regs;
       bd->ver_id = RSHIM_BLUEFIELD_1;
+      dev->bar_size = PCI_RSHIM_WINDOW_SIZE;
       break;
   }
   bd->rev_id = pci_read_byte(pci_dev, PCI_REVISION_ID);

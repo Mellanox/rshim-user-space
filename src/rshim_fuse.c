@@ -1116,9 +1116,8 @@ static void rshim_fuse_rshim_ioctl(fuse_req_t req, int cmd, void *arg,
      */
     chan = msg2.addr >> 16;
     offset = msg2.addr & 0xFFFF;
-    if (bd->ver_id <= RSHIM_BLUEFIELD_2 || strncmp(bd->dev_name, "usb", 3)) {
+    if (bd->ver_id <= RSHIM_BLUEFIELD_2)
       chan &= 0xF;
-    }
 
     if (cmd == RSHIM_IOC_WRITE2) {
       pthread_mutex_lock(&bd->mutex);
@@ -1186,7 +1185,7 @@ static int rshim_fuse_rshim_ioctl(struct cuse_dev *cdev, int fflags,
     if (rc == CUSE_ERR_NONE) {
       data = msg2.data;
       rc = bd->read_rshim(bd,
-                           (msg2.addr >> 16) & 0xF, /* channel # */
+                           msg2.addr >> 16, /* channel # */
                            msg2.addr & 0xFFFF, /* addr */
                            &data, msg2.data_size);
       if (!rc)
@@ -1200,7 +1199,7 @@ static int rshim_fuse_rshim_ioctl(struct cuse_dev *cdev, int fflags,
     rc = cuse_copy_in(peer_data, &msg2, sizeof(msg2));
 
     rc = bd->write_rshim(bd,
-                         (msg2.addr >> 16) & 0xF, /* channel # */
+                         msg2.addr >> 16, /* channel # */
                          msg2.addr & 0xFFFF, /* addr */
                          msg2.data, msg2.data_size);
     if (rc)

@@ -2659,25 +2659,49 @@ int rshim_fifo_size(rshim_backend_t *bd, int chan, bool is_rx)
 
 int rshim_get_opn(rshim_backend_t *bd, char *opn, int len)
 {
-  uint32_t value, br_opn = 0;
+  uint32_t value32 = 0;
+  uint64_t value64 = 0;
   int i, rc;
 
   if (len)
     opn[0] = 0;
 
-  if (bd->ver_id < RSHIM_BLUEFIELD_2)
-    return -EOPNOTSUPP;
+  switch (bd->ver_id) {
+  case RSHIM_BLUEFIELD_2:
+    for (i = 0;
+         i < RSHIM_YU_BOOT_RECORD_OPN_SIZE && len >= 4;
+         i += 4, len -= 4) {
+      rc = rshim_mmio_read32(bd, RSHIM_YU_BASE_ADDR +
+                             RSHIM_YU_BOOT_RECORD_OPN + i, &value32);
+      if (rc)
+        return rc;
+      value32 = le32toh(value32);
+      opn[i] = (value32 >> 24) & 0xff;
+      opn[i + 1] = (value32 >> 16) & 0xff;
+      opn[i + 2] = (value32 >> 8) & 0xff;
+      opn[i + 3] = value32 & 0xff;
+    }
+    break;
 
-  for (i = 0; i < RSHIM_YU_BOOT_RECORD_OPN_SIZE && len >= 4; i += 4, len -= 4) {
-    rc = rshim_mmio_read32(bd, RSHIM_YU_BASE_ADDR +
-                           RSHIM_YU_BOOT_RECORD_OPN + i, &br_opn);
-    if (rc)
-      return rc;
-    value = le32toh(br_opn);
-    opn[i] = (value >> 24) & 0xff;
-    opn[i + 1] = (value >> 16) & 0xff;
-    opn[i + 2] = (value >> 8) & 0xff;
-    opn[i + 3] = value & 0xff;
+  case RSHIM_BLUEFIELD_3:
+    for (i = 0;
+         i < RSHIM_YU_BOOT_RECORD_OPN_SIZE && len >= 4;
+         i += 4, len -= 4) {
+      rc = bd->read_rshim(bd, YU_CHANNEL, RSHIM_YU_BF3_BOOT_RECORD_OPN + i,
+                          &value64, RSHIM_REG_SIZE_4B);
+      if (rc)
+        return rc;
+      value32 = value64 & 0xFFFFFFFF;
+      value32 = le32toh(value32);
+      opn[i] = (value32 >> 24) & 0xff;
+      opn[i + 1] = (value32 >> 16) & 0xff;
+      opn[i + 2] = (value32 >> 8) & 0xff;
+      opn[i + 3] = value32 & 0xff;
+    }
+    break;
+
+  default:
+    return -EOPNOTSUPP;
   }
 
   return 0;
@@ -2685,19 +2709,40 @@ int rshim_get_opn(rshim_backend_t *bd, char *opn, int len)
 
 int rshim_set_opn(rshim_backend_t *bd, const char *opn, int len)
 {
-  uint32_t value;
+  uint32_t value32;
+  uint64_t value64;
   int i, rc;
 
-  if (bd->ver_id < RSHIM_BLUEFIELD_2)
-    return -EOPNOTSUPP;
+  switch (bd->ver_id) {
+  case RSHIM_BLUEFIELD_2:
+    for (i = 0;
+         i < RSHIM_YU_BOOT_RECORD_OPN_SIZE && len >= 4;
+         i += 4, len -= 4) {
+      value32 = htole32((opn[i] << 24) | (opn[i + 1] << 16) | (opn[i + 2] << 8) |
+                        opn[i + 3]);
+      rc = rshim_mmio_write32(bd, RSHIM_YU_BASE_ADDR + RSHIM_YU_BOOT_RECORD_OPN + i,
+                              value32);
+      if (rc)
+        return rc;
+    }
+    break;
 
-  for (i = 0; i < RSHIM_YU_BOOT_RECORD_OPN_SIZE && len >= 4; i += 4, len -= 4) {
-    value = htole32((opn[i] << 24) | (opn[i + 1] << 16) | (opn[i + 2] << 8) |
-                    opn[i + 3]);
-    rc = rshim_mmio_write32(bd, RSHIM_YU_BASE_ADDR + RSHIM_YU_BOOT_RECORD_OPN + i,
-                            value);
-    if (rc)
-      return rc;
+  case RSHIM_BLUEFIELD_3:
+    for (i = 0;
+         i < RSHIM_YU_BOOT_RECORD_OPN_SIZE && len >= 4;
+         i += 4, len -= 4) {
+      value32 = htole32((opn[i] << 24) | (opn[i + 1] << 16) | (opn[i + 2] << 8) |
+                        opn[i + 3]);
+      value64 = value32;
+      rc = bd->write_rshim(bd, YU_CHANNEL, RSHIM_YU_BF3_BOOT_RECORD_OPN + i,
+                           value64, RSHIM_REG_SIZE_4B);
+      if (rc)
+        return rc;
+    }
+    break;
+
+  default:
+    return -EOPNOTSUPP;
   }
 
   return 0;

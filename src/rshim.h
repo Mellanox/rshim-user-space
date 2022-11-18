@@ -184,6 +184,7 @@ enum {
 #define RSHIM_YU_BASE_ADDR             0x2800000
 #define RSHIM_YU_BOOT_RECORD_OPN       0xfd8
 #define RSHIM_YU_BOOT_RECORD_OPN_SIZE  16
+#define RSHIM_YU_BF3_BOOT_RECORD_OPN   0x9bdc
 
 #define YU_RESET_MODE_TRIGGER   0x0011
 #define YU_BOOT_DEVID           0x0014
@@ -415,11 +416,11 @@ struct rshim_backend {
   void (*destroy)(rshim_backend_t *bd);
 
   /* API to read <size> bytes from RShim. */
-  int (*read_rshim)(rshim_backend_t *bd, int chan, int addr,
+  int (*read_rshim)(rshim_backend_t *bd, uint32_t chan, uint32_t addr,
                     uint64_t *value, int size);
 
   /* API to write <size> bytes to RShim. */
-  int (*write_rshim)(rshim_backend_t *bd, int chan, int addr,
+  int (*write_rshim)(rshim_backend_t *bd, uint32_t chan, uint32_t addr,
                      uint64_t value, int size);
 
   /* API to enable the device. */
