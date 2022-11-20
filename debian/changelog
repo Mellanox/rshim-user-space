@@ -1,3 +1,9 @@
+rshim (2.0.6-19) UNRELEASED; urgency=low
+
+  * BF3: Support 4B access for PCIe
+
+ -- Liming Sun <limings@nvidia.com>  Sun, 20 Nov 2022 07:42:10 -0400
+
 rshim (2.0.6-18) UNRELEASED; urgency=low
 
   * pcie: fix initialization issue when setting DROP_MODE in rshim.conf
