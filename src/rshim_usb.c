@@ -807,6 +807,11 @@ static int rshim_usb_probe_one(libusb_context *ctx, libusb_device *usb_dev,
   }
   bd->rev_id = desc->bcdDevice;
 
+  if (rshim_has_usb_reset_delay || bd->ver_id < RSHIM_BLUEFIELD_3)
+    bd->reset_delay = rshim_usb_reset_delay;
+  else
+    bd->reset_delay = 1; /* minimum delay for BF3 */
+
   if (!dev->intr_buf) {
     dev->intr_buf = calloc(1, sizeof(*dev->intr_buf));
     if (dev->intr_buf != NULL)

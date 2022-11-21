@@ -186,8 +186,10 @@ const char *rshim_cfg_file = DEFAULT_RSHIM_CONFIG_FILE;
 static int rshim_display_level = 0;
 static int rshim_boot_timeout = 150;
 int rshim_drop_mode = -1;
-int rshim_usb_reset_delay = 5;
-int rshim_pcie_reset_delay = 10;
+int rshim_usb_reset_delay = 1;
+bool rshim_has_usb_reset_delay = false;
+int rshim_pcie_reset_delay = 5;
+bool rshim_has_pcie_reset_delay = false;
 int rshim_pcie_enable_vfio = 1;
 int rshim_pcie_enable_uio = 1;
 int rshim_pcie_intr_poll_interval = 10;  /* Interrupt polling in milliseconds */
@@ -531,7 +533,7 @@ static int wait_for_boot_done(rshim_backend_t *bd)
        * is not fully ready yet. Add a delay here to avoid race codition.
        */
       if (!bd->is_booting && bd->has_reprobe)
-        sleep(rshim_usb_reset_delay);
+        sleep(bd->reset_delay);
     }
 
     if (!bd->has_rshim)
@@ -784,7 +786,7 @@ boot_open_done:
    * Add a small delay for the reset.
    */
   if (!bd->has_reprobe)
-    sleep(rshim_pcie_reset_delay);
+    sleep(bd->reset_delay);
 
   time(&bd->boot_write_time);
   pthread_mutex_unlock(&bd->mutex);
@@ -2775,9 +2777,11 @@ static int rshim_load_cfg(void)
       continue;
     } else if (!strcmp(key, "USB_RESET_DELAY")) {
       rshim_usb_reset_delay = atoi(value);
+      rshim_has_usb_reset_delay = true;
       continue;
     } else if (!strcmp(key, "PCIE_RESET_DELAY")) {
       rshim_pcie_reset_delay = atoi(value);
+      rshim_has_pcie_reset_delay = true;
       continue;
     } else if (!strcmp(key, "PCIE_INTR_POLL_INTERVAL")) {
       rshim_pcie_intr_poll_interval = atoi(value);

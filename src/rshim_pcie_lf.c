@@ -785,6 +785,11 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
   }
   bd->rev_id = pci_read_byte(pci_dev, PCI_REVISION_ID);
 
+  if (rshim_has_pcie_reset_delay || bd->ver_id < RSHIM_BLUEFIELD_3)
+    bd->reset_delay = rshim_pcie_reset_delay;
+  else
+    bd->reset_delay = 1; /* minimum delay for BF3 */
+
   /* Initialize object */
   dev->pci_dev = pci_dev;
 

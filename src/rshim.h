@@ -41,7 +41,9 @@ extern int rshim_log_level;
 extern bool rshim_daemon_mode;
 extern int rshim_drop_mode;
 extern int rshim_usb_reset_delay;
+extern bool rshim_has_usb_reset_delay;
 extern int rshim_pcie_reset_delay;
+extern bool rshim_has_pcie_reset_delay;
 extern int rshim_pcie_intr_poll_interval;
 extern int rshim_pcie_enable_vfio;
 extern int rshim_pcie_enable_uio;
@@ -390,6 +392,9 @@ struct rshim_backend {
 
   /* Boot timeout in seconds. */
   int boot_timeout;
+
+  /* Delay after reset. */
+  int reset_delay;
 
   /* Configured MAC address of the peer-side. */
   uint8_t peer_mac[6];
