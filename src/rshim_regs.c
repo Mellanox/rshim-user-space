@@ -1,3 +1,9 @@
+// SPDX-License-Identifier: GPL-2.0 or BSD-3-Clause
+/*
+ * Copyright (C) 2019-2023 Mellanox Technologies. All Rights Reserved.
+ *
+ */
+
 #include "rshim_regs.h"
 #include "rshim.h"
 
