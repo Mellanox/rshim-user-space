@@ -185,6 +185,7 @@ typedef struct {
 
   /* Interrupt handle and read length */
   volatile int intr_fd;
+  volatile int intr_reset_seq;
   uint32_t intr_len;
 
   /* Interrupt thread */
@@ -718,6 +719,11 @@ static int rshim_pcie_mmap_uio(rshim_pcie_t *dev)
   /* Open the control fd to handle interrupt. */
   uio_num = atoi(str);
   snprintf(devname, sizeof(devname), "/dev/uio%u", uio_num);
+  if (dev->intr_fd >= 0) {
+    dev->intr_reset_seq++;
+    __sync_synchronize();
+    close(dev->intr_fd);
+  }
   dev->intr_fd = open(devname, O_RDWR);
   dev->intr_len = sizeof(uint32_t);
   rshim_pcie_enable_irq(dev, true);
@@ -841,7 +847,9 @@ static void *rshim_pcie_intr_thread(void *arg)
 {
   rshim_pcie_t *dev = arg;
   uint8_t intr_buf[16];
-  int rc;
+  int rc, reset_seq;
+
+  reset_seq = dev->intr_reset_seq;
 
   while (rshim_run) {
     if (dev->intr_fd < 0) {
@@ -858,6 +866,12 @@ static void *rshim_pcie_intr_thread(void *arg)
         continue;
     } else if (rc == 0) {
       sleep(1);
+      continue;
+    }
+
+    __sync_synchronize();
+    if (reset_seq != dev->intr_reset_seq) {
+      reset_seq = dev->intr_reset_seq;
       continue;
     }
 
