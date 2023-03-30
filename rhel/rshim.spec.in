@@ -4,7 +4,7 @@
 
 Name: rshim
 Version: @VERSION@
-Release: 19%{?dist}
+Release: 0%{?dist}
 Summary: User-space driver for Mellanox BlueField SoC
 
 License: GPLv2
@@ -54,6 +54,11 @@ via the virtual console or network interface.
 %{_mandir}/man8/rshim.8.gz
 
 %changelog
+* Thu Mar 30 2023 Liming Sun <limings@nvidia.com> - 2.0.7
+- Avoid opening /dev/uio multiple times
+- Update common files to dual-license
+- Adjust rshim reset delay
+
 * Sun Nov 20 2022 Liming Sun <limings@nvidia.com> - 2.0.6-19
 - BF3: Support 4B access for PCIe
 
