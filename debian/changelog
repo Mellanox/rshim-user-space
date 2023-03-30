@@ -1,3 +1,11 @@
+rshim (2.0.7) UNRELEASED; urgency=low
+
+  * Avoid opening /dev/uio multiple times
+  * Update common files to dual-license
+  * Adjust rshim reset delay
+
+ -- Liming Sun <limings@nvidia.com>  Thu, 30 Mar 2023 11:40:15 -0400
+
 rshim (2.0.6-19) UNRELEASED; urgency=low
 
   * BF3: Support 4B access for PCIe

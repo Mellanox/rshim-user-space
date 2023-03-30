@@ -23,8 +23,6 @@
 
 #include "rshim.h"
 
-#define REVISION "19"
-
 /* Maximum number of devices supported (currently it's limited to 64). */
 #define RSHIM_MAX_DEV 64
 
@@ -2937,7 +2935,7 @@ int main(int argc, char *argv[])
       break;
     case 'v':
 #if defined(PACKAGE_NAME) && defined(VERSION)
-      printf(PACKAGE_NAME " " VERSION "-" REVISION "\n");
+      printf(PACKAGE_NAME " " VERSION "\n");
 #else
       printf("Rshim Driver for BlueField SoC 2.0\n");
 #endif
