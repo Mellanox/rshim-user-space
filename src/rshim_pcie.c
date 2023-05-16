@@ -1092,7 +1092,7 @@ static int rshim_pcie_enable(rshim_backend_t *bd, bool enable)
     }
 
     /* Fall-back to direct map if failed. */
-    if (rc < 0 && dev->mmap_mode == RSHIM_PCIE_MMAP_UIO) {
+    if (rc < 0 && dev->mmap_mode != RSHIM_PCIE_MMAP_DIRECT) {
       RSHIM_INFO("Fall-back to direct io\n");
       rshim_pcie_bind(dev, false);
       dev->pci_path = NULL;
