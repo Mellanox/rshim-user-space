@@ -95,6 +95,9 @@ fi
 %{_mandir}/man8/bfb-install.8.gz
 
 %changelog
+* Tue May 16 2023 Liming Sun <limings@nvidia.com> - 2.0.8
+- Fix the fall-back logic of direct-mapping
+
 * Thu Mar 30 2023 Liming Sun <limings@nvidia.com> - 2.0.7
 - Avoid opening /dev/uio multiple times
 - Update common files to dual-license

@@ -2,7 +2,7 @@
 # Copyright (C) 2019 Mellanox Technologies. All Rights Reserved.
 #
 
-AC_INIT([rshim], [2.0.7])
+AC_INIT([rshim], [2.0.8])
 AC_CONFIG_AUX_DIR(config)
 AM_INIT_AUTOMAKE([-Wall -Werror foreign])
 AC_LANG(C)

@@ -54,6 +54,9 @@ via the virtual console or network interface.
 %{_mandir}/man8/rshim.8.gz
 
 %changelog
+* Tue May 16 2023 Liming Sun <limings@nvidia.com> - 2.0.8
+- Fix the fall-back logic of direct-mapping
+
 * Thu Mar 30 2023 Liming Sun <limings@nvidia.com> - 2.0.7
 - Avoid opening /dev/uio multiple times
 - Update common files to dual-license

@@ -1,3 +1,9 @@
+rshim (2.0.8) UNRELEASED; urgency=low
+
+  * Fix the fall-back logic of direct-mapping
+
+ -- Liming Sun <limings@nvidia.com>  Tue, 16 May 2023 11:40:25 -0400
+
 rshim (2.0.7) UNRELEASED; urgency=low
 
   * Avoid opening /dev/uio multiple times
