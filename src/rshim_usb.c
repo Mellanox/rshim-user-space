@@ -249,7 +249,7 @@ static ssize_t rshim_usb_bf3_boot_write(rshim_backend_t *bd, const char *buf,
   int rc, tmp_tsfr;
   int size_addr;
   uint64_t reg;
-  int retries = 60;
+  time_t t0, t1;
   int i = 0;
 
   size_addr = bd->regs->boot_fifo_count;
@@ -257,12 +257,12 @@ static ssize_t rshim_usb_bf3_boot_write(rshim_backend_t *bd, const char *buf,
   temp_count = count;
 
   while (temp_count) {
-
     /* Check whether the BOOT FIFO is full. If it is, poll, until
      * there is free space. The BOOT FIFO has a max size of
      * is 0x400 (lines) * 8 = 8192 (bytes).
      */
     do {
+      time(&t0);
 
       rc = bd->read_rshim(bd, RSHIM_CHANNEL, size_addr, &reg, RSHIM_REG_SIZE_8B);
       if (rc < 0) {
@@ -274,10 +274,9 @@ static ssize_t rshim_usb_bf3_boot_write(rshim_backend_t *bd, const char *buf,
       if (avail_fifo_bytes > 0)
         break;
 
-      /* TODO: Make this delay smaller for real HW */
-      sleep(1);
-
-    } while(retries--);
+      usleep(50000);
+      time(&t1);
+    } while(difftime(t1, t0) < bd->boot_timeout);
 
     if (avail_fifo_bytes) {
       if (temp_count < avail_fifo_bytes)
@@ -299,7 +298,7 @@ static ssize_t rshim_usb_bf3_boot_write(rshim_backend_t *bd, const char *buf,
 
     } else {
       RSHIM_ERR("Timeout boot fifo count\n");
-      return -EBUSY;
+      return transferred;
     }
   }
 
