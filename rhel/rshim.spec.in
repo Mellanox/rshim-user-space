@@ -54,6 +54,9 @@ via the virtual console or network interface.
 %{_mandir}/man8/rshim.8.gz
 
 %changelog
+* Sat Jun 17 2023 Liming Sun <limings@nvidia.com> - 2.0.9
+- rshim/usb/bf3: fix timeout logic
+
 * Tue May 16 2023 Liming Sun <limings@nvidia.com> - 2.0.8
 - Fix the fall-back logic of direct-mapping
 

@@ -1,3 +1,9 @@
+rshim (2.0.9) UNRELEASED; urgency=low
+
+  * rshim/usb/bf3: fix timeout logic
+
+ -- Liming Sun <limings@nvidia.com>  Sat, 17 Jun 2023 13:55:20 -0400
+
 rshim (2.0.8) UNRELEASED; urgency=low
 
   * Fix the fall-back logic of direct-mapping
