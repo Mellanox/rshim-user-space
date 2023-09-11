@@ -85,7 +85,8 @@ enum {
 enum {
   RSHIM_PCIE_RST_REPLY_NONE,
   RSHIM_PCIE_RST_REPLY_ACK,
-  RSHIM_PCIE_RST_REPLY_NACK
+  RSHIM_PCIE_RST_REPLY_NACK,
+  RSHIM_PCIE_RST_START_ACK,
 };
 
 /* Reset type stored in scratchpad6. */
@@ -94,6 +95,13 @@ enum {
   RSHIM_PCIE_RST_TYPE_DPU_RESET,
   RSHIM_PCIE_RST_TYPE_NIC_RESET
 };
+
+/* Min delay in seconds after RSHIM_PCIE_RST_START_ACK */
+#define RSHIM_PCIE_RST_START_MIN_DELAY    2
+
+/* Reset version. */
+#define RSHIM_PCIE_RST_VER_0   0
+#define RSHIM_PCIE_RST_VER_1   1
 
 /* Interrupt information between NIC_FW and rshim driver. */
 typedef union {
@@ -111,7 +119,7 @@ typedef union {
     /* 10’s of ms between the PCI link disable and PCI link enable (RO) */
     uint64_t rst_downtime : 8;
 
-    uint64_t unused_2 : 4;
+    uint64_t version : 4;
 
     /* RSHIM_PCIE_RST_TYPE_xxx */
     uint64_t rst_type : 3;
@@ -754,7 +762,7 @@ static void rshim_pcie_intr(rshim_pcie_t *dev)
 {
   rshim_pcie_intr_info_t info = {.word = 0};
   rshim_backend_t *bd = &dev->bd;
-  int rc, drop_mode;
+  int rc, drop_mode, delay;
   time_t t;
 
   /* Add some protection for interrupt flooding. */
@@ -783,11 +791,14 @@ static void rshim_pcie_intr(rshim_pcie_t *dev)
     goto intr_done;
   }
 
-  RSHIM_INFO("Receive interrupt for %s reset\n",
+  RSHIM_INFO("Receive interrupt(v%d) for %s reset\n",
+    info.version,
     (info.rst_type == RSHIM_PCIE_RST_TYPE_NIC_RESET) ? "NIC" :
     ((info.rst_type == RSHIM_PCIE_RST_TYPE_DPU_RESET) ? "DPU" : ""));
 
-  if (info.rst_reply == RSHIM_PCIE_RST_REPLY_NONE) {
+retry:
+  switch (info.rst_state) {
+  case RSHIM_PCIE_RST_STATE_REQUEST:
     RSHIM_INFO("NIC reset ACK\n");
     info.rst_reply = RSHIM_PCIE_RST_REPLY_ACK;
     dev->nic_reset = true;
@@ -796,21 +807,43 @@ static void rshim_pcie_intr(rshim_pcie_t *dev)
                     info.word, RSHIM_REG_SIZE_8B);
     sleep(RSHIM_PCIE_NIC_RESET_WAIT);
     dev->nic_reset = false;
-  }
 
-  rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad6,
-                      &info.word, RSHIM_REG_SIZE_8B);
-  if (rc || RSHIM_BAD_CTRL_REG(info.word)) {
-    RSHIM_WARN("Failed to read irq request\n");
-    goto intr_done;
-  }
+    /*
+     * Version 0 only has one interrupt and is all handled here.
+     * After the above ACK and delay, it checks the scratchpad6 and
+     * go through this block again if state has been changed by NIC FW.
+     */
+    if (info.version == RSHIM_PCIE_RST_VER_0) {
+      rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad6,
+                          &info.word, RSHIM_REG_SIZE_8B);
+      if (rc || RSHIM_BAD_CTRL_REG(info.word)) {
+        RSHIM_WARN("Failed to read irq request\n");
+        goto intr_done;
+      }
 
-  if (info.rst_state == RSHIM_PCIE_RST_STATE_ABORT) {
+      /* Go through this process again. */
+      if (info.rst_state == RSHIM_PCIE_RST_STATE_ABORT ||
+          info.rst_state == RSHIM_PCIE_RST_STATE_START)
+        goto retry;
+    }
+    break;
+
+  case RSHIM_PCIE_RST_STATE_ABORT:
     RSHIM_INFO("NIC reset ABORT\n");
     info.word &= 0xFFFFFFFFUL;
     bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad6,
                     info.word, RSHIM_REG_SIZE_8B);
-  } else if (info.rst_type == RSHIM_PCIE_RST_TYPE_DPU_RESET) {
+    break;
+
+  case RSHIM_PCIE_RST_STATE_START:
+    RSHIM_INFO("NIC reset START\n");
+
+    if (info.version != RSHIM_PCIE_RST_VER_0) {
+      info.rst_reply = RSHIM_PCIE_RST_START_ACK;
+      bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad6,
+                      info.word, RSHIM_REG_SIZE_8B);
+    }
+
     /*
      * Both NIC and ARM reset.
      * - Set drop_mode to prevent further read/write;
@@ -821,8 +854,15 @@ static void rshim_pcie_intr(rshim_pcie_t *dev)
     drop_mode = bd->drop_mode;
     bd->drop_mode = 1;
     rshim_fifo_reset(bd);
-    sleep(2);
+    delay = (info.rst_downtime * 10 + 999) / 1000;
+    if (delay < RSHIM_PCIE_RST_START_MIN_DELAY)
+      delay = RSHIM_PCIE_RST_START_MIN_DELAY;
+    sleep(delay);
     bd->drop_mode = drop_mode;
+    break;
+
+  default:
+    break;
   }
 
   if (!bd->drop_mode)
