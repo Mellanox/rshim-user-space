@@ -95,6 +95,9 @@ fi
 %{_mandir}/man8/bfb-install.8.gz
 
 %changelog
+* Mon Sep 18 2023 Liming Sun <limings@nvidia.com> - 2.0.10
+- Fix interrupt handling for NIC FW_RESET
+
 * Sat Jun 17 2023 Liming Sun <limings@nvidia.com> - 2.0.9
 - rshim/usb/bf3: fix timeout logic
 
