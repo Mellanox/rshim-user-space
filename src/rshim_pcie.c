@@ -99,10 +99,6 @@ enum {
 /* Min delay in seconds after RSHIM_PCIE_RST_START_ACK */
 #define RSHIM_PCIE_RST_START_MIN_DELAY    2
 
-/* Reset version. */
-#define RSHIM_PCIE_RST_VER_0   0
-#define RSHIM_PCIE_RST_VER_1   1
-
 /* Interrupt information between NIC_FW and rshim driver. */
 typedef union {
   struct {
@@ -119,7 +115,7 @@ typedef union {
     /* 10’s of ms between the PCI link disable and PCI link enable (RO) */
     uint64_t rst_downtime : 8;
 
-    uint64_t version : 4;
+    uint64_t unused_2 : 4;
 
     /* RSHIM_PCIE_RST_TYPE_xxx */
     uint64_t rst_type : 3;
@@ -791,12 +787,10 @@ static void rshim_pcie_intr(rshim_pcie_t *dev)
     goto intr_done;
   }
 
-  RSHIM_INFO("Receive interrupt(v%d) for %s reset\n",
-    info.version,
+  RSHIM_INFO("Receive interrupt for %s reset\n",
     (info.rst_type == RSHIM_PCIE_RST_TYPE_NIC_RESET) ? "NIC" :
     ((info.rst_type == RSHIM_PCIE_RST_TYPE_DPU_RESET) ? "DPU" : ""));
 
-retry:
   switch (info.rst_state) {
   case RSHIM_PCIE_RST_STATE_REQUEST:
     RSHIM_INFO("NIC reset ACK\n");
@@ -807,25 +801,6 @@ retry:
                     info.word, RSHIM_REG_SIZE_8B);
     sleep(RSHIM_PCIE_NIC_RESET_WAIT);
     dev->nic_reset = false;
-
-    /*
-     * Version 0 only has one interrupt and is all handled here.
-     * After the above ACK and delay, it checks the scratchpad6 and
-     * go through this block again if state has been changed by NIC FW.
-     */
-    if (info.version == RSHIM_PCIE_RST_VER_0) {
-      rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad6,
-                          &info.word, RSHIM_REG_SIZE_8B);
-      if (rc || RSHIM_BAD_CTRL_REG(info.word)) {
-        RSHIM_WARN("Failed to read irq request\n");
-        goto intr_done;
-      }
-
-      /* Go through this process again. */
-      if (info.rst_state == RSHIM_PCIE_RST_STATE_ABORT ||
-          info.rst_state == RSHIM_PCIE_RST_STATE_START)
-        goto retry;
-    }
     break;
 
   case RSHIM_PCIE_RST_STATE_ABORT:
@@ -838,11 +813,9 @@ retry:
   case RSHIM_PCIE_RST_STATE_START:
     RSHIM_INFO("NIC reset START\n");
 
-    if (info.version != RSHIM_PCIE_RST_VER_0) {
-      info.rst_reply = RSHIM_PCIE_RST_START_ACK;
-      bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad6,
-                      info.word, RSHIM_REG_SIZE_8B);
-    }
+    info.rst_reply = RSHIM_PCIE_RST_START_ACK;
+    bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad6,
+                    info.word, RSHIM_REG_SIZE_8B);
 
     /*
      * Both NIC and ARM reset.
