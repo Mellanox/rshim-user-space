@@ -104,7 +104,7 @@ sh -c "cat ${bfb} ${cfg:+$cfg} ${rootfs:+${rootfs}} ${pv:+| ${pv} | cat -} > ${r
 RETVAL=$?
 if [ $RETVAL -ne 0 ]; then
   echo "Failed to push BFB"
-  exit
+  exit $RETVAL
 fi
 
 # Print the rshim log.
@@ -117,7 +117,7 @@ while true; do
   RETVAL=$?
   if [ $RETVAL -ne 0 ]; then
     echo "Failed to read ${rshim}/misc"
-    exit
+    exit $RETVAL
   fi
   cur_len=${#cur}
 
@@ -151,3 +151,5 @@ while true; do
     break;
   fi
 done
+
+exit 0
