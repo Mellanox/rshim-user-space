@@ -54,6 +54,10 @@ via the virtual console or network interface.
 %{_mandir}/man8/rshim.8.gz
 
 %changelog
+* Tue Sep 26 2023 Liming Sun <limings@nvidia.com> - 2.0.11
+- Remove version 0 support for NIC FW_RESET
+- bfb-install: Return failure code
+
 * Mon Sep 18 2023 Liming Sun <limings@nvidia.com> - 2.0.10
 - Fix interrupt handling for NIC FW_RESET
 
