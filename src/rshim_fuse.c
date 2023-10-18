@@ -41,6 +41,9 @@ char *rshim_dev_minor_names[RSH_DEV_TYPES] = {
     [RSH_DEV_TYPE_MISC] = "misc",
 };
 
+/* BF3 ref clock. */
+#define BF3_REF_CLK_IN_HZ 200000000
+
 #ifdef __linux__
 static void rshim_fuse_boot_open(fuse_req_t req, struct fuse_file_info *fi)
 {
@@ -696,6 +699,16 @@ static int rshim_fuse_misc_read(struct cuse_dev *cdev, int fflags,
     n = snprintf(p, len, "%-16s%s\n", "OPN_STR", opn);
     p += n;
     len -= n;
+  }
+
+  if (bd->ver_id == RSHIM_BLUEFIELD_3) {
+    rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->uptime,
+                        &value, RSHIM_REG_SIZE_8B);
+    if (!rc) {
+      n = snprintf(p, len, "%-16s%ld(s)\n", "UP_TIME", value/BF3_REF_CLK_IN_HZ);
+      p += n;
+      len -= n;
+    }
   }
 
   if (bd->display_level == 1) {
