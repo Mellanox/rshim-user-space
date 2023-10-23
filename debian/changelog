@@ -1,3 +1,9 @@
+rshim (2.0.12) UNRELEASED; urgency=low
+
+  * BF3: Add UPTIME display in seconds
+
+ -- Liming Sun <limings@nvidia.com>  Mon, 23 Oct 2023 13:05:32 -0400
+
 rshim (2.0.11) UNRELEASED; urgency=low
 
   * bfb-install: Return failure code
