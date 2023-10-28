@@ -19,8 +19,13 @@
 #include <sys/timerfd.h>
 
 #ifdef __linux__
+#if FUSE_USE_VERSION >= 30
+#include <fuse3/cuse_lowlevel.h>
+#include <fuse3/fuse_opt.h>
+#else
 #include <fuse/cuse_lowlevel.h>
 #include <fuse/fuse_opt.h>
+#endif
 #include <unistd.h>
 #elif defined(__FreeBSD__)
 #include <termios.h>
@@ -1299,6 +1304,7 @@ int rshim_fuse_init(rshim_backend_t *bd)
   for (i = 0; i < RSH_DEV_TYPES; i++) {
 #ifdef __linux__
     static const char * const argv[] = {"./rshim", "-f"};
+    int multithreaded = 0;
 
     name = rshim_dev_minor_names[i];
 
@@ -1320,7 +1326,7 @@ int rshim_fuse_init(rshim_backend_t *bd)
       continue;
     bd->fuse_session[i] = cuse_lowlevel_setup(sizeof(argv)/sizeof(char *),
                                       (char **)argv,
-                                      &ci, ops[i], NULL, bd);
+                                      &ci, ops[i], &multithreaded, bd);
     if (!bd->fuse_session[i]) {
       RSHIM_ERR("Failed to setup CUSE %s\n", name);
       return -1;
