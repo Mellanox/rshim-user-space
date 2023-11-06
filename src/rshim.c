@@ -210,6 +210,8 @@ volatile bool rshim_run = true;
 
 static uint32_t rshim_timer_interval = RSHIM_TIMER_INTERVAL;
 
+static void rshim_fifo_msg_update_checksum(rshim_tmfifo_msg_hdr_t *hdr);
+
 /* Global lock / unlock. */
 void rshim_lock(void)
 {
@@ -236,8 +238,10 @@ static int rshim_fd_full_read(int fd, void *data, int len)
   while (len > 0) {
     cc = read(fd, buf, len);
     if (cc < 0) {
-      if (errno == EINTR || errno == EAGAIN)
+      if (errno == EINTR || errno == EAGAIN) {
+        usleep(1000);
         continue;
+      }
       pthread_mutex_unlock(&rshim_fd_mutex);
       return -1;
     }
@@ -265,8 +269,10 @@ static int rshim_fd_full_write(int fd, void *data, int len)
     ssize_t written = write(fd, buf, len);
 
     if (written < 0) {
-      if (errno == EINTR || errno == EAGAIN)
+      if (errno == EINTR || errno == EAGAIN) {
+        usleep(1000);
         continue;
+      }
       RSHIM_ERR("fd write error %d\n", (int)written);
       pthread_mutex_unlock(&rshim_fd_mutex);
       return written;
@@ -937,7 +943,7 @@ static int rshim_fifo_tx_avail(rshim_backend_t *bd)
   if (rc < 0 || RSHIM_BAD_CTRL_REG(word)) {
     RSHIM_ERR("rshim%d read_rshim error %d\n", bd->index, rc);
     usleep(10000);
-    return rc;
+    return -1;
   }
   avail = max_size - (int)(word & RSH_TM_HOST_TO_TILE_STS__COUNT_MASK) -
           RSHIM_FIFO_SPACE_RESERV;
@@ -956,6 +962,7 @@ static int rshim_fifo_sync(rshim_backend_t *bd)
 
   hdr.data = 0;
   hdr.type = VIRTIO_ID_NET;
+  rshim_fifo_msg_update_checksum(&hdr);
 
   for (i = 0; i < avail; i++) {
     rc = bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->tm_htt_data,
@@ -979,7 +986,7 @@ static uint8_t rshim_fifo_ctrl_checksum(rshim_tmfifo_msg_hdr_t *hdr)
   return checksum;
 }
 
-static void rshim_fifo_ctrl_update_checksum(rshim_tmfifo_msg_hdr_t *hdr)
+static void rshim_fifo_msg_update_checksum(rshim_tmfifo_msg_hdr_t *hdr)
 {
   uint8_t checksum;
 
@@ -988,16 +995,22 @@ static void rshim_fifo_ctrl_update_checksum(rshim_tmfifo_msg_hdr_t *hdr)
   hdr->checksum = ~checksum + 1;
 }
 
-static bool rshim_fifo_ctrl_verify_checksum(rshim_tmfifo_msg_hdr_t *hdr)
+static bool rshim_fifo_msg_verify_checksum(rshim_tmfifo_msg_hdr_t *hdr)
 {
-  uint8_t checksum = rshim_fifo_ctrl_checksum(hdr);
+  uint8_t checksum = 0;
+
+  /*
+   * hdr->checksum is either 0 (old version) or should have a valid checksum.
+   */
+  if (hdr->checksum)
+    checksum = rshim_fifo_ctrl_checksum(hdr);
 
   return checksum ? false : true;
 }
 
 static void rshim_fifo_ctrl_rx(rshim_backend_t *bd, rshim_tmfifo_msg_hdr_t *hdr)
 {
-  if (!rshim_fifo_ctrl_verify_checksum(hdr))
+  if (!rshim_fifo_msg_verify_checksum(hdr))
     return;
 
   switch (hdr->type) {
@@ -1032,11 +1045,11 @@ static int rshim_fifo_ctrl_tx(rshim_backend_t *bd)
     hdr.data = 0;
     hdr.type = TMFIFO_MSG_MAC_1;
     memcpy(hdr.mac, bd->peer_mac, 3);
-    rshim_fifo_ctrl_update_checksum(&hdr);
+    rshim_fifo_msg_update_checksum(&hdr);
     memcpy(bd->write_buf, &hdr.data, sizeof(hdr.data));
     hdr.type = TMFIFO_MSG_MAC_2;
     memcpy(hdr.mac, bd->peer_mac + 3, 3);
-    rshim_fifo_ctrl_update_checksum(&hdr);
+    rshim_fifo_msg_update_checksum(&hdr);
     memcpy(bd->write_buf + sizeof(hdr.data), &hdr.data, sizeof(hdr.data));
     len = sizeof(hdr.data) * 2;
   } else if (bd->peer_pxe_id_set) {
@@ -1044,7 +1057,7 @@ static int rshim_fifo_ctrl_tx(rshim_backend_t *bd)
     hdr.data = 0;
     hdr.type = TMFIFO_MSG_PXE_ID;
     hdr.pxe_id = htonl(bd->pxe_client_id);
-    rshim_fifo_ctrl_update_checksum(&hdr);
+    rshim_fifo_msg_update_checksum(&hdr);
     memcpy(bd->write_buf, &hdr.data, sizeof(hdr.data));
     len = sizeof(hdr.data);
   } else if (bd->peer_vlan_set) {
@@ -1053,14 +1066,14 @@ static int rshim_fifo_ctrl_tx(rshim_backend_t *bd)
     hdr.type = TMFIFO_MSG_VLAN_ID;
     hdr.vlan[0] = htons(bd->vlan[0]);
     hdr.vlan[1] = htons(bd->vlan[1]);
-    rshim_fifo_ctrl_update_checksum(&hdr);
+    rshim_fifo_msg_update_checksum(&hdr);
     memcpy(bd->write_buf, &hdr.data, sizeof(hdr.data));
     len = sizeof(hdr.data);
   } else if (bd->peer_ctrl_req) {
     bd->peer_ctrl_req = 0;
     hdr.data = 0;
     hdr.type = TMFIFO_MSG_CTRL_REQ;
-    rshim_fifo_ctrl_update_checksum(&hdr);
+    rshim_fifo_msg_update_checksum(&hdr);
     memcpy(bd->write_buf, &hdr.data, sizeof(hdr.data));
     len = sizeof(hdr.data);
   }
@@ -1115,8 +1128,16 @@ again:
 
       hdr = (rshim_tmfifo_msg_hdr_t *)&bd->read_buf[bd->read_buf_next];
 
+      /* Verify checksum and message size. */
+      if (!rshim_fifo_msg_verify_checksum(hdr) ||
+        (ntohs(hdr->len) + sizeof(*hdr) > sizeof(rshim_net_pkt_t))) {
+        bd->read_buf_next += sizeof(*hdr);
+        continue;
+      }
+
       bd->read_buf_pkt_rem = ntohs(hdr->len) + sizeof(*hdr);
       bd->read_buf_pkt_padding = (8 - (bd->read_buf_pkt_rem & 7)) & 7;
+
       if (hdr->type == VIRTIO_ID_NET)
         bd->rx_chan = TMFIFO_NET_CHAN;
       else if (hdr->type == VIRTIO_ID_CONSOLE) {
@@ -1410,6 +1431,9 @@ static void rshim_fifo_output(rshim_backend_t *bd)
                  sizeof(*hdr) - pass1);
         }
       }
+
+      /* Calculate checksum for this header. */
+      rshim_fifo_msg_update_checksum(hdr);
 
       bd->write_buf_pkt_rem = ntohs(hdr->len) + sizeof(*hdr);
     }
