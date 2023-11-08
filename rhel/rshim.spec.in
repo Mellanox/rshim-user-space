@@ -54,6 +54,10 @@ via the virtual console or network interface.
 %{_mandir}/man8/rshim.8.gz
 
 %changelog
+* Wed Nov 08 2023 Liming Sun <limings@nvidia.com> - 2.0.13
+- Several robust fixes
+- Add fuse3 support
+
 * Mon Oct 23 2023 Liming Sun <limings@nvidia.com> - 2.0.12
 - BF3: Add UPTIME display in seconds
 

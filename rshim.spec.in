@@ -96,6 +96,10 @@ fi
 %{_mandir}/man8/bfb-install.8.gz
 
 %changelog
+* Wed Nov 08 2023 Liming Sun <limings@nvidia.com> - 2.0.13
+- Several robust fixes
+- Add fuse3 support
+
 * Mon Oct 23 2023 Liming Sun <limings@nvidia.com> - 2.0.12
 - BF3: Add UPTIME display in seconds
 
