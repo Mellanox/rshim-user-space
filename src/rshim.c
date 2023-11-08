@@ -38,6 +38,7 @@
 /* Keepalive period in milliseconds. */
 static int rshim_keepalive_period = 300;
 
+/* Keepalive magic number. */
 #define RSHIM_KEEPALIVE_MAGIC_NUM 0x5089836482ULL
 
 /* Circular buffer macros. */
