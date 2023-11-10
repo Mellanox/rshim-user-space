@@ -1129,9 +1129,8 @@ again:
 
       hdr = (rshim_tmfifo_msg_hdr_t *)&bd->read_buf[bd->read_buf_next];
 
-      /* Verify checksum and message size. */
-      if (!rshim_fifo_msg_verify_checksum(hdr) ||
-        (ntohs(hdr->len) + sizeof(*hdr) > sizeof(rshim_net_pkt_t))) {
+      /* Verify message size. */
+      if (ntohs(hdr->len) + sizeof(*hdr) > sizeof(rshim_net_pkt_t)) {
         bd->read_buf_next += sizeof(*hdr);
         continue;
       }
