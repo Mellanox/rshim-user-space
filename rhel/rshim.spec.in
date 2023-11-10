@@ -54,6 +54,9 @@ via the virtual console or network interface.
 %{_mandir}/man8/rshim.8.gz
 
 %changelog
+* Fri Nov 10 2023 Liming Sun <limings@nvidia.com> - 2.0.14
+- Fix 9f19cfb4a75687ae
+
 * Wed Nov 08 2023 Liming Sun <limings@nvidia.com> - 2.0.13
 - Several robust fixes
 - Add fuse3 support
