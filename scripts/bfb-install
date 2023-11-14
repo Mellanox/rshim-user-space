@@ -111,7 +111,8 @@ fi
 echo "Collecting BlueField booting status. Press Ctrl+C to stop…"
 
 last=""
-while true; do
+finished=0
+while [ $finished -eq 0 ]; do
   last_len=${#last}
   cur=$(echo 'DISPLAY_LEVEL 2' > ${rshim}/misc && cat ${rshim}/misc | sed -n '/^ INFO/,$p')
   RETVAL=$?
@@ -123,11 +124,15 @@ while true; do
 
   sleep 1
 
+  if echo ${cur} | grep -Ei "Reboot|finished|DPU is ready|In Enhanced NIC mode" >/dev/null; then
+    finished=1
+  fi
+
   # Overwrite if current length smaller than previous length.
   if [ ${last_len} -eq 0 -o ${last_len} -gt ${cur_len} ]; then
     echo "${cur}" | sed '/^[[:space:]]*$/d'
     last="${cur}"
-    continue
+    [ $finished -eq 0 ] && continue
   fi
 
   # Overwrite if first portion doesn't match.
@@ -135,21 +140,17 @@ while true; do
   if [ "${sub_cur}" != "${last}" ]; then
     echo "${cur}" | sed '/^[[:space:]]*$/d'
     last="${cur}"
-    continue
+    [ $finished -eq 0 ] && continue
   fi
 
   # Nothing if no update.
   if [ ${last_len} -eq ${cur_len} ]; then
-    continue;
+    [ $finished -eq 0 ] && continue;
   fi
 
   # Print the diff.
   echo "${cur}" | dd bs=1 skip=${last_len} 2>/dev/null | sed '/^[[:space:]]*$/d'
   last="${cur}"
-
-  if echo ${cur} | grep -Ei "Reboot|finished|DPU is ready" >/dev/null; then
-    break;
-  fi
 done
 
 exit 0
