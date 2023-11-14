@@ -96,6 +96,9 @@ fi
 %{_mandir}/man8/bfb-install.8.gz
 
 %changelog
+* Tue Nov 14 2023 Liming Sun <limings@nvidia.com> - 2.0.15
+- Add BFB completion condition for enhanced NIC mode
+
 * Fri Nov 10 2023 Liming Sun <limings@nvidia.com> - 2.0.14
 - Fix 9f19cfb4a75687ae
 

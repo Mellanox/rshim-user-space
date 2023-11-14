@@ -1,3 +1,9 @@
+rshim (2.0.15) UNRELEASED; urgency=low
+
+  * Add BFB completion condition for enhanced NIC mode
+
+ -- Liming Sun <limings@nvidia.com>  Tue, 14 Nov 2023 16:55:30 -0400
+
 rshim (2.0.14) UNRELEASED; urgency=low
 
   * Fix 9f19cfb4a75687ae
