@@ -96,6 +96,9 @@ fi
 %{_mandir}/man8/bfb-install.8.gz
 
 %changelog
+* Thu Nov 16 2023 Liming Sun <limings@nvidia.com> - 2.0.16
+- Remove fuse build dependency
+
 * Tue Nov 14 2023 Liming Sun <limings@nvidia.com> - 2.0.15
 - Add BFB completion condition for enhanced NIC mode
 

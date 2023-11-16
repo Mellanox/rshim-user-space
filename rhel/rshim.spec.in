@@ -54,6 +54,9 @@ via the virtual console or network interface.
 %{_mandir}/man8/rshim.8.gz
 
 %changelog
+* Thu Nov 16 2023 Liming Sun <limings@nvidia.com> - 2.0.16
+- Remove fuse build dependency
+
 * Tue Nov 14 2023 Liming Sun <limings@nvidia.com> - 2.0.15
 - Add BFB completion condition for enhanced NIC mode
 

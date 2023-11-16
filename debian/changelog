@@ -1,3 +1,9 @@
+rshim (2.0.16) UNRELEASED; urgency=low
+
+  * Remove fuse build dependency
+
+ -- Liming Sun <limings@nvidia.com>  Thu, 16 Nov 2023 10:52:30 -0400
+
 rshim (2.0.15) UNRELEASED; urgency=low
 
   * Add BFB completion condition for enhanced NIC mode
