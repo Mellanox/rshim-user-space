@@ -132,7 +132,7 @@ while [ $finished -eq 0 ]; do
   if [ ${last_len} -eq 0 -o ${last_len} -gt ${cur_len} ]; then
     echo "${cur}" | sed '/^[[:space:]]*$/d'
     last="${cur}"
-    [ $finished -eq 0 ] && continue
+    continue
   fi
 
   # Overwrite if first portion doesn't match.
@@ -140,7 +140,7 @@ while [ $finished -eq 0 ]; do
   if [ "${sub_cur}" != "${last}" ]; then
     echo "${cur}" | sed '/^[[:space:]]*$/d'
     last="${cur}"
-    [ $finished -eq 0 ] && continue
+    continue
   fi
 
   # Nothing if no update.
