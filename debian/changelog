@@ -1,3 +1,9 @@
+rshim (2.0.17) UNRELEASED; urgency=low
+
+  * bfb-install: Fix duplicate output
+
+ -- Liming Sun <limings@nvidia.com>  Wed, 22 Nov 2023 08:11:20 -0400
+
 rshim (2.0.16) UNRELEASED; urgency=low
 
   * Remove fuse build dependency
