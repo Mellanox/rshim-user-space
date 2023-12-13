@@ -843,16 +843,17 @@ static int rshim_fuse_misc_write(struct cuse_dev *cdev, int fflags,
 
     pthread_mutex_lock(&bd->mutex);
     old_value = (int)bd->drop_mode;
-    bd->drop_mode = !!value;
-    if (bd->drop_mode == old_value) {
+    value = !!value;
+    if (value == old_value) {
       pthread_mutex_unlock(&bd->mutex);
       goto done;
     }
 
-    if (bd->enable_device) {
-      if (bd->enable_device(bd, bd->drop_mode ? false : true))
-        bd->drop_mode = 1;
-    }
+    bd->drop_mode = 0;
+    if (bd->enable_device && bd->enable_device(bd, value ? false : true))
+      bd->drop_mode = 1;
+    else
+      bd->drop_mode = value;
 
     if (bd->drop_mode)
       bd->drop_pkt = 1;
