@@ -54,6 +54,9 @@ via the virtual console or network interface.
 %{_mandir}/man8/rshim.8.gz
 
 %changelog
+* Thu Dec 14 2023 Liming Sun <limings@nvidia.com> - 2.0.18
+- Clear scratchpad1 register when setting drop_mode
+
 * Wed Nov 22 2023 Liming Sun <limings@nvidia.com> - 2.0.17
 - bfb-install: Fix duplicate output
 
