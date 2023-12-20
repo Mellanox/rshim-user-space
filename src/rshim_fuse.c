@@ -800,6 +800,7 @@ static int rshim_fuse_misc_write(struct cuse_dev *cdev, int fflags,
 #endif
   int i, rc = 0, value = 0, mac[6], vlan[2] = {0}, old_value;
   char opn[RSHIM_YU_BOOT_RECORD_OPN_SIZE + 1] = "";
+  uint64_t val64 = 0;
   char key[32];
 
   if (!bd) {
@@ -949,6 +950,15 @@ static int rshim_fuse_misc_write(struct cuse_dev *cdev, int fflags,
     if (sscanf(p, "%16s", opn) != 1)
       goto invalid;
     rshim_set_opn(bd, opn, RSHIM_YU_BOOT_RECORD_OPN_SIZE);
+  } else if (!strcmp(key, "DEBUG_CODE")) {
+    if (sscanf(p, " 0x%lx", &val64) != 1)
+      goto invalid;
+    pthread_mutex_lock(&bd->mutex);
+    rc = bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad1,
+                         val64, RSHIM_REG_SIZE_8B);
+    if (!rc)
+      bd->debug_code = val64;
+    pthread_mutex_unlock(&bd->mutex);
   } else {
 invalid:
 #ifdef __linux__

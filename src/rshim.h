@@ -339,6 +339,9 @@ struct rshim_backend {
   uint8_t boot_rem_cnt;
   uint64_t boot_rem_data;
 
+  /* Debug code passed in scratchpad1. */
+  uint64_t debug_code;
+
   /*
    * This mutex is used to prevent the interface pointers and the
    * device pointer from disappearing while a driver entry point
