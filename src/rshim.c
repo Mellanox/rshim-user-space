@@ -1660,7 +1660,7 @@ static void rshim_work_handler(rshim_backend_t *bd)
 
   bd->work_pending = false;
 
-  if (bd->keepalive && bd->has_rshim) {
+  if (bd->keepalive && bd->has_rshim && !bd->debug_code) {
     bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad1,
                     RSHIM_KEEPALIVE_MAGIC_NUM, RSHIM_REG_SIZE_8B);
     bd->keepalive = 0;
