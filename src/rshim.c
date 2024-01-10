@@ -1130,7 +1130,8 @@ again:
       hdr = (rshim_tmfifo_msg_hdr_t *)&bd->read_buf[bd->read_buf_next];
 
       /* Verify message size. */
-      if (ntohs(hdr->len) + sizeof(*hdr) > sizeof(rshim_net_pkt_t)) {
+      if ((hdr->type == VIRTIO_ID_NET) &&
+          (ntohs(hdr->len) + sizeof(*hdr) > sizeof(rshim_net_pkt_t))) {
         bd->read_buf_next += sizeof(*hdr);
         continue;
       }
