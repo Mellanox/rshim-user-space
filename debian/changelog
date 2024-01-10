@@ -1,3 +1,10 @@
+rshim (2.0.19) UNRELEASED; urgency=low
+
+  * Fix incorrect console message drop
+  * Allow runtime debug code for DK cards
+
+ -- Liming Sun <limings@nvidia.com>  Wed, 10 Jan 2024 11:06:20 -0400
+
 rshim (2.0.18) UNRELEASED; urgency=low
 
   * Clear scratchpad1 register when setting drop_mode

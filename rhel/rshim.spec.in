@@ -54,6 +54,10 @@ via the virtual console or network interface.
 %{_mandir}/man8/rshim.8.gz
 
 %changelog
+* Wed Jan 10 2024 Liming Sun <limings@nvidia.com> - 2.0.19
+- Fix incorrect console message drop
+- Allow runtime debug code for DK cards
+
 * Thu Dec 14 2023 Liming Sun <limings@nvidia.com> - 2.0.18
 - Clear scratchpad1 register when setting drop_mode
 
