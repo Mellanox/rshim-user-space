@@ -124,7 +124,7 @@ while [ $finished -eq 0 ]; do
 
   sleep 1
 
-  if echo ${cur} | grep -Ei "Reboot|finished|DPU is ready|In Enhanced NIC mode" >/dev/null; then
+  if echo ${cur} | grep -Ei "Linux up|Reboot|finished|DPU is ready|In Enhanced NIC mode" >/dev/null; then
     finished=1
   fi
 
