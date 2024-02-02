@@ -27,19 +27,553 @@
 # of the authors and should not be interpreted as representing official policies,
 # either expressed or implied, of the FreeBSD Project.
 
+# DEBUG=1    # Define this to enable debugging output
+HOST_PIPE="/tmp/mypipe"         # Must be defined same in pipe_to_rshim.sh
+
+# Function to echo a message with color
+echo_color() {
+    local message=$1
+    # Check if the message contains certain keywords and set the color accordingly
+    if echo "$message" | grep -iq "error\|failed"; then
+        tput setaf 1;  # red color
+    elif echo "$message" | grep -iq "success\|OK"; then
+        tput setaf 2;  # green color
+    else
+        tput sgr0;  # default color
+    fi
+    echo "$message"
+    tput sgr0  # reset the color
+}
+alias echo='echo_color'
+
 usage ()
 {
-  echo "syntax: bfb-install --bfb|-b <BFBFILE> [--config|-c <bf.cfg>] \\"
-  echo "  [--rootfs|-f <rootfs.tar.xz>] --rshim|-r <rshimN> [--help|-h]"
+  cat << EOF
+Usage:
+       bfb-install  [--method  server_rshim]  --rshim  rshim_device_name  --bfb  bfb_file [--config config_file]
+       [--rootfs rootfs_file]
+
+       bfb-install --method bmc_rshim_scp --bmc bmc_host --rshim rshim_device_name --bfb bfb_file [--config con‐
+       fig_file] [--rootfs rootfs_file]
+
+       bfb-install  --method  bmc_rshim_nc  --bmc  bmc_host [--port port_number] --rshim rshim_device_name --bfb
+       bfb_file [--config config_file] [--rootfs rootfs_file]
+
+       bfb-install --method bmc_rshim_ncpipe --bmc bmc_host [--port port_number] --rshim rshim_device_name --bfb
+       bfb_file [--config config_file] [--rootfs rootfs_file]
+
+       bfb-install --help
+
+Examples:
+       To install a BFB image using the server rshim method:
+              bfb-install --rshim rshim0 --bfb bluefield.bfb
+
+       To install a BFB image using the BMC rshim scp method:
+              bfb-install --method bmc_rshim_scp --bmc lab105bmc --rshim rshim0 --bfb bluefield.bfb
+
+       To install a BFB image using the BMC rshim nc method:
+              bfb-install --method bmc_rshim_nc --bmc lab105bmc --rshim rshim0 --bfb bluefield.bfb
+
+       To install a BFB image using the BMC rshim ncpipe method with custom port number and verbose output:
+              bfb-install  --method  bmc_rshim_ncpipe  --rshim  rshim0  --bfb  last_ubuntu_22.04_qp -v --bmc bu-
+              lab105-bmc --port 9709
+
+       To install a BFB image with a custom configuration file:
+              bfb-install --rshim rshim0 --bfb bluefield.bfb --config bf.cfg
+EOF
 }
 
+# Run a command locally or networkly via SSH
+#
+# $1: mode (host or network)
+# $2: command
+#
+# Global variables used: bmc_ip
+#
+# Example:
+#   run_cmd host "ls -l"
+#   run_cmd network "ls -l"
+run_cmd()
+{
+  if [ $# -lt 2 ]; then
+    echo "Error: run_cmd() needs at least 2 arguments."
+    exit 1
+  fi
+
+  local mode=$1
+  local command=$2
+
+  if [ -n "$DEBUG" ] && [ "$DEBUG" -eq 1 ]; then
+    echo "Running command in $mode mode: $command"
+  fi
+
+  if [ "$mode" == "host" ]; then
+      # Execute the command locally
+      eval "${sudo_prefix} $command"
+  elif [ "$mode" == "network" ]; then
+      # Execute the command networkly via SSH
+      ssh root@$bmc_ip "$command"
+  else
+      echo "Error: invalid mode: $mode"
+      return 1
+  fi
+}
+
+# Run a command locally or networkly via SSH and exit on error
+# Usage is same as run_cmd():
+#
+# Global variables used: bmc_ip
+run_cmd_exit()
+{
+  run_cmd $1 "$2"
+  RETVAL=$?
+  if [ $RETVAL -ne 0 ]; then
+    echo "Error: Command failed: $2"
+    exit $RETVAL
+  fi
+}
+
+# Check if the host has netcat installed.
+# If not, exit with error.
+#
+# Global variables used: mode
+check_host_netcat_exit()
+{
+  printf "Checking if netcat is installed locally on the host..."
+  if run_cmd host "command -v nc" >/dev/null 2>&1; then
+    echo "OK"
+  else
+    echo "Error: Netcat is not installed locally on the host"
+    exit 1
+  fi
+}
+
+# Check if BMC has SSH host running.
+# If not, exit with error.
+#
+# Global variables used: bmc_ip
+check_bmc_ssh_exit()
+{
+  printf "Checking if BMC has SSH server running..."
+  if ! run_cmd host "nc -z $bmc_ip 22" >/dev/null 2>&1; then
+    echo "Failed"
+    exit 1
+  else
+    echo "OK"
+  fi
+}
+
+# Check if BMC's netcat supports advanced options and the port is open.
+# If not, exit with error.
+#
+# Global variables used: bmc_ip, port
+check_bmc_netcat_exit()
+{
+  printf "Checking if netcat is installed on BMC..."
+  if run_cmd network "command -v nc" >/dev/null 2>&1; then
+    echo "OK"
+  else
+    echo "Error: Netcat is not installed on BMC"
+    exit 1
+  fi
+
+  # Note the default netcat on BMC is busybox's netcat which does not support
+  # advanced options.
+  printf "Checking if BMC's netcat supports advanced options..."
+  if run_cmd network "nc -h" 2>&1 | grep -iq busybox; then
+    echo "Error: BMC's netcat does not support advanced options"
+    exit 1
+  else
+    echo "OK"
+  fi
+
+  printf "Checking if the selected netcat port is available on BMC..."
+  if run_cmd network "nc -z $bmc_ip $port" >/dev/null 2>&1; then
+    echo "Error: Port $port is not available on BMC"
+    exit 1
+  else
+    echo "OK"
+  fi
+}
+
+# Push the boot stream to rshim via host rshim
+# Global variables used: rshim
+push_boot_stream_via_host_rshim()
+{
+  # Push the boot stream to host rshim
+  echo "Pushing bfb${cfg:+ + cfg}${rootfs:+ + rootfs}"
+  sh -c "cat ${bfb} ${cfg:+$cfg} ${rootfs:+${rootfs}} ${pv:+| ${pv} | cat -} > ${rshim}/boot"
+}
+
+# Push the boot stream to rshim via BMC rshim with scp
+# Global variables used: bmc_ip
+push_boot_stream_via_bmc_rshim_scp()
+{
+  # Push the boot stream to BMC rshim via ssh copy
+  echo "Pushing bfb${cfg:+ + cfg}${rootfs:+ + rootfs} to ${bmc_ip} via scp"
+  sh -c "cat ${bfb} ${cfg:+$cfg} ${rootfs:+${rootfs}} ${pv:+| ${pv} | cat -} | ssh root@$bmc_ip \"cat > ${rshim}/boot\""
+}
+
+# Push the boot stream to rshim via BMC rshim with netcat
+#
+# Global variables used: bmc_ip, port, rshim
+push_boot_stream_via_bmc_rshim_nc()
+{
+  data="${bfb} ${cfg:+$cfg} ${rootfs:+${rootfs}}"
+  # Push the boot stream to BMC rshim via netcat
+  echo "Pushing $data to ${bmc_ip} via netcat"
+
+  echo "Starting a netcat server on BMC"
+  if [ $bmc_ip == "localhost" ]; then
+    # This command needs 'sh -c' because it might need root redirection
+    # XXX: currently it works with scp/localhost but doesn't work for
+    # nc/localhost. Needs to either fix it or remove the support for
+    # nc/localhost.
+    start_nc_server_cmd="sh -c \"nc -l -p $port > ${rshim}/boot &\""
+  else
+    start_nc_server_cmd="nc -l -p $port > ${rshim}/boot &"
+  fi
+  run_cmd_exit network "$start_nc_server_cmd"
+  sleep 3  # delay to make sure the server is ready
+
+  echo "Initiate a netcat client on host connecting to BMC"
+  nc_client_cmd="cat $data ${pv:+| ${pv} | cat -} | nc $bmc_ip $port"
+  run_cmd host "$nc_client_cmd"
+}
+
+# Push the boot stream to rshim via BMC rshim with netcat
+#
+# Global variables used: bmc_ip, port, rshim
+push_boot_stream_via_bmc_rshim_ncpipe()
+{
+  if [ $bmc_ip == "localhost" ]; then
+    echo "Error: we don't support localhost for bmc_rshim_ncpipe method."
+    exit 1
+  fi
+
+  echo "Starting the pipe-to-rshim process on BMC"
+  # if ! cat pipe_to_rshim.sh | ssh root@$bmc_ip 'sh - &'; then
+   #  echo "Error: Failed to start pipe_to_rshim process on BMC"
+   #  exit 1
+  # fi
+  ssh root@$bmc_ip '/home/root/pipe_to_rshim.sh > /var/log/pipe_to_rshim.log 2>&1' &
+  pipe_to_rshim_pid=$!
+  printf "Waiting for the pipe_to_rshim process to start..."
+  while true; do
+    if ssh root@$bmc_ip "pgrep pipe_to_rshim >/dev/null"; then
+      echo "OK"
+      break
+    fi
+    printf "."
+    sleep 1
+  done
+
+  echo "Starting the netcat server on BMC"
+  ssh root@$bmc_ip "nc -l -p $port > $HOST_PIPE" &
+  bmc_nc_server_pid=$!
+  # It could be very slow to start the netcat server on BMC. So we need to check
+  # if it's ready.
+  printf "Waiting for netcat server on BMC to start..."
+  while true; do
+    if ssh root@$bmc_ip "pgrep -x nc >/dev/null"; then
+      echo "OK"
+      break
+    fi
+    printf "."
+    sleep 1
+  done
+
+  data="${bfb} ${cfg:+$cfg} ${rootfs:+${rootfs}}"
+  # Push the boot stream to BMC rshim via netcat + persistent pipe
+  echo "Pushing $data with nc + pipe to BMC"
+  nc_client_cmd="cat $data ${pv:+| ${pv} | cat -} | nc $bmc_ip $port"
+  run_cmd_exit host "$nc_client_cmd"
+
+  printf "Waiting for the netcat server process to finish..."
+  wait $bmc_nc_server_pid
+  exit_code=$?
+  if [ $exit_code -eq 0 ]; then
+    echo "OK"
+  else
+    echo "Warning: netcat server on BMC exited with code $exit_code"
+  fi
+
+  printf "Waiting for the pipe_to_rshim process to finish..."
+  wait $pipe_to_rshim_pid
+  exit_code=$?
+  if [ $exit_code -eq 0 ]; then
+    echo "OK"
+  else
+    echo "Warning: pipe_to_rshim process on BMC exited with code $exit_code"
+  fi
+}
+
+# Push the BFB stream to rshim
+#
+# Exit if error.
+#
+push_boot_stream()
+{
+  if [ "$method" == "host_rshim" ]; then
+    push_boot_stream_via_host_rshim
+  elif [ "$method" == "bmc_rshim_scp" ]; then
+    push_boot_stream_via_bmc_rshim_scp
+  elif [ "$method" == "bmc_rshim_nc" ]; then
+    push_boot_stream_via_bmc_rshim_nc
+  elif [ "$method" == "bmc_rshim_ncpipe" ]; then
+    push_boot_stream_via_bmc_rshim_ncpipe
+  else
+    echo "Error: Invalid method: $method"
+    exit 1
+  fi
+}
+
+# Wait for RSHIM to finish updating by monitoring keywords in the RSHIM log
+#
+# Note this function relies on exact behavior of unalias'd echo, so we use
+# "\echo" inside.
+#
+# param 1: mode: host or network
+# param 2: rshim: rshim device name
+# param 3: (Only when mode is network) bmc_ip: BMC host name or IP address
+#
+# Global variables used: None directly
+#
+# Example:
+#  wait_for_update_to_finish host /dev/rshim0
+#  wait_for_update_to_finish network /dev/rshim0 lab105bmc
+wait_for_update_to_finish()
+{
+  local mode=$1
+  local rshim=$2
+  local bmc_ip=$3
+
+  \echo "Collecting BlueField booting status. Press Ctrl+C to stop…"
+
+  # Set display level to 2 to show more information
+  run_cmd_exit $mode "echo 'DISPLAY_LEVEL 2' > ${rshim}/misc"
+
+  last=""
+  finished=0
+  while [ $finished -eq 0 ]; do
+    last_len=${#last}
+    cmd_get_log="cat ${rshim}/misc | sed -n '/^ INFO/,\$p'"
+    cur=$(run_cmd_exit $mode "$cmd_get_log")
+    cur_len=${#cur}
+
+    sleep 1
+
+    if \echo ${cur} | grep -Ei \
+      "Reboot|finished|DPU is ready|In Enhanced NIC mode|Linux up" \
+        >/dev/null; then
+      finished=1
+    fi
+
+    # Overwrite if current length smaller than previous length.
+    if [ ${last_len} -eq 0 -o ${last_len} -gt ${cur_len} ]; then
+        \echo "${cur}" | sed '/^[[:space:]]*$/d'
+      last="${cur}"
+      continue
+    fi
+
+    # Overwrite if first portion doesn't match.
+    sub_cur=$(\echo "${cur}" | dd bs=1 count=${last_len} 2>/dev/null)
+    if [ "${sub_cur}" != "${last}" ]; then
+      \echo "${cur}" | sed '/^[[:space:]]*$/d'
+      last="${cur}"
+      continue
+    fi
+
+    # Nothing if no update.
+    if [ ${last_len} -eq ${cur_len} ]; then
+      [ $finished -eq 0 ] && continue;
+    fi
+
+    # Print the diff.
+    \echo "${cur}" | dd bs=1 skip=${last_len} 2>/dev/null | \
+      sed '/^[[:space:]]*$/d'
+    last="${cur}"
+  done
+}
+
+# Switch to BMC rshim for network rshim methods
+#
+# param: rshim_running_on_host_save: original rshim running status on host.
+#        Values can be 0 or 1.
+# param: rshim_running_on_bmc_save: original rshim running status on BMC. Values
+#        can be 0 or 1.
+#
+# Global variables used: rshim_start_cmd, rshim_stop_cmd
+#
+# Example:
+#   switch_to_bmc_rshim 1 0
+#
+# Description:
+#   Here's the Before and After table for the status of rshim driver on host and
+#   BMC:
+
+#   |------------------|-------------|-------------------|------------------------------------------------|
+#   | Before (save)    |    After    |      Action       |                  Note                          |
+#   | Host   | BMC     | Host | BMC  |                   |                                                |
+#   |------------------|-------------|-------------------|------------------------------------------------|
+#   |   0    |   0     |   0  |   1  | Start BMC rshim   | Uncommon case                                  |  
+#   |   0    |   1     |   0  |   1  | Do nothing        | Uncommon case                                  |
+#   |   1    |   0     |   0  |   1  | Change RSHIM side | Typical case                                   |
+#   |   1    |   1     |   1  |   1  | Do nothing        | Only for debugging. BMC is actually localhost  |
+#   |------------------|-------------|-------------------|------------------------------------------------|
+switch_to_bmc_rshim() {
+  local rshim_running_on_host_save=$1
+  local rshim_running_on_bmc_save=$2
+
+  if [ $rshim_running_on_bmc_save -eq 0 ]; then
+    if [ $rshim_running_on_host_save -eq 1 ]; then
+      echo "Stopping host rshim"
+      run_cmd_exit host "$rshim_stop_cmd"
+    fi
+    echo "Starting BMC rshim"
+    run_cmd_exit network "$rshim_start_cmd"
+
+    # It will take a while before we can access BMC rshim
+    while ! run_cmd network "$rshim_check_cmd"; do
+      echo "Waiting for BMC rshim to start..."
+      sleep 1
+    done
+  fi
+}
+
+# Restore rshim driver running state
+#
+# Global variables used: rshim_check_cmd, rshim_running_on_host_save,
+# rshim_running_on_bmc_save
+#
+# shellcheck disable=SC2317
+restore_rshim()
+{
+  # Must restore BMC rshim first 
+  if [ $mode == "network" ]; then
+    rshim_running_on_bmc=0
+    if run_cmd network "$rshim_check_cmd"; then
+      rshim_running_on_bmc=1
+    fi
+    restore_bmc_rshim \
+      $rshim_running_on_bmc_save \
+      $rshim_running_on_bmc
+  fi
+
+  rshim_running_on_host=0
+  if run_cmd host "$rshim_check_cmd"; then
+    rshim_running_on_host=1
+  fi
+  restore_host_rshim \
+    $rshim_running_on_host_save  \
+    $rshim_running_on_host
+}
+
+# Restore host rshim driver running state
+#
+# param: rshim_running_on_host_save: original rshim running status on host.
+#        Values can be 0 or 1.
+# param: rshim_running_on_host: current rshim running status on host. Values can
+# be 0 or 1.
+#
+# Global variables used: rshim_start_cmd, rshim_stop_cmd
+#
+# Example:
+#  restore_host_rshim 1 0   # This is the typical case for network rshim methods
+#
+# shellcheck disable=SC2317
+restore_host_rshim()
+{
+  local rshim_running_on_host_save=$1
+  local rshim_running_on_host=$2
+
+  if [ $rshim_running_on_host_save -ne $rshim_running_on_host ]; then
+    echo "Restoring host rshim driver running state to $rshim_running_on_host_save..."
+    if [ $rshim_running_on_host -eq 0 ]; then
+      echo "Starting host rshim"
+      run_cmd_exit host "systemctl start rshim"
+    else
+      echo "Warning: Unlikely case encountered: BMC rshim was running originally but not running now"
+      echo "Starting Host rshim"
+      run_cmd_exit host "$rshim_start_cmd"
+    fi
+  fi
+}
+
+# Restore BMC rshim driver running state
+#
+# param: rshim_running_on_bmc_save: original rshim running status on BMC.
+#        Values can be 0 or 1.
+# param: rshim_running_on_bmc: current rshim running status on BMC. Values can
+#        be 0 or 1.
+#
+# Global variables used: rshim_start_cmd, rshim_stop_cmd
+#
+# Example:
+#  restore_bmc_rshim  0 1   # This is the typical case for network rshim methods
+#
+# shellcheck disable=SC2317
+restore_bmc_rshim()
+{
+  local rshim_running_on_bmc_save=$1
+  local rshim_running_on_bmc=$2
+
+  if [ $rshim_running_on_bmc_save -ne $rshim_running_on_bmc ]; then
+    echo "Restoring BMC rshim driver running state to $rshim_running_on_bmc_save..."
+    if [ $rshim_running_on_bmc -eq 1 ]; then
+      # Most likely case
+      echo "Stopping BMC rshim"
+      run_cmd_exit network "$rshim_stop_cmd"
+    else
+      echo "Warning: Unlikely case encountered: BMC rshim was running originally but not running now"
+      echo "Starting BMC rshim"
+      run_cmd_exit network "$rshim_start_cmd"
+    fi
+  fi
+}
+
+# Clean up function whenever the script exits
+# shellcheck disable=SC2317
+cleanup() {
+  if [ "$?" -ne 0 ]; then
+    echo "BlueField Update Failed"
+  fi
+  restore_rshim
+
+  # Kill all netcat related processes on both BMC and host
+  if [ $method == "bmc_rshim_nc" ] || [ $method == "bmc_rshim_ncpipe" ]; then
+    run_cmd network "pgrep -x nc >/dev/null && pgrep -x nc | xargs kill -9"
+    run_cmd host "pgrep -x nc >/dev/null && pgrep -x nc | xargs kill -9"
+    if [ $method == "bmc_rshim_ncpipe" ]; then
+      run_cmd network \
+        "pgrep pipe_to_rshim >/dev/null && pgrep pipe_to_rshim | xargs kill -9"
+    fi
+  fi
+}
+
+#
+# Main control flow starts here
+#
+
+# Command line options
 bfb=
 cfg=
 rootfs=
 rshim=
+method=host_rshim  # default update method. Values can be host_rshim,
+                   # bmc_rshim_scp, bmc_rshim_nc, bmc_rshim_ncpipe
+bmc_ip=localhost  # default address for BMC. Can be IP address or hostname.
+port=9527    # default nc server port for bmc_rshim_nc* methods
+verbose=0   # default verbosity level. Values can be 0 or 1.
 
-options=`getopt -n bfb-install -o b:c:f:r:h \
-        -l help,bfb:,config:,rootfs:,rshim: -- "$@"`
+# other variables including derived variables
+mode=host    # default mode. Values can be host or network.
+rshim_start_cmd="systemctl start rshim"
+rshim_stop_cmd="systemctl stop rshim"
+sudo_prefix=""     # Will be changed to "sudo" if the host user is not root
+
+options=`getopt -n bfb-install -o b:c:f:r:hm:B:p:v \
+        -l help,bfb:,config:,rootfs:,rshim:,method:,bmc:,port:,verbose -- "$@"`
 eval set -- $options
 while [ "$1" != -- ]; do
   case $1 in
@@ -48,6 +582,10 @@ while [ "$1" != -- ]; do
     --config|-c) shift; cfg=$1 ;;
     --rootfs|-f) shift; rootfs=$1 ;;
     --rshim|-r) shift; rshim=$1 ;;
+    --method|-m) shift; method=$1 ;;
+    --bmc|-B) shift; bmc_ip=$1 ;;
+    --port|-p) shift; port=$1 ;;
+    --verbose|-v) verbose=1 ;;
   esac
   shift
 done
@@ -58,39 +596,124 @@ if [ $# -ne 0 ]; then
   exit 1
 fi
 
+if [ $verbose -eq 1 ]; then
+  echo "method: ${method}"
+  echo "bfb: ${bfb}"
+  echo "rshim: ${rshim}"
+  echo "bmc_ip: ${bmc_ip}"
+  [ -n "$rootfs" ] && echo "rootfs: ${rootfs}"
+  [ -n "$cfg" ] && echo "cfg: ${cfg}"
+  if [ $method == "bmc_rshim_nc" ] || [ $method == "bmc_rshim_ncpipe" ]; then
+   echo "port: ${port}"
+  fi
+fi
+
+if [ $method == "host_rshim" ]; then
+  mode=host
+elif [ $method == "bmc_rshim_scp" ] || [ $method == "bmc_rshim_nc" ] || \
+    [ $method == "bmc_rshim_ncpipe" ]; then
+  mode=network
+  if [ -z "${bmc_ip}" ]; then
+    echo "Error: Need to provide BMC host name or IP address."
+    usage >&2
+    exit 1
+  fi
+
+  printf "Checking whether BMC host is reachable..."
+  if ping -c 1 $bmc_ip >/dev/null 2>&1; then
+    echo "OK"
+  else
+    echo "Failed"
+    exit 1
+  fi
+
+  check_bmc_ssh_exit
+
+  # Check if netcat is installed on host and BMC
+  if [ $method == "bmc_rshim_nc" ] || [ $method == "bmc_rshim_ncpipe" ]; then
+    if [ $bmc_ip == "localhost" ]; then
+      echo "Error: BMC rshim netcat method does not support localhost."
+      exit 1
+    fi
+    [ -z "$port" ] && port=9527
+    check_host_netcat_exit
+    check_bmc_netcat_exit
+  fi
+else
+  echo "Error: Invalid method: $method"
+  exit 1
+fi
+
+# Check if bfb and rshim are set and non-empty
 if [ -z "${bfb}" -o -z "${rshim}" ]; then
   echo "Error: Need to provide both bfb file and rshim device name."
   usage >&2
   exit 1
 fi
 
+# Check if bfb file exists
 if [ ! -e "${bfb}" ]; then
   echo "Error: ${bfb} not found."
   exit 1
 fi
 
+# Check if rshim starts with "/" and add "/dev/" if not
 if [ ."$(echo "${rshim}" | cut -c1-1)" != ."/" ]; then
   rshim="/dev/${rshim}"
 fi
+rshim_check_cmd="[ -e ${rshim}/boot ]"
 
-if [ ! -e "${rshim}/boot" ]; then
-  echo "Error: ${rshim}/boot not found."
-  exit 1
-fi
-
-if [ -n "${rootfs}" -a ! -e "${rootfs}" ]; then
+# Check if rootfs exists if set
+if [ -n "${rootfs}" ] && [ ! -e "${rootfs}" ]; then
   echo "Error: ${rootfs} not found."
   exit 1
 fi
 
-if [ -n "${cfg}" -a ! -e "${cfg}" ]; then
+# Check if cfg exists if set
+if [ -n "${cfg}" ] && [ ! -e "${cfg}" ]; then
   echo "Error: ${cfg} not found."
   exit 1
 fi
 
-if [ $(id -u) -ne 0 ]; then
-  echo "Error: Need root permission to push BFB on local host."
-  exit 1
+# Check root permission both on host and BMC. Add sudo if needed.
+# This check also check root@BMC SSH access. So any remote SSH commands can only
+# be run after this check.
+check_root_cmd="[ \$(id -u) -eq 0 ]"
+printf "Checking if host has root access..."
+if run_cmd host "$check_root_cmd"; then
+  echo "OK"
+else
+  echo "Not running as root"
+  echo "Need host root permission to access rshim driver to push BFB. Trying sudo"
+  sudo_prefix="sudo"
+fi
+
+if [ $mode == "network" ]; then
+  printf "Checking if BMC has root SSH access..."
+  if run_cmd network "$check_root_cmd"; then
+    echo "OK"
+  else
+    echo "Failed"
+    exit 1
+  fi
+fi
+
+if run_cmd host "$rshim_check_cmd"; then
+  rshim_running_on_host_save=1
+  echo "Host rshim is running"
+else
+  rshim_running_on_host_save=0
+  echo "Host rshim is not running"
+fi
+
+if [ $mode == "network" ]; then
+  if run_cmd network "$rshim_check_cmd"; then
+    rshim_running_on_bmc_save=1
+    echo "BMC rshim is running"
+  else
+    rshim_running_on_bmc_save=0
+    echo "BMC rshim is not running"
+  fi
 fi
 
 pv=$(which pv 2>/dev/null)
@@ -98,59 +721,20 @@ if [ -z "${pv}" ]; then
   echo "Warn: 'pv' command not found. Continue without showing BFB progress."
 fi
 
-# Push the boot stream.
-echo "Pushing bfb${cfg:+ + cfg}${rootfs:+ + rootfs}"
-sh -c "cat ${bfb} ${cfg:+$cfg} ${rootfs:+${rootfs}} ${pv:+| ${pv} | cat -} > ${rshim}/boot"
-RETVAL=$?
-if [ $RETVAL -ne 0 ]; then
-  echo "Failed to push BFB"
-  exit $RETVAL
+trap cleanup EXIT INT TERM  # Called when the script exits
+
+# For BMC rshim methods, we need to stop the rshim on the host and start the
+# rshim on the BMC if needed
+if [ $mode == "network" ]; then
+  # To keep the script behave the same as previous versions, if rshim is not
+  # running on the host, we won't start it.
+  # When rshim is already running on the host, we will stop it and start it on
+  # the BMC.
+  switch_to_bmc_rshim $rshim_running_on_host_save $rshim_running_on_bmc_save
 fi
 
-# Print the rshim log.
-echo "Collecting BlueField booting status. Press Ctrl+C to stop…"
+push_boot_stream
 
-last=""
-finished=0
-while [ $finished -eq 0 ]; do
-  last_len=${#last}
-  cur=$(echo 'DISPLAY_LEVEL 2' > ${rshim}/misc && cat ${rshim}/misc | sed -n '/^ INFO/,$p')
-  RETVAL=$?
-  if [ $RETVAL -ne 0 ]; then
-    echo "Failed to read ${rshim}/misc"
-    exit $RETVAL
-  fi
-  cur_len=${#cur}
+wait_for_update_to_finish $mode $rshim $bmc_ip
 
-  sleep 1
-
-  if echo ${cur} | grep -Ei "Linux up|Reboot|finished|DPU is ready|In Enhanced NIC mode" >/dev/null; then
-    finished=1
-  fi
-
-  # Overwrite if current length smaller than previous length.
-  if [ ${last_len} -eq 0 -o ${last_len} -gt ${cur_len} ]; then
-    echo "${cur}" | sed '/^[[:space:]]*$/d'
-    last="${cur}"
-    continue
-  fi
-
-  # Overwrite if first portion doesn't match.
-  sub_cur=$(echo "${cur}" | dd bs=1 count=${last_len} 2>/dev/null)
-  if [ "${sub_cur}" != "${last}" ]; then
-    echo "${cur}" | sed '/^[[:space:]]*$/d'
-    last="${cur}"
-    continue
-  fi
-
-  # Nothing if no update.
-  if [ ${last_len} -eq ${cur_len} ]; then
-    [ $finished -eq 0 ] && continue;
-  fi
-
-  # Print the diff.
-  echo "${cur}" | dd bs=1 skip=${last_len} 2>/dev/null | sed '/^[[:space:]]*$/d'
-  last="${cur}"
-done
-
-exit 0
+echo "BlueField Updated Successfully"
