@@ -1,28 +1,93 @@
 .\" Manpage for bfb-install.
-.TH man 8 "19 Nov 2020" "2.0" "bfb-install man page"
+.TH man 8 "2 Feb 2024" "3.0" "bfb-install man page"
 .SH NAME
 bfb-install \- BFB installing script for BlueField SoC over rshim driver
+
 .SH SYNOPSIS
-rshim [options]
+.B bfb-install
+[--method server_rshim] --rshim rshim_device_name --bfb bfb_file [--config config_file] [--rootfs rootfs_file]
+
+.B bfb-install
+--method bmc_rshim_scp --bmc bmc_host --rshim rshim_device_name --bfb bfb_file [--config config_file] [--rootfs rootfs_file]
+
+.B bfb-install
+--method bmc_rshim_nc --bmc bmc_host [--port port_number] --rshim rshim_device_name --bfb bfb_file [--config config_file] [--rootfs rootfs_file]
+
+.B bfb-install
+--method bmc_rshim_ncpipe --bmc bmc_host [--port port_number] --rshim rshim_device_name --bfb bfb_file [--config config_file] [--rootfs rootfs_file]
+
+.B bfb-install
+--help
+
 .SH DESCRIPTION
-bfb-install is a utility script to install BFB images on BlueField SoC over the rshim driver.
+bfb-install is a utility script to install BFB images on BlueField SoC over the rshim driver. There are four invocation methods:
+.PP
+1. server_rshim: When the rshim driver is installed locally on a server, you can use the server_rshim method. This is the default method and fastest.
+.PP
+2. bmc_rshim_scp: When the rshim driver is not installed locally on a server, the rshim driver can be installed on BMC. The BFB file can be copied to BMC through SSH copy (scp). This method, bmc_rshim_scp, is much slower.
+.PP
+3. bmc_rshim_nc: Similar to method bmc_rshim_scp above, but instead of using SSH copy, the BFB file is copied to BMC through netcat (nc). This method, bmc_rshim_nc, is slower than server_rshim, but much faster than bmc_rshim_scp.
+.PP
+4. bmc_rshim_ncpipe: Similar to method bmc_rshim_nc above, but add a dedicated BMC process for receiving data from network. This new process communicates with the rshim driver via a named pipe. Due to reduced network waiting time, this method further improve the performance.
+
 .SH OPTIONS
--b, --bfb
-.in +4n
-This is the BFB image to use, which is pushed as the boot stream.
-.in
-
+.TP
 -c, --config
-.in +4n
 This is an optional configuration file to use, usually called bf.cfg.
-.in
 
+.TP
+-b, --bfb
+This is the BFB image to use, which is pushed as the boot stream.
+
+.TP
+-B, --bmc
+Specify the BMC host to use with either an IP address or a hostname. This is only used when the method is 'bmc_rshim_scp' or 'bmc_rshim_nc' or 'bmc_rshim_ncpipe'.
+
+.TP
+-h, --help
+Show the help message.
+
+.TP
+-m , --method
+Specify the method to use. The available methods are 'server_rshim', 'bmc_rshim_scp', 'bmc_rshim_nc', and 'bmc_rshim_ncpipe'. The default method is 'server_rshim' if this option is not specified.
+
+.TP
 -f, --rootfs
-.in +4n
 This is the optional rootfs tar.xz file which is uaually used when installing Yocto.
-.in
 
+.TP
+-p, --port
+Specify the TCP port to use when using method 'bmc_rshim_nc' or 'bmc_rshim_ncpipe'. The default port is 9527.
+
+.TP
 -r, --rshim
-.in +4n
 This is the rshim device to use, which can be 'rshim<N>' or '/dev/rshim<N>'.
-.in
+
+.SH EXAMPLES
+To install a BFB image using the server rshim method:
+.RS
+bfb-install --rshim rshim0 --bfb bluefield.bfb
+.RE
+
+To install a BFB image using the BMC rshim scp method:
+.RS
+bfb-install --method bmc_rshim_scp --bmc lab105bmc --rshim rshim0 --bfb bluefield.bfb
+.RE
+
+To install a BFB image using the BMC rshim nc method:
+.RS
+bfb-install --method bmc_rshim_nc --bmc lab105bmc --rshim rshim0 --bfb bluefield.bfb
+.RE
+
+To install a BFB image using the BMC rshim ncpipe method with custom port number and verbose output:
+.RS
+bfb-install --method bmc_rshim_ncpipe --rshim rshim0 --bfb last_ubuntu_22.04_qp -v --bmc bu-lab105-bmc --port 9709
+.RE
+
+To install a BFB image with a custom configuration file:
+.RS
+bfb-install --rshim rshim0 --bfb bluefield.bfb --config bf.cfg
+.RE
+
+.SH KNOWN ISSUES
+When using method bmc_rshim_nc or bmc_rshim_ncpipe, there's a short window of time when there is a netcat server running on BMC on TCP port 9527. This is a potential security risk. This method should only be used when the BMC is on a secure network and the security implications are understood.
