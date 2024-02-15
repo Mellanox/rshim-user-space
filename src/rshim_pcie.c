@@ -97,7 +97,7 @@ enum {
 };
 
 /* Min delay in seconds after RSHIM_PCIE_RST_START_ACK */
-#define RSHIM_PCIE_RST_START_MIN_DELAY    2
+#define RSHIM_PCIE_RST_START_MIN_DELAY    4
 
 /* Interrupt information between NIC_FW and rshim driver. */
 typedef union {
@@ -795,12 +795,9 @@ static void rshim_pcie_intr(rshim_pcie_t *dev)
   case RSHIM_PCIE_RST_STATE_REQUEST:
     RSHIM_INFO("NIC reset ACK\n");
     info.rst_reply = RSHIM_PCIE_RST_REPLY_ACK;
-    dev->nic_reset = true;
     __sync_synchronize();
     bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad6,
                     info.word, RSHIM_REG_SIZE_8B);
-    sleep(RSHIM_PCIE_NIC_RESET_WAIT);
-    dev->nic_reset = false;
     break;
 
   case RSHIM_PCIE_RST_STATE_ABORT:
@@ -814,6 +811,8 @@ static void rshim_pcie_intr(rshim_pcie_t *dev)
     RSHIM_INFO("NIC reset START\n");
 
     info.rst_reply = RSHIM_PCIE_RST_START_ACK;
+    dev->nic_reset = true;
+    __sync_synchronize();
     bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad6,
                     info.word, RSHIM_REG_SIZE_8B);
 
@@ -824,6 +823,7 @@ static void rshim_pcie_intr(rshim_pcie_t *dev)
      * - Clear FIFO state;
      * - Add a small delay for ARM to be ready;
      */
+    __sync_synchronize();
     drop_mode = bd->drop_mode;
     bd->drop_mode = 1;
     rshim_fifo_reset(bd);
@@ -832,6 +832,7 @@ static void rshim_pcie_intr(rshim_pcie_t *dev)
       delay = RSHIM_PCIE_RST_START_MIN_DELAY;
     sleep(delay);
     bd->drop_mode = drop_mode;
+    dev->nic_reset = false;
     break;
 
   default:
