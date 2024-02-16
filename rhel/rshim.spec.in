@@ -54,6 +54,10 @@ via the virtual console or network interface.
 %{_mandir}/man8/rshim.8.gz
 
 %changelog
+* Fri Feb 16 2024 Liming Sun <limings@nvidia.com> - 2.0.20
+- rshim_pci: adjust delay time for nic_fw reset
+- bfb-install: Exit on "Linux up"
+
 * Wed Jan 10 2024 Liming Sun <limings@nvidia.com> - 2.0.19
 - Fix incorrect console message drop
 - Allow runtime debug code for DK cards
