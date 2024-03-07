@@ -628,6 +628,7 @@ static int rshim_fuse_misc_read(struct cuse_dev *cdev, int fflags,
   struct timeval tp;
   uint64_t value;
   char *p;
+  int in_secure_nic_mode;
 
   if (rm->ready) {
 #ifdef __linux__
@@ -711,6 +712,20 @@ static int rshim_fuse_misc_read(struct cuse_dev *cdev, int fflags,
                         &value, RSHIM_REG_SIZE_8B);
     if (!rc) {
       n = snprintf(p, len, "%-16s%ld(s)\n", "UP_TIME", value/BF3_REF_CLK_IN_HZ);
+      p += n;
+      len -= n;
+    }
+
+    /* Check whether NIC_FW is in locked mode. */
+    rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad1, &value,
+      RSHIM_REG_SIZE_8B);
+    if (rc < 0) {
+      RSHIM_ERR("RSHIM SCRATCHPAD1 register read error\n");
+      value = 0;
+    }
+    in_secure_nic_mode = (value == BF3_RSH_SECURE_NIC_MODE_MAGIC_NUM);
+    if (in_secure_nic_mode) {
+      n = snprintf(p, len, "%-16s%d (0:no, 1:yes)\n", "SECURE_NIC_MODE", 1);
       p += n;
       len -= n;
     }

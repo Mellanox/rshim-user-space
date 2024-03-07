@@ -61,8 +61,13 @@ syntax: rshim [--help|-h] [--backend|-b usb|pcie|pcie_lf]
       DISPLAY_LEVEL   0 (0:basic, 1:advanced, 2:log)
       BOOT_MODE       1 (0:rshim, 1:emmc, 2:emmc-boot-swap)
       BOOT_TIMEOUT    100 (seconds)
+      DROP_MODE       0 (0:normal, 1:drop)
       SW_RESET        0 (1: reset)
       DEV_NAME        usb-3.3
+      DEV_INFO        BlueField-3(Rev 1)
+      OPN_STR         9009D3B400ENEA
+      UP_TIME         179752(s)
+      SECURE_NIC_MODE 1 (0:no, 1:yes)
 
   Display more infomation:
 
@@ -80,6 +85,10 @@ syntax: rshim [--help|-h] [--backend|-b usb|pcie|pcie_lf]
   Initiate a SW reset:
     
     echo "SW_RESET 1" > /dev/rshim<N>/misc
+
+  When 'SECURE_NIC_MODE' is shown as 1, the NIC firmware is in Secure NIC mode
+  and most rshim functionalities are disabled. This mode applies to PCIe rshim
+  backend only. PCIe LF and USB rshim backends are not affected.
 
 *) Multiple Boards Support
 
