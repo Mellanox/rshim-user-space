@@ -190,6 +190,7 @@
 #define BF3_RSH_ARM_WDG_CONTROL_WCS 0x0000
 #define BF3_RSH_SCRATCH_BUF_DAT 0x0610
 #define BF3_RSH_SCRATCH_BUF_CTL 0x0600
+#define BF3_RSH_SECURE_NIC_MODE_MAGIC_NUM 0x4B434F4C00000000ULL     /* "LOCK" */
 
 #endif /* !defined(__DOXYGEN__) */
 #endif /* !defined(__RSHIM_REGS_H__) */
