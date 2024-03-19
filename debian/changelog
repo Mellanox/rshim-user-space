@@ -1,3 +1,9 @@
+rshim (2.0.21) UNRELEASED; urgency=low
+
+  * rshim_pci: output Secure NIC mode status in misc file
+
+ -- Penghe Geng <pgeng@nvidia.com>  Tue, 19 Mar 2024 10:46:35 -0400
+
 rshim (2.0.20) UNRELEASED; urgency=low
 
   * rshim_pci: adjust delay time for nic_fw reset
