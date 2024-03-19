@@ -54,6 +54,9 @@ via the virtual console or network interface.
 %{_mandir}/man8/rshim.8.gz
 
 %changelog
+* Tue Mar 19 2024 Penghe Geng <pgeng@nvidia.com> - 2.0.21
+- rshim_pci: output Secure NIC mode status in misc file
+
 * Fri Feb 16 2024 Liming Sun <limings@nvidia.com> - 2.0.20
 - rshim_pci: adjust delay time for nic_fw reset
 - bfb-install: Exit on "Linux up"
