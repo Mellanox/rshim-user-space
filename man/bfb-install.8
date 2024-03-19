@@ -72,11 +72,9 @@ usually 0 or 1.
 .TP
 -R, --reverse-nc
 
-Enables a reverse connection for "nc" and "ncpipe" modes, facilitating the BMC
-to initiate a connection to a netcat server on the host. This approach is
-designed to overcome firewall restrictions on the BMC, using the port (if
-specified) in the "--rshim" value for the netcat server. If the port is not
-explicitly provided, a default or predetermined port should be used.
+Enables a reverse connection for "nc" and "ncpipe" modes, allowing the remote
+host to initiate a connection to a netcat server running on the host. This
+approach is particularly useful to overcome firewall restrictions on the BMC.
 
 .TP
 -v, --verbose
@@ -126,7 +124,7 @@ bfb-install --bfb bluefield.bfb --rshim 10.15.8.200:9709:rshim0 --remote-mode nc
 When using remote mode nc or ncpie, there's a short window of time when there is
 a netcat server running on the remote host on the specified TCP port (default
 9527). This could be a potential security risk. So these two methods (nc or
-ncpipe) method should only be used when the remote host is on a secure network
+ncpipe) should only be used when the remote host is on a secure network
 and the security implications are understood.
 
 Utilizing the "--reverse-nc" option can necessitate opening a TCP port on the

@@ -215,8 +215,6 @@ push_boot_stream_via_remote_rshim_nc()
   fi
 }
 
-#!/bin/bash
-
 # Run a script remotely via SSH to forward data from a network receiver (netcat
 # server or client) to the rshim device node. This separate script is needed 
 # for improved performance
@@ -225,17 +223,6 @@ run_pipe_to_rshim_script()
     # Execute script remotely via SSH
     # shellcheck disable=SC2087
     ssh root@$ip 'sh -s' << EOF
-#!/bin/sh
-#
-# This script reads from a named pipe and writes to the rshim device.
-#
-# It is intended to be run on BMC to forward data from the host to the BMC RSHIM
-# device. 
-#
-# Known Issues:
-#  - This script must be copied over to the BMC and run from there. We need to 
-#    change it to SSH-run this script from the host.
-
 RSHIM_PIPE=${RSHIM_PIPE:-"/tmp/rshim_pipe"}
 RSHIM_BOOT_NODE=${rshim_node:-"/dev/rshim0"}/boot
 BLOCK_SIZE=2048000  # smaller block size performs worse
