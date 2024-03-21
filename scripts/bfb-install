@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 # Copyright (c) 2020, NVIDIA Corporation
 # All rights reserved.
@@ -27,70 +27,625 @@
 # of the authors and should not be interpreted as representing official policies,
 # either expressed or implied, of the FreeBSD Project.
 
+#
+# Configurations
+#
+
+DEBUG=${DEBUG:-0}                             # Debug mode
+RSHIM_PIPE="/tmp/rshim_pipe"
+
 usage ()
 {
-  echo "syntax: bfb-install --bfb|-b <BFBFILE> [--config|-c <bf.cfg>] \\"
-  echo "  [--rootfs|-f <rootfs.tar.xz>] --rshim|-r <rshimN> [--help|-h]"
+  echo "Usage: $0 [options]"
+  echo "Options:"
+  echo "  -b, --bfb <bfb_file>           BFB image file to use."
+  echo "  -c, --config <config_file>     Optional configuration file."
+  echo "  -f, --rootfs <rootfs_file>     Optional rootfs file."
+  echo "  -h, --help                     Show help message."
+  echo "  -m, --remote-mode <mode>       Remote mode to use (scp, nc, ncpipe)."
+  echo "  -r, --rshim <device>           Rshim device, format [<ip>:<port>:]rshim<N>."
+  echo "  -R, --reverse-nc               Reverse netcat mode."
+  echo "  -v, --verbose                  Enable verbose output."
 }
+
+# Function to print messages in verbose mode
+# Usage: echo_v "Your message"
+echo_v() {
+  if [ "$verbose" -eq 1 ]; then
+    echo "$@"
+  fi
+}
+
+# Function to print messages for debugging
+# Usage: echo_dbg "Your message"
+echo_dbg() {
+  if [ -n "$DEBUG" ] && [ "$DEBUG" -eq 1 ]; then
+    echo "$@"
+  fi
+}
+
+# Run a command locally or remotely via SSH
+#
+# $1: mode (local or remote)
+# $2: command
+#
+# Global variables used:
+#   $ip, $sudo_prefix, $run_cmd_local_ready, $run_cmd_remote_ready
+#
+# Example:
+#   run_cmd local "ls -l"
+#   run_cmd remote "ls -l"
+run_cmd()
+{
+  if [ $# -lt 2 ]; then
+    echo "Error: run_cmd() needs at least 2 arguments."
+    exit 1
+  fi
+
+  local mode=$1
+  local command=$2
+
+  echo_dbg "Running command in $mode mode: $command"
+
+  if [ "$mode" == "local" ]; then
+    if [ $run_cmd_local_ready -eq 0 ]; then
+      echo "Error: 'run_cmd local' are not ready to use"
+      exit 1
+    fi
+    $sudo_prefix sh -c "$command"
+  elif [ "$mode" == "remote" ]; then
+    if [ $run_cmd_remote_ready -eq 0 ]; then
+      echo "Error: 'run_cmd remote' are not ready to use"
+      exit 1
+    fi
+    # Execute the command networkly via SSH
+    ssh root@$ip "$command"
+  else
+    echo "Error: invalid mode: $mode"
+    return 1
+  fi
+}
+
+# Run a command locally or remotely via SSH and exit on error with a custom
+# message
+#
+# $1: mode (local or remote)
+# $2: command
+# $3: custom error message (optional)
+#
+# Global variables used: $ip
+run_cmd_exit()
+{
+  if [ $# -lt 2 ]; then
+    echo "Error: run_cmd_exit() requires at least 2 arguments."
+    exit 1
+  fi
+
+  local mode=$1
+  local command=$2
+  local error_msg="${3:-"Error: Command failed"}: [$command]"
+
+  run_cmd "$mode" "$command"
+  local RETVAL=$?
+
+  if [ $RETVAL -ne 0 ]; then
+    echo "$error_msg"
+    exit $RETVAL
+  fi
+}
+
+# Return the local IP address
+#
+# Global variables used: $ip
+get_local_ip()
+{
+  local_ip=$(ip route get $ip | awk '{print $5; exit}')
+  if [ "$local_ip" == "src" ]; then
+    # running on the same host
+    local_ip="localhost"
+  fi
+  echo $local_ip
+}
+
+# Push the boot stream to rshim via local rshim
+#
+# Global variables used:
+#   $bfb, $cfg, $rootfs, $pv, $rshim_node, $sudo_prefix   
+push_boot_stream_via_local_rshim()
+{
+  # Push the boot stream to local rshim
+  echo "Pushing bfb${cfg:+ + cfg}${rootfs:+ + rootfs}"
+  $sudo_prefix sh -c "cat ${bfb} ${cfg:+$cfg} ${rootfs:+${rootfs}} ${pv:+| ${pv} | cat -} > ${rshim_node}/boot"
+}
+
+# Push the boot stream to rshim via remote rshim with scp
+#
+# Global variables used
+#   $bfb, $cfg, $rootfs, $pv, $ip, $rshim
+push_boot_stream_via_remote_rshim_scp()
+{
+  # Push the boot stream to remote rshim via ssh copy
+  echo "Pushing bfb${cfg:+ + cfg}${rootfs:+ + rootfs} to ${ip} via scp"
+  sh -c "cat ${bfb} ${cfg:+$cfg} ${rootfs:+${rootfs}} ${pv:+| ${pv} | cat -} | ssh root@$ip \"cat > ${rshim_node}/boot\""
+}
+
+# Push the boot stream to rshim via remote rshim with netcat
+#
+# Global variables used:
+#   $bfb, $cfg, $rootfs, $pv, $ip, $port, $rshim_node, $reverse_nc
+push_boot_stream_via_remote_rshim_nc()
+{
+  timeout=20   # in seconds
+
+  data="${bfb} ${cfg:+$cfg} ${rootfs:+${rootfs}}"
+  # Push the boot stream to remote rshim via netcat
+  echo "Pushing $data to ${ip} via netcat $( [ "$reverse_nc" -eq 0 ] || echo '(in reverse mode)' )"
+
+  if [ "$reverse_nc" -eq 0 ]; then
+    # Remote as the netcat server and local as the client
+
+    echo "Starting a netcat server on the remote host..."
+    # We use nohup to keep the server running after the SSH session is closed.
+    # We use dd instead of writing directly to the file to avoid the error of
+    # "write: Interrupted system call"; The bs size doesn't matter.
+    start_nc_server_cmd="nohup nc -l -p $port | dd bs=1M of=${rshim_node}/boot 2>/dev/null &"
+    run_cmd_exit remote "$start_nc_server_cmd"
+    sleep 3  # delay to make sure the server is ready
+    wait_for_remote_process nc $timeout \
+      "Error: Failed to start the remote netcat server"
+
+    echo "Sending bitstream to a remote host with RSHIM..."
+    nc_client_cmd="cat $data ${pv:+| ${pv} | cat -} | nc $ip $port"
+    run_cmd_exit local "$nc_client_cmd"
+  else
+    # Local as the netcat server and remote as the client
+
+    echo "Starting a netcat server on the local host..."
+    start_nc_server_cmd="cat $data ${pv:+| ${pv} | cat -} | nc --send-only -l -p $port &"
+    run_cmd_exit local "$start_nc_server_cmd"
+    sleep 3  # delay to make sure the server is ready
+
+    echo "Sending bitstream from remote to local host with RSHIM..."
+    local_ip=$(get_local_ip)
+    # must put remote nc in the background to avoid blocking the script
+    nc_client_cmd="nohup nc $local_ip $port 2>/dev/null | dd bs=1M of=${rshim_node}/boot &>/dev/null"
+    run_cmd_exit remote "$nc_client_cmd" &
+    wait_for_remote_process nc $timeout \
+      "Error: Failed to start the remote netcat server"
+  fi
+}
+
+# Run a script remotely via SSH to forward data from a network receiver (netcat
+# server or client) to the rshim device node. This separate script is needed 
+# for improved performance
+run_pipe_to_rshim_script()
+{
+    # Execute script remotely via SSH
+    # shellcheck disable=SC2087
+    ssh root@$ip 'sh -s' << EOF
+RSHIM_PIPE=${RSHIM_PIPE:-"/tmp/rshim_pipe"}
+RSHIM_BOOT_NODE=${rshim_node:-"/dev/rshim0"}/boot
+BLOCK_SIZE=2048000  # smaller block size performs worse
+
+if [ -e "\$RSHIM_PIPE" ]; then
+  rm \$RSHIM_PIPE
+fi
+
+mkfifo \$RSHIM_PIPE
+
+if ! dd if=\$RSHIM_PIPE of=\$RSHIM_BOOT_NODE bs=\$BLOCK_SIZE; then
+    echo "Error occurred in dd command"
+    exit 1
+fi
+EOF
+}
+
+# Use SSH execution to check whether a process is running on the remote host
+#
+# $1: process name
+# $2: timeout in seconds
+# $3: custom error message (optional)
+wait_for_remote_process()
+{
+  default_timeout=10
+  local process=$1
+  local timeout=${2:-$default_timeout}
+  local error_msg="${3:-Error: Time out waiting for launching process $process}"
+
+  local cmd="while true; do pgrep -x $process >/dev/null && break; sleep 1; done"
+  local timeout_cmd="timeout $timeout sh -c \"$cmd\""
+
+  run_cmd_exit remote "$timeout_cmd" "$error_msg"
+}
+
+# You can call execute_remote_script multiple times as needed in your script
+
+# Push the boot stream to rshim via remote rshim with netcat and a persistent
+# pipe
+#
+# Global variables used:
+#   $bfb, $cfg, $rootfs, $pv, $ip, $port, $rshim_node,
+#   $pid_wait_timeout, $RSHIM_PIPE, $PIPE_READER_LOG
+push_boot_stream_via_remote_rshim_ncpipe()
+{
+  timeout=20   # in seconds
+  data="${bfb} ${cfg:+$cfg} ${rootfs:+${rootfs}}"
+
+  echo "Starting the remote pipe-to-rshim process..."
+  run_pipe_to_rshim_script &
+  wait_for_remote_process dd $timeout \
+    "Error: Failed to start the remote pipe-to-rshim process"
+
+  if [ "$reverse_nc" -eq 0 ]; then
+    echo "Starting the remote netcat server"
+    nc_server_cmd="nohup nc -l -p $port | dd bs=1M of=$RSHIM_PIPE 2>/dev/null &"
+    run_cmd_exit remote "$nc_server_cmd"
+    # It could be very slow to start the netcat server on the remtoe.
+    wait_for_remote_process nc $timeout \
+      "Error: Failed to start the remote netcat server"
+
+    # Push the boot stream to remote rshim via netcat + persistent pipe
+    echo "Pushing $data with nc + pipe to Remote"
+    nc_client_cmd="cat $data ${pv:+| ${pv} | cat -} | nc $ip $port"
+    run_cmd_exit local "$nc_client_cmd"
+  else # reverse_nc
+    # In reverse mode, the local host is the netcat server and the remote host
+    # is the client. 
+    echo "Starting the local netcat server"
+    nc_server_cmd="cat $data ${pv:+| ${pv} | cat -} | nc --send-only -l -p $port &"
+    echo_dbg "Running command in local mode: $cmd"
+    run_cmd_exit local "$nc_server_cmd"
+
+    local_ip=$(get_local_ip)
+    echo "Starting remote netcat client to get data"
+    nc_client_cmd="nohup nc $local_ip $port > $RSHIM_PIPE 2>/dev/null"
+    run_cmd_exit remote "$nc_client_cmd" &
+    wait_for_remote_process nc $timeout \
+      "Error: Failed to start the remote netcat server"
+  fi
+}
+
+# Push the BFB stream to rshim
+#
+# Global variables used:
+#  $mode, $remote_mode
+push_boot_stream()
+{
+  if [ "$mode" == "local" ]; then
+    push_boot_stream_via_local_rshim
+  else
+    if [ "$remote_mode" == "scp" ]; then
+      push_boot_stream_via_remote_rshim_scp
+    elif [ "$remote_mode" == "nc" ]; then
+      push_boot_stream_via_remote_rshim_nc
+    elif [ "$remote_mode" == "ncpipe" ]; then
+      push_boot_stream_via_remote_rshim_ncpipe
+    fi
+  fi
+}
+
+# Wait for RSHIM to finish updating by monitoring keywords in the RSHIM log
+#
+# Global variables used:
+#   $mode, $rshim_node, $remote_mode
+wait_for_update_to_finish()
+{
+  echo "Collecting BlueField booting status. Press Ctrl+C to stop…"
+
+  # Set display level to 2 to show more information
+  run_cmd_exit $mode "echo 'DISPLAY_LEVEL 2' > ${rshim_node}/misc"
+
+  last=""
+  finished=0
+  while [ $finished -eq 0 ]; do
+    last_len=${#last}
+    cmd_get_log="cat ${rshim_node}/misc | sed -n '/^ INFO/,\$p'"
+    cur=$(run_cmd_exit $mode "$cmd_get_log")
+    cur_len=${#cur}
+
+    sleep 1
+
+    if echo ${cur} | grep -Ei \
+      "Reboot|finished|DPU is ready|In Enhanced NIC mode|Linux up" \
+        >/dev/null; then
+      finished=1
+    fi
+
+    # Overwrite if current length smaller than previous length.
+    if [ ${last_len} -eq 0 -o ${last_len} -gt ${cur_len} ]; then
+        echo "${cur}" | sed '/^[[:space:]]*$/d'
+      last="${cur}"
+      continue
+    fi
+
+    # Overwrite if first portion does not match.
+    sub_cur=$(echo "${cur}" | dd bs=1 count=${last_len} 2>/dev/null)
+    if [ "${sub_cur}" != "${last}" ]; then
+      echo "${cur}" | sed '/^[[:space:]]*$/d'
+      last="${cur}"
+      continue
+    fi
+
+    # Nothing if no update.
+    if [ ${last_len} -eq ${cur_len} ]; then
+      [ $finished -eq 0 ] && continue;
+    fi
+
+    # Print the diff.
+    echo "${cur}" | dd bs=1 skip=${last_len} 2>/dev/null | \
+      sed '/^[[:space:]]*$/d'
+    last="${cur}"
+  done
+}
+
+# Clean up function whenever the script exits
+# shellcheck disable=SC2317
+# 
+# Global variables used:
+#  $cleanup_started, $remote_mode
+cleanup() {
+  # prevent cleanup from being called multiple times
+  if [ "$cleanup_started" -eq 1 ]; then
+    exit 1
+  fi
+  cleanup_started=1
+
+  if [ "$?" -ne 0 ]; then
+    echo "BlueField Update Failed"
+  fi
+
+  # Kill all netcat related processes on both ends
+  if [ $run_cmd_local_ready -eq 1 ]; then
+    run_cmd local "pgrep -x nc >/dev/null && pgrep -x nc | xargs kill -9"
+  fi
+  if [ $run_cmd_remote_ready -eq 1 ]; then
+    run_cmd remote "pgrep -x nc >/dev/null && pgrep -x nc | xargs kill -9"
+    if [ $remote_mode == "nc" ] || [ $remote_mode == "ncpipe" ]; then
+      run_cmd remote \
+        "pgrep pipe_to_rshim >/dev/null && pgrep pipe_to_rshim | xargs kill -9"
+      run_cmd remote "rm -f $RSHIM_PIPE"
+    fi
+  fi
+}
+
+
+# Main
+
+default_remote_mode=scp
+default_nc_port=9527    # default nc server port for nc* methods
 
 bfb=
 cfg=
 rootfs=
-rshim=
+mode=local        # Values can be local or remote
+remote_mode=      # Values can be scp, nc, or ncpipe
+rshim=            # rshim device string, format [<ip>:<port>:]rshim<N>
+verbose=0         # Values can be 0 or 1.
+reverse_nc=0      # Values can be 0 or 1.
 
-options=`getopt -n bfb-install -o b:c:f:r:h \
-        -l help,bfb:,config:,rootfs:,rshim: -- "$@"`
+rshim_node=       # rshim device identifier, e.g. rshim0
+ip=               # IP address for remote host
+port=
+
+cleanup_started=0
+trap cleanup EXIT INT TERM
+
+run_cmd_local_ready=0     # whether run_cmd* local functions are ready to use
+run_cmd_remote_ready=0    # whether run_cmd* remote functions are ready to use
+
+options=`getopt -n bfb-install -o b:c:f:hm:r:Rv \
+        -l bfb:,config:,rootfs:,help,remote-mode:,rshim:,reverse-nc,verbose \
+        -- "$@"`
+if [ $? != 0 ]; then echo "Command line error" >&2; exit 1; fi
 eval set -- $options
 while [ "$1" != -- ]; do
   case $1 in
-    --help|-h) usage; exit 0 ;;
     --bfb|-b) shift; bfb=$1 ;;
     --config|-c) shift; cfg=$1 ;;
     --rootfs|-f) shift; rootfs=$1 ;;
+    --help|-h) usage; exit 0 ;;
+    --remote-mode|-m) shift; remote_mode=$1 ;;
     --rshim|-r) shift; rshim=$1 ;;
+    --reverse-nc|-R) reverse_nc=1 ;;
+    --verbose|-v) verbose=1 ;;
+    --) shift; break;;
+    *) echo "Error: Invalid argument: $1" >&2; usage >&2; exit 1 ;;
   esac
   shift
 done
-shift
 
-if [ $# -ne 0 ]; then
-  usage >&2
-  exit 1
-fi
+# Parameter checks
 
+# Check if bfb and rshim are set and non-empty
 if [ -z "${bfb}" -o -z "${rshim}" ]; then
   echo "Error: Need to provide both bfb file and rshim device name."
   usage >&2
   exit 1
 fi
 
+# Parse rshim for IP, optional port, and device identifier
+if echo "$rshim" | grep -q ':'; then
+  mode=remote
+  remote_mode=${remote_mode:-$default_remote_mode}
+  ip=$(echo "$rshim" | cut -d':' -f1 | tr -d '\n')
+  
+  # Attempt to extract a potential port number
+  potential_port=$(echo "$rshim" | cut -s -d':' -f2)
+  # Attempt to extract a potential rshim device identifier
+  potential_rshim_node=$(echo "$rshim" | cut -s -d':' -f3)
+  
+  if [ -n "$potential_rshim_node" ]; then
+    # If there's a third field, it's clearly the rshim device, and the second
+    # field is the port
+    port=$potential_port
+    rshim_node=$potential_rshim_node
+  else
+    # If there's no third field, the second field could be either the port or
+    # the rshim device
+    if echo "$potential_port" | grep -qE '^[[:digit:]]+$'; then
+      # If the second field is numeric, it's the port, and the rshim device is
+      # missing
+      port=$potential_port
+      # This scenario implies a malformed rshim argument as the rshim device
+      # identifier is missing
+      echo "Error: Missing rshim device identifier." >&2
+      usage >&2
+      exit 1
+    else
+      # The second field is not numeric, so it's the rshim device
+      rshim_node=$potential_port
+    fi
+  fi
+else
+  # Local mode, rshim_node is directly the value of rshim
+  rshim_node=$rshim
+fi
+
+# We don't allow remote modes for local rshim
+if [ $mode == "local" ] && [ -n "$remote_mode" ]; then
+  echo "Error: Remote mode is not supported for local rshim."
+  exit 1
+fi
+
+if [ $mode == "remote" ] ; then
+  # convert potential host name to IP address
+  ip=$(getent ahosts $ip | awk '{print $1}' | head -n 1)
+
+  # We don't allow localhost for remote modes
+  if [ $ip == "127.0.0.1" ]; then
+    echo "Error: localhost is not supported for remote mode."
+    exit 1
+  fi
+
+  # Check allowed remote modes
+  if [ $remote_mode == "scp" ]; then
+    # We don't support port selection for scp mode
+    if [ -n "$port" ]; then
+      echo "Error: Port selection is not supported for scp mode."
+      usage >&2
+      exit 1
+    fi
+  elif [ $remote_mode == "nc" ] || [ $remote_mode == "ncpipe" ]; then
+    port=${port:-$default_nc_port}
+    if ! echo "$port" | grep -qE '^[0-9]+$'; then
+      echo "Error: Invalid port number: $port" >&2
+      usage >&2
+      exit 1
+    fi
+  else
+    echo "Error: Invalid remote mode: $remote_mode"
+    usage >&2
+    exit 1
+  fi
+fi
+
+# Check if rshim_node starts with "/" and add "/dev/" if not
+if [ ."$(echo "${rshim_node}" | cut -c1-1)" != ."/" ]; then
+  rshim_node="/dev/${rshim_node}"
+fi
+
+if [ $verbose -eq 1 ]; then
+  echo "Updating BlueField with $mode RSHIM"
+  echo "  BFB file: $bfb"
+  [ -n "$cfg" ] && echo "  Config File:: $cfg"
+  [ -n "$rootfs" ] && echo "  Rootfs File: $rootfs"
+  if [ "$mode" = "remote" ]; then
+    echo "  Remote Update Mode: $remote_mode"
+    echo "  Remote Host IP: $ip"
+    if [ "$remote_mode" = "nc" ] || [ "$remote_mode" = "ncpipe" ]; then
+      [ -n "$port" ] && echo "  Remote port: $port"
+      [ "$reverse_nc" -eq 1 ] && echo "  Using reverse netcat mode"
+    fi
+  fi
+  echo "  RSHIM Device Node: $rshim_node"
+fi
+
+# Setup checks
+
+# Check if bfb file exists
 if [ ! -e "${bfb}" ]; then
   echo "Error: ${bfb} not found."
   exit 1
 fi
 
-if [ ."$(echo "${rshim}" | cut -c1-1)" != ."/" ]; then
-  rshim="/dev/${rshim}"
-fi
-
-if [ ! -e "${rshim}/boot" ]; then
-  echo "Error: ${rshim}/boot not found."
-  exit 1
-fi
-
-if [ -n "${rootfs}" -a ! -e "${rootfs}" ]; then
+# Check if rootfs exists if set
+if [ -n "${rootfs}" ] && [ ! -e "${rootfs}" ]; then
   echo "Error: ${rootfs} not found."
   exit 1
 fi
 
-if [ -n "${cfg}" -a ! -e "${cfg}" ]; then
+# Check if cfg exists if set
+if [ -n "${cfg}" ] && [ ! -e "${cfg}" ]; then
   echo "Error: ${cfg} not found."
   exit 1
 fi
 
-if [ $(id -u) -ne 0 ]; then
-  echo "Error: Need root permission to push BFB on local host."
-  exit 1
+check_root_cmd="[ \$(id -u) -eq 0 ]"
+echo "Checking if local host has root access..."
+if ! eval "$check_root_cmd"; then
+  echo "  Warning: No host root access. Trying sudo"
+  sudo_prefix="sudo"
+fi
+
+run_cmd_local_ready=1
+
+rshim_check_cmd="[ -e ${rshim_node}/boot ]"
+
+if [ $mode == "local" ]; then
+  run_cmd_exit local "$check_root_cmd" \
+    "Error: current login does not have sudo"
+
+  echo "Checking if rshim driver is running locally..."
+  run_cmd_exit local "$rshim_check_cmd" \
+    "Error: rshim driver not found at $rshim"
+fi
+
+if [ $mode == "remote" ]; then
+  echo "Checking if remote host is reachable..."
+  ping_cmd="ping -c 1 $ip >/dev/null 2>&1"
+  run_cmd_exit local "$ping_cmd"
+
+  echo "Checking if Remote has SSH server running..."
+  run_cmd_exit local "nc -z $ip 22" \
+    "Error: Remote does not have SSH server running"
+
+  echo "Checking if Remote has root SSH access..."
+  if ! ssh root@$ip "$check_root_cmd"; then
+    echo "Error: Remote does not have root SSH access"
+    exit 1
+  fi
+  
+  run_cmd_remote_ready=1
+
+  echo "Checking if rshim driver is running remotely..."
+  run_cmd_exit remote "$rshim_check_cmd" \
+    "Error: remote rshim driver not found"
+
+  echo "Lowering the priority of the remote rshim process..."
+  run_cmd_exit remote "renice -n 19 -p \$(pgrep rshim)"  \
+    "Error: Failed to lower the priority of the remote rshim process"
+
+  if [ $remote_mode == "nc" ] || [ $remote_mode == "ncpipe" ]; then
+    echo "Checking if local netcat is installed..."
+    run_cmd_exit local "command -v nc > /dev/null" \
+      "Error in $mode mode: Netcat is not installed locally"
+
+    echo "Checking if remote netcat is installed..."
+    run_cmd_exit remote "command -v nc > /dev/null" \
+      "Error in $mode mode: Netcat is not installed remotely"
+
+    # Try to test-connect the netcat port to see if it's available
+    if [ $reverse_nc -eq 0 ]; then
+      echo "Checking if remote netcat port $port is available..."
+      run_cmd_exit remote "! nc -z $ip $port" \
+        "Error: remote netcat port $port is not available"
+    else
+      echo "Checking if local netcat port $port is available..."
+      run_cmd_exit local "! nc -z localhost $port" \
+        "Error: local netcat port $port is not available"
+    fi
+  fi
+
 fi
 
 pv=$(which pv 2>/dev/null)
@@ -98,59 +653,8 @@ if [ -z "${pv}" ]; then
   echo "Warn: 'pv' command not found. Continue without showing BFB progress."
 fi
 
-# Push the boot stream.
-echo "Pushing bfb${cfg:+ + cfg}${rootfs:+ + rootfs}"
-sh -c "cat ${bfb} ${cfg:+$cfg} ${rootfs:+${rootfs}} ${pv:+| ${pv} | cat -} > ${rshim}/boot"
-RETVAL=$?
-if [ $RETVAL -ne 0 ]; then
-  echo "Failed to push BFB"
-  exit $RETVAL
-fi
+push_boot_stream
 
-# Print the rshim log.
-echo "Collecting BlueField booting status. Press Ctrl+C to stop…"
+wait_for_update_to_finish
 
-last=""
-finished=0
-while [ $finished -eq 0 ]; do
-  last_len=${#last}
-  cur=$(echo 'DISPLAY_LEVEL 2' > ${rshim}/misc && cat ${rshim}/misc | sed -n '/^ INFO/,$p')
-  RETVAL=$?
-  if [ $RETVAL -ne 0 ]; then
-    echo "Failed to read ${rshim}/misc"
-    exit $RETVAL
-  fi
-  cur_len=${#cur}
-
-  sleep 1
-
-  if echo ${cur} | grep -Ei "Linux up|Reboot|finished|DPU is ready|In Enhanced NIC mode" >/dev/null; then
-    finished=1
-  fi
-
-  # Overwrite if current length smaller than previous length.
-  if [ ${last_len} -eq 0 -o ${last_len} -gt ${cur_len} ]; then
-    echo "${cur}" | sed '/^[[:space:]]*$/d'
-    last="${cur}"
-    continue
-  fi
-
-  # Overwrite if first portion doesn't match.
-  sub_cur=$(echo "${cur}" | dd bs=1 count=${last_len} 2>/dev/null)
-  if [ "${sub_cur}" != "${last}" ]; then
-    echo "${cur}" | sed '/^[[:space:]]*$/d'
-    last="${cur}"
-    continue
-  fi
-
-  # Nothing if no update.
-  if [ ${last_len} -eq ${cur_len} ]; then
-    [ $finished -eq 0 ] && continue;
-  fi
-
-  # Print the diff.
-  echo "${cur}" | dd bs=1 skip=${last_len} 2>/dev/null | sed '/^[[:space:]]*$/d'
-  last="${cur}"
-done
-
-exit 0
+echo "BlueField Updated Successfully"

@@ -1,28 +1,133 @@
 .\" Manpage for bfb-install.
-.TH man 8 "19 Nov 2020" "2.0" "bfb-install man page"
+.TH man 8 "2 Feb 2024" "3.0" "bfb-install man page"
 .SH NAME
 bfb-install \- BFB installing script for BlueField SoC over rshim driver
+
 .SH SYNOPSIS
-rshim [options]
+.B bfb-install
+-b, --bfb <bfb_file> -r, --rshim [<ip:>[:port]:]rshim<N> [-m, --remote-mode <scp|nc|ncpipe>] [-R, --reverse-nc] [-c, --config <config_file>] [-f, --rootfs <rootfs_file>] [-h, --help] [-v, --verbose]
+
+
 .SH DESCRIPTION
-bfb-install is a utility script to install BFB images on BlueField SoC over the rshim driver.
+
+bfb-install is a utility script to install BFB images on BlueField SoC over the
+rshim driver.
+
+When the "--rshim" option doesn't provide an "ip" argument, the script will run
+in local mode and try to access the local rshim device and install the BFB image
+through it.
+
+When the "--rshim" option provides an "ip" argument, the script will run in
+remote mode and try to access the remote rshim device and install the BFB image
+through it.  There are three remote modes: "scp", "nc", and "ncpipe". The
+default remote mode is "scp". "scp" uses the scp command to transfer the BFB
+image to the remote rshim device. "nc" uses the nc command to transfer the BFB
+image to the remote rshim device. "ncpipe" is similar to "nc" but uses a named
+pipe on the remote device to help transfer the BFB image and achieve faster
+speed.
+
+The "--reverse-nc" flag, used with "nc" or "ncpipe" remote modes, enables a
+reversed connection method where the local host operates a netcat server and the
+remote host, as a client, initiates the connection. This method is particularly
+useful for environments with firewall restrictions on the remote host side like
+for a BMC.
+
 .SH OPTIONS
+.TP
 -b, --bfb
-.in +4n
+
 This is the BFB image to use, which is pushed as the boot stream.
-.in
 
+.TP
 -c, --config
-.in +4n
+
 This is an optional configuration file to use, usually called bf.cfg.
-.in
 
+.TP
 -f, --rootfs
-.in +4n
-This is the optional rootfs tar.xz file which is uaually used when installing Yocto.
-.in
 
+This is the optional rootfs tar.xz file which is uaually used when installing
+Yocto.
+
+.TP
+-h, --help
+Show the help message.
+
+.TP
+-m , --remote-mode
+
+Specify the remote mode to use. The default mode is "scp". The available modes
+are "scp", "nc", and "ncpipe".
+
+.TP
 -r, --rshim
-.in +4n
-This is the rshim device to use, which can be 'rshim<N>' or '/dev/rshim<N>'.
-.in
+
+This is the rshim device to use, in the format of [<ip>:<port>:]rshim<N>. The
+"ip" and "port" are optional and only used when the remote mode is specified.
+These two fields will be ignored when the remote mode is not specified. Both IP
+address and host name are supported for the "ip" field. If the port is not
+provided, the default port 9527 is used. The "N" is the rshim device number,
+usually 0 or 1.
+
+.TP
+-R, --reverse-nc
+
+Enables a reverse connection for "nc" and "ncpipe" modes, allowing the remote
+host to initiate a connection to a netcat server running on the host. This
+approach is particularly useful to overcome firewall restrictions on the BMC.
+
+.TP
+-v, --verbose
+Show verbose output.
+
+.SH EXAMPLES
+To install a BFB image using the host rshim method:
+
+.RS
+bfb-install --bfb bluefield.bfb --rshim rshim0
+.RE
+
+To install a BFB image using the BMC rshim scp method:
+
+.RS
+bfb-install --bfb bluefield.bfb --rshim 10.15.8.200:rshim0
+.RE
+
+To install a BFB image using the BMC rshim nc method:
+
+.RS
+bfb-install --bfb bluefield.bfb --rshim 10.15.8.200:rshim0 --remote-mode nc 
+.RE
+
+To install a BFB image using the BMC rshim ncpipe method with custom port number
+and verbose output:
+
+.RS
+bfb-install --bfb bluefield.bfb --rshim 10.15.8.200:9709:rshim0 --remote-mode ncpie --verbose
+.RE
+
+To install a BFB image in local mode with a custom configuration file:
+
+.RS
+bfb-install --bfb bluefield.bfb --rshim rshim0 --config bf.cfg
+.RE
+
+To install a BFB image with the BMC rshim using the netcat pipe method and a
+reverse connection, specifying a local port within the rshim value:
+
+.RS
+bfb-install --bfb bluefield.bfb --rshim 10.15.8.200:9709:rshim0 --remote-mode ncpipe --reverse-nc
+.RE
+
+.SH KNOWN ISSUES
+
+When using remote mode nc or ncpie, there's a short window of time when there is
+a netcat server running on the remote host on the specified TCP port (default
+9527). This could be a potential security risk. So these two methods (nc or
+ncpipe) should only be used when the remote host is on a secure network
+and the security implications are understood.
+
+Utilizing the "--reverse-nc" option can necessitate opening a TCP port on the
+local host for the duration of the connection. It is essential to ensure the
+network's security to mitigate potential risks associated with this temporary
+exposure.
