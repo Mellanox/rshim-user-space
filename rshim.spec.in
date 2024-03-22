@@ -96,6 +96,9 @@ fi
 %{_mandir}/man8/bfb-install.8.gz
 
 %changelog
+* Fri Mar 22 2024 Penghe Geng <pgeng@nvidia.com> - 2.0.22
+- bfb-install: add support for remote rshim update; add speed optimizations
+
 * Tue Mar 19 2024 Penghe Geng <pgeng@nvidia.com> - 2.0.21
 - rshim_pci: output Secure NIC mode status in misc file
 
