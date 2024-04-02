@@ -1,3 +1,9 @@
+rshim (2.0.23) UNRELEASED; urgency=low
+
+  * Add some robust fixes for the DROP_MODE
+
+ -- Liming Sun <limings@nvidia.com>  Tue, 02 Apr 2024 09:47:20 -0400
+
 rshim (2.0.22) UNRELEASED; urgency=low
 
   * bfb-install: add support for remote rshim update; add speed optimizations

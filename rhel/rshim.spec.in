@@ -54,6 +54,9 @@ via the virtual console or network interface.
 %{_mandir}/man8/rshim.8.gz
 
 %changelog
+* Tue Apr 02 2024 Liming Sun <limings@nvidia.com> - 2.0.23
+- Add some robust fixes for the DROP_MODE
+
 * Fri Mar 22 2024 Penghe Geng <pgeng@nvidia.com> - 2.0.22
 - bfb-install: add support for remote rshim update; add speed optimizations
 
