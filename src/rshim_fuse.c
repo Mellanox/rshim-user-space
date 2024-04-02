@@ -873,6 +873,8 @@ static int rshim_fuse_misc_write(struct cuse_dev *cdev, int fflags,
 
     if (bd->drop_mode)
       bd->drop_pkt = 1;
+    else
+      rshim_fifo_sync(bd);
     pthread_mutex_unlock(&bd->mutex);
     /*
      * Check if another endpoint driver has already attached to the

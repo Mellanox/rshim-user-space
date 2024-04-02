@@ -952,10 +952,13 @@ static int rshim_fifo_tx_avail(rshim_backend_t *bd)
   return avail;
 }
 
-static int rshim_fifo_sync(rshim_backend_t *bd)
+int rshim_fifo_sync(rshim_backend_t *bd)
 {
   rshim_tmfifo_msg_hdr_t hdr;
   int i, avail, rc;
+
+  bd->net_rx_len = 0;
+  bd->net_tx_len = 0;
 
   avail = rshim_fifo_tx_avail(bd);
   if (avail < 0)
