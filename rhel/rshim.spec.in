@@ -54,6 +54,9 @@ via the virtual console or network interface.
 %{_mandir}/man8/rshim.8.gz
 
 %changelog
+* Thu Apr 04 2024 Liming Sun <limings@nvidia.com> - 2.0.24
+- DROP_MODE: sync-up the Rx FIFO when clearing DROP_MODE
+
 * Tue Apr 02 2024 Liming Sun <limings@nvidia.com> - 2.0.23
 - Add some robust fixes for the DROP_MODE
 
