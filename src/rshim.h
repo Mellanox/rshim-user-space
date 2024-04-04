@@ -610,6 +610,6 @@ int rshim_set_opn(rshim_backend_t *bd, const char *opn, int len);
 int rshim_access_check(rshim_backend_t *bd);
 
 /* Sync up with the peer side. */
-int rshim_fifo_sync(rshim_backend_t *bd);
+int rshim_fifo_sync(rshim_backend_t *bd, bool drop_rx);
 
 #endif /* _RSHIM_H */
