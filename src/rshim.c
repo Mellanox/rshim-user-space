@@ -952,14 +952,18 @@ static int rshim_fifo_tx_avail(rshim_backend_t *bd)
   return avail;
 }
 
-int rshim_fifo_sync(rshim_backend_t *bd)
+int rshim_fifo_sync(rshim_backend_t *bd, bool drop_rx)
 {
   rshim_tmfifo_msg_hdr_t hdr;
   int i, avail, rc;
+  time_t t0, t1;
+  uint64_t reg;
 
+  /* Clear pending network Rx/Tx state. */
   bd->net_rx_len = 0;
   bd->net_tx_len = 0;
 
+  /* Sync the Tx FIFO by sending padding zeros. */
   avail = rshim_fifo_tx_avail(bd);
   if (avail < 0)
     return avail;
@@ -973,6 +977,35 @@ int rshim_fifo_sync(rshim_backend_t *bd)
                          hdr.data, RSHIM_REG_SIZE_8B);
     if (rc)
       return rc;
+  }
+
+  /* Drain the Rx FIFO until no more data in one second. */
+  if (drop_rx) {
+    avail = 0;
+
+    time(&t0);
+
+    do {
+      reg = 0;
+      rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->tm_tth_sts, &reg, RSHIM_REG_SIZE_8B);
+      if (rc < 0 || RSHIM_BAD_CTRL_REG(reg))
+        break;
+
+      avail = reg & RSH_TM_TILE_TO_HOST_STS__COUNT_MASK;
+      if (avail == 0) {
+        time(&t1);
+        if (difftime(t1, t0) > 1)
+          break;
+        continue;
+      }
+
+      while (avail > 0) {
+        bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->tm_tth_data, &reg, RSHIM_REG_SIZE_8B);
+        avail--;
+      }
+
+      time(&t0);
+    } while (avail == 0);
   }
 
   return 0;
@@ -1967,7 +2000,7 @@ int rshim_notify(rshim_backend_t *bd, int event, int code)
 
     /* Sync-up the tmfifo if reprobe is not supported. */
     if (!bd->has_reprobe && bd->has_rshim)
-      rshim_fifo_sync(bd);
+      rshim_fifo_sync(bd, false);
 
     __sync_synchronize();
     bd->is_attach = 1;
