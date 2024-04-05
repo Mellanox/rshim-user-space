@@ -786,15 +786,14 @@ int rshim_boot_open(rshim_backend_t *bd)
 boot_open_done:
   rshim_ref(bd);
 
-  /*
-   * PCIe doesn't have the disconnect/reconnect behavior.
-   * Add a small delay for the reset.
-   */
+  /* Add a small delay for the reset. */
+  if (!bd->has_reprobe)
+    usleep(500000);
+  pthread_mutex_unlock(&bd->mutex);
+
   if (!bd->has_reprobe)
     sleep(bd->reset_delay);
-
   time(&bd->boot_write_time);
-  pthread_mutex_unlock(&bd->mutex);
 
   return 0;
 }
