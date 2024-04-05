@@ -96,6 +96,9 @@ fi
 %{_mandir}/man8/bfb-install.8.gz
 
 %changelog
+* Fri Apr 05 2024 Liming Sun <limings@nvidia.com> - 2.0.25
+- Avoid a race of rshim ownership during bfb push
+
 * Thu Apr 04 2024 Liming Sun <limings@nvidia.com> - 2.0.24
 - DROP_MODE: sync-up the Rx FIFO when clearing DROP_MODE
 

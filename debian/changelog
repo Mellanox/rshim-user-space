@@ -1,3 +1,9 @@
+rshim (2.0.25) UNRELEASED; urgency=low
+
+  * Avoid a race of rshim ownership during bfb push
+
+ -- Liming Sun <limings@nvidia.com>  Fri, 05 Apr 2024 10:41:10 -0400
+
 rshim (2.0.24) UNRELEASED; urgency=low
 
   * DROP_MODE: sync-up the Rx FIFO when clearing DROP_MODE
