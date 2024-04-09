@@ -27,10 +27,10 @@ pipe on the remote device to help transfer the BFB image and achieve faster
 speed.
 
 The "--reverse-nc" flag, used with "nc" or "ncpipe" remote modes, enables a
-reversed connection method where the local host operates a netcat server and the
-remote host, as a client, initiates the connection. This method is particularly
-useful for environments with firewall restrictions on the remote host side like
-for a BMC.
+reversed connection method where the remote host operates as a netcat server and
+the local host, as a client, initiates the connection. This method is
+particularly useful for environments with firewall restrictions on the local
+host side.
 
 .SH OPTIONS
 .TP
@@ -72,9 +72,8 @@ usually 0 or 1.
 .TP
 -R, --reverse-nc
 
-Enables a reverse connection for "nc" and "ncpipe" modes, allowing the remote
-host to initiate a connection to a netcat server running on the host. This
-approach is particularly useful to overcome firewall restrictions on the BMC.
+Enables a reverse connection for "nc" and "ncpipe" modes, allowing the local
+host to initiate a connection to a netcat server running on the remote.
 
 .TP
 -v, --verbose
@@ -121,13 +120,8 @@ bfb-install --bfb bluefield.bfb --rshim 10.15.8.200:9709:rshim0 --remote-mode nc
 
 .SH KNOWN ISSUES
 
-When using remote mode nc or ncpie, there's a short window of time when there is
-a netcat server running on the remote host on the specified TCP port (default
-9527). This could be a potential security risk. So these two methods (nc or
-ncpipe) should only be used when the remote host is on a secure network
-and the security implications are understood.
-
-Utilizing the "--reverse-nc" option can necessitate opening a TCP port on the
-local host for the duration of the connection. It is essential to ensure the
-network's security to mitigate potential risks associated with this temporary
-exposure.
+When using remote mode nc or ncpipe, there's a short window of time when there
+is a netcat server running on the local or remote host on the specified TCP port
+(default 9527). This could be a potential security risk. So these two methods
+should only be used on a secure network and the security implications are
+understood.
