@@ -181,7 +181,7 @@ push_boot_stream_via_remote_rshim_nc()
   # Push the boot stream to remote rshim via netcat
   echo "Pushing $data to ${ip} via netcat $( [ "$reverse_nc" -eq 0 ] || echo '(in reverse mode)' )"
 
-  if [ "$reverse_nc" -eq 0 ]; then
+  if [ "$reverse_nc" -eq 1 ]; then
     # Remote as the netcat server and local as the client
 
     echo "Starting a netcat server on the remote host..."
@@ -276,7 +276,7 @@ push_boot_stream_via_remote_rshim_ncpipe()
   wait_for_remote_process dd $timeout \
     "Error: Failed to start the remote pipe-to-rshim process"
 
-  if [ "$reverse_nc" -eq 0 ]; then
+  if [ "$reverse_nc" -eq 1 ]; then
     echo "Starting the remote netcat server"
     nc_server_cmd="nohup nc -l -p $port | dd bs=1M of=$RSHIM_PIPE 2>/dev/null &"
     run_cmd_exit remote "$nc_server_cmd"
@@ -635,7 +635,7 @@ if [ $mode == "remote" ]; then
       "Error in $mode mode: Netcat is not installed remotely"
 
     # Try to test-connect the netcat port to see if it's available
-    if [ $reverse_nc -eq 0 ]; then
+    if [ $reverse_nc -eq 1 ]; then
       echo "Checking if remote netcat port $port is available..."
       run_cmd_exit remote "! nc -z $ip $port" \
         "Error: remote netcat port $port is not available"
