@@ -139,11 +139,29 @@ run_cmd_exit()
 # Global variables used: $ip
 get_local_ip()
 {
-  local_ip=$(ip route get $ip | awk '{print $5; exit}')
-  if [ "$local_ip" == "src" ]; then
-    # running on the same host
-    local_ip="localhost"
+  if [ -z "$ip" ]; then
+    echo "The global variable \$ip is not defined."
+    return 1
   fi
+
+  # Capture both stdout and stderr of the ip route get command
+  readarray -t output <<< "$(ip route get $ip 2>&1)"
+
+  # Check for known error messages in the command output
+  if echo "${output[@]}" | grep -qi "error"; then
+    echo "Error: Invalid IP address or routing error."
+    return 1
+  fi
+
+  # Parse the output for the local IP address, which is right after "src"
+  local_ip=$(echo "${output[@]}" | awk '/src/ {for(i=1;i<=NF;i++) if($i=="src") {print $(i+1); exit}}')
+
+  # Check if a local IP was found
+  if [ -z "$local_ip" ]; then
+    echo "Failed to determine the local IP address."
+    return 1
+  fi
+
   echo $local_ip
 }
 
