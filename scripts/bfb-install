@@ -150,7 +150,7 @@ get_local_ip()
 # Push the boot stream to rshim via local rshim
 #
 # Global variables used:
-#   $bfb, $cfg, $rootfs, $pv, $rshim_node, $sudo_prefix   
+#   $bfb, $cfg, $rootfs, $pv, $rshim_node, $sudo_prefix
 push_boot_stream_via_local_rshim()
 {
   # Push the boot stream to local rshim
@@ -216,7 +216,7 @@ push_boot_stream_via_remote_rshim_nc()
 }
 
 # Run a script remotely via SSH to forward data from a network receiver (netcat
-# server or client) to the rshim device node. This separate script is needed 
+# server or client) to the rshim device node. This separate script is needed
 # for improved performance
 run_pipe_to_rshim_script()
 {
@@ -290,7 +290,7 @@ push_boot_stream_via_remote_rshim_ncpipe()
     run_cmd_exit local "$nc_client_cmd"
   else # reverse_nc
     # In reverse mode, the local host is the netcat server and the remote host
-    # is the client. 
+    # is the client.
     echo "Starting the local netcat server"
     nc_server_cmd="cat $data ${pv:+| ${pv} | cat -} | nc --send-only -l -p $port &"
     echo_dbg "Running command in local mode: $cmd"
@@ -380,7 +380,7 @@ wait_for_update_to_finish()
 
 # Clean up function whenever the script exits
 # shellcheck disable=SC2317
-# 
+#
 # Global variables used:
 #  $cleanup_started, $remote_mode
 cleanup() {
@@ -468,12 +468,12 @@ if echo "$rshim" | grep -q ':'; then
   mode=remote
   remote_mode=${remote_mode:-$default_remote_mode}
   ip=$(echo "$rshim" | cut -d':' -f1 | tr -d '\n')
-  
+
   # Attempt to extract a potential port number
   potential_port=$(echo "$rshim" | cut -s -d':' -f2)
   # Attempt to extract a potential rshim device identifier
   potential_rshim_node=$(echo "$rshim" | cut -s -d':' -f3)
-  
+
   if [ -n "$potential_rshim_node" ]; then
     # If there's a third field, it's clearly the rshim device, and the second
     # field is the port
@@ -614,7 +614,7 @@ if [ $mode == "remote" ]; then
     echo "Error: Remote does not have root SSH access"
     exit 1
   fi
-  
+
   run_cmd_remote_ready=1
 
   echo "Checking if rshim driver is running remotely..."
