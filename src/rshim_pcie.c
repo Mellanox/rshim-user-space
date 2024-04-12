@@ -120,7 +120,10 @@ typedef union {
     /* RSHIM_PCIE_RST_TYPE_xxx */
     uint64_t rst_type : 3;
 
-    uint64_t unused_3 : 9;
+    uint64_t unused_3 : 8;
+
+    /* rshim running over pcie */
+    uint64_t pcie : 1;
   };
 
   uint64_t word;
@@ -754,6 +757,29 @@ static int rshim_pcie_mmap(rshim_pcie_t *dev, bool enable)
   return rc;
 }
 
+/*
+ * Check and set the pcie bit.
+ * This function is called from timer callback since the pcie bit
+ * could be cleared during ARM reset.
+ */
+void rshim_pcie_check(rshim_backend_t *bd)
+{
+  rshim_pcie_intr_info_t info = {.word = 0};
+  int rc;
+
+  pthread_mutex_lock(&bd->mutex);
+
+  rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad6,
+                      &info.word, RSHIM_REG_SIZE_8B);
+  if (!rc && !RSHIM_BAD_CTRL_REG(info.word) && !info.pcie) {
+    info.pcie = 1;
+    bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad6,
+                    info.word, RSHIM_REG_SIZE_8B);
+  }
+
+  pthread_mutex_unlock(&bd->mutex);
+}
+
 static void rshim_pcie_intr(rshim_pcie_t *dev)
 {
   rshim_pcie_intr_info_t info = {.word = 0};
@@ -794,6 +820,7 @@ static void rshim_pcie_intr(rshim_pcie_t *dev)
   switch (info.rst_state) {
   case RSHIM_PCIE_RST_STATE_REQUEST:
     RSHIM_INFO("NIC reset ACK\n");
+    info.pcie = 1;
     info.rst_reply = RSHIM_PCIE_RST_REPLY_ACK;
     __sync_synchronize();
     bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad6,
@@ -802,6 +829,7 @@ static void rshim_pcie_intr(rshim_pcie_t *dev)
 
   case RSHIM_PCIE_RST_STATE_ABORT:
     RSHIM_INFO("NIC reset ABORT\n");
+    info.pcie = 1;
     info.word &= 0xFFFFFFFFUL;
     bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad6,
                     info.word, RSHIM_REG_SIZE_8B);
@@ -811,6 +839,7 @@ static void rshim_pcie_intr(rshim_pcie_t *dev)
     RSHIM_INFO("NIC reset START\n");
 
     info.rst_reply = RSHIM_PCIE_RST_START_ACK;
+    info.pcie = 1;
     dev->nic_reset = true;
     __sync_synchronize();
     bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad6,
@@ -1081,6 +1110,8 @@ static int rshim_pcie_enable(rshim_backend_t *bd, bool enable)
    */
   if (!enable) {
     rshim_pcie_write(bd, RSHIM_CHANNEL, bd->regs->scratchpad1, 0,
+                     RSHIM_REG_SIZE_8B);
+    rshim_pcie_write(bd, RSHIM_CHANNEL, bd->regs->scratchpad6, 0,
                      RSHIM_REG_SIZE_8B);
   }
 

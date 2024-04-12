@@ -580,6 +580,7 @@ static inline void rshim_usb_poll(bool blocking)
 #ifdef HAVE_RSHIM_PCIE
 int rshim_pcie_init(void);
 int rshim_pcie_lf_init(void);
+void rshim_pcie_check(rshim_backend_t *bd);
 #else
 static inline int rshim_pcie_init(void)
 {
@@ -589,6 +590,11 @@ static inline int rshim_pcie_init(void)
 static inline int rshim_pcie_lf_init(void)
 {
   return -1;
+}
+
+static inline void rshim_pcie_check(rshim_backend_t *bd)
+{
+  (void)bd;
 }
 #endif
 

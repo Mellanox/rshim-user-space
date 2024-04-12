@@ -2099,6 +2099,10 @@ static void rshim_timer_func(rshim_backend_t *bd)
     rshim_work_signal(bd);
   }
 
+  /* Some checking for PCIe backend. */
+  if (!strncmp(bd->dev_name, "pcie", 4) && strncmp(bd->dev_name + 4, "-lf", 3))
+    rshim_pcie_check(bd);
+
   bd->timer = rshim_timer_ticks + period;
 }
 
