@@ -54,6 +54,10 @@ via the virtual console or network interface.
 %{_mandir}/man8/rshim.8.gz
 
 %changelog
+* Fri Apr 12 2024 Liming Sun <limings@nvidia.com> - 2.0.26
+- rshim_pcie: set PCIE bit in scratchpad6
+- Revert semantics of --reverse-nc
+
 * Fri Apr 05 2024 Liming Sun <limings@nvidia.com> - 2.0.25
 - Avoid a race of rshim ownership during bfb push
 

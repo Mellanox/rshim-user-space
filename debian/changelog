@@ -1,3 +1,10 @@
+rshim (2.0.26) UNRELEASED; urgency=low
+
+  * rshim_pcie: set PCIE bit in scratchpad6
+  * Revert semantics of --reverse-nc
+
+ -- Liming Sun <limings@nvidia.com>  Fri, 12 Apr 2024 11:33:10 -0400
+
 rshim (2.0.25) UNRELEASED; urgency=low
 
   * Avoid a race of rshim ownership during bfb push
