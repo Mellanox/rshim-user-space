@@ -1,3 +1,9 @@
+rshim (2.0.27) UNRELEASED; urgency=low
+
+  * bfb-install: Fix incorrect IP address resolution for multi-hop routing
+
+ -- Penghe Geng <pgeng@nvidia.com>  Fri, 12 Apr 2024 17:18:08 -0400
+
 rshim (2.0.26) UNRELEASED; urgency=low
 
   * rshim_pcie: set PCIE bit in scratchpad6

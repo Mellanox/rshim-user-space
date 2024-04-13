@@ -96,6 +96,9 @@ fi
 %{_mandir}/man8/bfb-install.8.gz
 
 %changelog
+* Fri, 12 Apr 2024 Penghe Geng <pgeng@nvidia.com> - 2.0.27
+- bfb-install: Fix incorrect IP address resolution for multi-hop routing
+
 * Fri Apr 12 2024 Liming Sun <limings@nvidia.com> - 2.0.26
 - rshim_pcie: set PCIE bit in scratchpad6
 - Revert semantics of --reverse-nc
