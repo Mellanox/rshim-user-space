@@ -861,6 +861,7 @@ static void rshim_pcie_intr(rshim_pcie_t *dev)
       delay = RSHIM_PCIE_RST_START_MIN_DELAY;
     sleep(delay);
     bd->drop_mode = drop_mode;
+    bd->locked_mode = 0;
     dev->nic_reset = false;
     break;
 
@@ -1193,6 +1194,7 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
     bd = &dev->bd;
     strcpy(bd->dev_name, dev_name);
     bd->drop_mode = (rshim_drop_mode >= 0) ? rshim_drop_mode : 0;
+    bd->locked_mode = 0;
     bd->read_rshim = rshim_pcie_read;
     bd->write_rshim = rshim_pcie_write;
     bd->destroy = rshim_pcie_delete;

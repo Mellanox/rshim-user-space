@@ -408,6 +408,10 @@ struct rshim_backend {
   /* Up to two VLAN IDs for PXE purpose. */
   uint16_t vlan[2];
 
+  /* Secure NIC mode Management. No RSHIM HW access */
+  bool locked_mode;
+  bool first_update_done;
+
   /* APIs provided by backend. */
 
   /* API to write bulk data to RShim via the backend. */
@@ -617,5 +621,8 @@ int rshim_access_check(rshim_backend_t *bd);
 
 /* Sync up with the peer side. */
 int rshim_fifo_sync(rshim_backend_t *bd, bool drop_rx);
+
+/* Enable or disable drop mode */
+int rshim_set_drop_mode(rshim_backend_t *bd, int value);
 
 #endif /* _RSHIM_H */

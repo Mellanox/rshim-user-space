@@ -628,7 +628,6 @@ static int rshim_fuse_misc_read(struct cuse_dev *cdev, int fflags,
   struct timeval tp;
   uint64_t value;
   char *p;
-  int in_secure_nic_mode;
 
   if (rm->ready) {
 #ifdef __linux__
@@ -716,20 +715,11 @@ static int rshim_fuse_misc_read(struct cuse_dev *cdev, int fflags,
       len -= n;
     }
 
-    /* Check whether NIC_FW is in locked mode. */
-    rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad1, &value,
-      RSHIM_REG_SIZE_8B);
-    if (rc < 0) {
-      RSHIM_ERR("RSHIM SCRATCHPAD1 register read error\n");
-      value = 0;
-    }
-    in_secure_nic_mode = (value == BF3_RSH_SECURE_NIC_MODE_MAGIC_NUM);
-    if (in_secure_nic_mode) {
-      n = snprintf(p, len, "%-16s%d (0:no, 1:yes)\n", "SECURE_NIC_MODE", 1);
-      p += n;
-      len -= n;
-    }
-  }
+    n = snprintf(p, len, "%-16s%d (0:no, 1:yes)\n", "SECURE_NIC_MODE",
+                 bd->locked_mode);
+    p += n;
+    len -= n;
+}
 
   if (bd->display_level == 1) {
     gettimeofday(&tp, NULL);
@@ -813,7 +803,7 @@ static int rshim_fuse_misc_write(struct cuse_dev *cdev, int fflags,
   rshim_backend_t *bd = cuse_dev_get_priv0(cdev);
   const char *p = buf;
 #endif
-  int i, rc = 0, value = 0, mac[6], vlan[2] = {0}, old_value;
+  int i, rc = 0, value = 0, mac[6], vlan[2] = {0};
   char opn[RSHIM_YU_BOOT_RECORD_OPN_SIZE + 1] = "";
   uint64_t val64 = 0;
   char key[32];
@@ -856,40 +846,7 @@ static int rshim_fuse_misc_write(struct cuse_dev *cdev, int fflags,
   } else if (strcmp(key, "DROP_MODE") == 0) {
     if (sscanf(p, "%d", &value) != 1)
       goto invalid;
-
-    pthread_mutex_lock(&bd->mutex);
-    old_value = (int)bd->drop_mode;
-    value = !!value;
-    if (value == old_value) {
-      pthread_mutex_unlock(&bd->mutex);
-      goto done;
-    }
-
-    bd->drop_mode = 0;
-    if (bd->enable_device && bd->enable_device(bd, value ? false : true))
-      bd->drop_mode = 1;
-    else
-      bd->drop_mode = value;
-
-    if (bd->drop_mode)
-      bd->drop_pkt = 1;
-    else
-      rshim_fifo_sync(bd, true);
-    pthread_mutex_unlock(&bd->mutex);
-    /*
-     * Check if another endpoint driver has already attached to the
-     * same rshim device before enabling it.
-     */
-    if (!bd->drop_mode) {
-      rshim_lock();
-      pthread_mutex_lock(&bd->mutex);
-      if (rshim_access_check(bd)) {
-        RSHIM_WARN("rshim%d is not accessible\n", bd->index);
-        bd->drop_mode = 1;
-      }
-      pthread_mutex_unlock(&bd->mutex);
-      rshim_unlock();
-    }
+    rshim_set_drop_mode(bd, value);
   } else if (strcmp(key, "BOOT_MODE") == 0) {
     if (sscanf(p, "%x", &value) != 1)
       goto invalid;
@@ -986,7 +943,6 @@ invalid:
 #endif
   }
 
-done:
 #ifdef __linux__
   if (!rc)
     fuse_reply_write(req, size);
