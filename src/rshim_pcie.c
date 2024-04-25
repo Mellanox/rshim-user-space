@@ -861,7 +861,6 @@ static void rshim_pcie_intr(rshim_pcie_t *dev)
       delay = RSHIM_PCIE_RST_START_MIN_DELAY;
     sleep(delay);
     bd->drop_mode = drop_mode;
-    bd->locked_mode = 0;
     dev->nic_reset = false;
     break;
 

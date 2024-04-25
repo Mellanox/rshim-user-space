@@ -2155,34 +2155,28 @@ static int rshim_check_locked_mode(rshim_backend_t *bd)
 
 static int rshim_update_locked_mode(rshim_backend_t *bd)
 {
-  int rt;
-  bool locked_mode;
+  int locked_mode;
 
-  rt = rshim_check_locked_mode(bd);
-  if (rt < 0) { /* Failed to check NIC locked mode status */
+  locked_mode = rshim_check_locked_mode(bd);
+  if (locked_mode < 0)
     return -EIO;
-  }
 
-  locked_mode = !!rt;
-
-  if (locked_mode != bd->locked_mode || !bd->first_update_done) {
+  if (locked_mode != bd->locked_mode) {
     RSHIM_INFO("rshim%d set to %s mode\n", bd->index,
         locked_mode ? "locked" : "unlocked");
+    bd->locked_mode = locked_mode;
 
     /*
      * When NIC has exited locked mode, other rshim driver like BMC USB rshim
      * driver may have attached RSHIM. In that case, we will enter drop mode
      */
-    if (!locked_mode && bd->locked_mode ) {
+    if (!locked_mode) {
       if (rshim_access_check(bd)) {
         RSHIM_INFO("rshim%d attached by another device. Entering Drop Mode\n",
             bd->index);
         rshim_set_drop_mode(bd, 1);
       }
     }
-
-    bd->locked_mode = locked_mode;
-    bd->first_update_done = true;
   }
 
   return 0;
