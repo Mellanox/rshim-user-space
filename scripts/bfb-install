@@ -674,5 +674,3 @@ fi
 push_boot_stream
 
 wait_for_update_to_finish
-
-echo "BlueField Updated Successfully"
