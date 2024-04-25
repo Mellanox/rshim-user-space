@@ -1704,7 +1704,7 @@ static void rshim_work_handler(rshim_backend_t *bd)
 
   if (bd->keepalive && bd->has_rshim && !bd->debug_code) {
     bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad1,
-        RSHIM_KEEPALIVE_MAGIC_NUM, RSHIM_REG_SIZE_8B);
+                    RSHIM_KEEPALIVE_MAGIC_NUM, RSHIM_REG_SIZE_8B);
     bd->keepalive = 0;
   }
 
@@ -2431,6 +2431,7 @@ int rshim_access_check(rshim_backend_t *bd)
     rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad1, &value, RSHIM_REG_SIZE_8B);
 
     if (!rc && value == RSHIM_KEEPALIVE_MAGIC_NUM) {
+      RSHIM_INFO("another backend already attached\n");
       return -EEXIST;
     }
 
@@ -2464,12 +2465,8 @@ int rshim_register(rshim_backend_t *bd)
   }
 
   rc = rshim_access_check(bd);
-  if (rc) {
-    if (rc == -EEXIST) {
-      RSHIM_INFO("another backend already attached\n");
-    }
+  if (rc)
     return rc;
-  }
 
   if (!bd->write)
     bd->write = rshim_write_default;
