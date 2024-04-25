@@ -364,7 +364,7 @@ wait_for_update_to_finish()
     sleep 1
 
     if echo ${cur} | grep -Ei \
-      "Reboot|finished|DPU is ready|In Enhanced NIC mode|Linux up" \
+      "Reboot|finished|DPU is ready|Linux up" \
         >/dev/null; then
       finished=1
     fi
