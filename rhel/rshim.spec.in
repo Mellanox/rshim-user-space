@@ -54,6 +54,9 @@ via the virtual console or network interface.
 %{_mandir}/man8/rshim.8.gz
 
 %changelog
+* Thu Apr 25 2024 Penghe Geng <pgeng@nvidia.com> - 2.0.28
+- Secure NIC Mode: Prevent running simultaneously on both bmc and host
+
 * Fri Apr 12 2024 Penghe Geng <pgeng@nvidia.com> - 2.0.27
 - bfb-install: Fix incorrect IP address resolution for multi-hop routing
 
