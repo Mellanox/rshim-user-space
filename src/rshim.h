@@ -279,6 +279,8 @@ struct rshim_backend {
   uint32_t peer_vlan_set : 1;     /* A flag to set vlan IDs. */
   uint32_t drop_mode : 1;         /* A flag to drop all input/output. */
   uint32_t skip_boot_reset : 1;   /* Skip SW_RESET while pushing boot stream. */
+  uint32_t locked_mode : 1;       /* Secure NIC mode Management. No RSHIM HW access */
+
 
   /* reference count. */
   volatile int ref;
@@ -617,5 +619,8 @@ int rshim_access_check(rshim_backend_t *bd);
 
 /* Sync up with the peer side. */
 int rshim_fifo_sync(rshim_backend_t *bd, bool drop_rx);
+
+/* Enable or disable drop mode */
+int rshim_set_drop_mode(rshim_backend_t *bd, int value);
 
 #endif /* _RSHIM_H */

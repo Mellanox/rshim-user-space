@@ -707,6 +707,12 @@ int rshim_boot_open(rshim_backend_t *bd)
     return -EINVAL;
   }
 
+  if (bd->locked_mode) {
+    RSHIM_ERR("rshim is in locked mode\n");
+    pthread_mutex_unlock(&bd->mutex);
+    return -EPERM;
+  }
+
   if (bd->is_boot_open) {
     RSHIM_INFO("can't boot, boot file already open\n");
     pthread_mutex_unlock(&bd->mutex);
@@ -1945,6 +1951,12 @@ int rshim_console_open(rshim_backend_t *bd)
     return -EBUSY;
   }
 
+  if (bd->locked_mode) {
+    RSHIM_ERR("rshim is in locked mode\n");
+    pthread_mutex_unlock(&bd->mutex);
+    return -EPERM;
+  }
+
   bd->is_cons_open = 1;
 
   pthread_mutex_lock(&bd->ringlock);
@@ -2084,9 +2096,94 @@ rshim_backend_t *rshim_find_by_dev(void *dev)
   return NULL;
 }
 
-/* House-keeping timer. */
-static void rshim_timer_func(rshim_backend_t *bd)
+int rshim_set_drop_mode(rshim_backend_t *bd, int value)
 {
+  int old_value;
+  int rt = 0;
+
+  pthread_mutex_lock(&bd->mutex);
+  old_value = (int)bd->drop_mode;
+  value = !!value;
+  if (value == old_value) {
+    pthread_mutex_unlock(&bd->mutex);
+    return -EALREADY;
+  }
+
+  bd->drop_mode = 0;
+  if (bd->enable_device && bd->enable_device(bd, value ? false : true))
+    bd->drop_mode = 1;
+  else
+    bd->drop_mode = value;
+
+  if (bd->drop_mode)
+    bd->drop_pkt = 1;
+  else
+    rshim_fifo_sync(bd, true);
+  pthread_mutex_unlock(&bd->mutex);
+  /*
+   * Check if another endpoint driver has already attached to the
+   * same rshim device before enabling it.
+   */
+  if (!bd->drop_mode) {
+    rshim_lock();
+    pthread_mutex_lock(&bd->mutex);
+    if (rshim_access_check(bd)) {
+      RSHIM_WARN("rshim%d is not accessible\n", bd->index);
+      bd->drop_mode = 1;
+      rt = -EACCES;
+    }
+    pthread_mutex_unlock(&bd->mutex);
+    rshim_unlock();
+  }
+  return rt;
+}
+
+static int rshim_check_locked_mode(rshim_backend_t *bd)
+{
+    int rc;
+    uint64_t value;
+
+    rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad1, &value,
+                        RSHIM_REG_SIZE_8B);
+    if (rc < 0) {
+        RSHIM_ERR("RSHIM %d SCRATCHPAD1 register read error\n", bd->index);
+        return -EIO;
+    }
+
+    return (value == BF3_RSH_SECURE_NIC_MODE_MAGIC_NUM) ? 1 : 0;
+}
+
+static int rshim_update_locked_mode(rshim_backend_t *bd)
+{
+  int locked_mode;
+
+  locked_mode = rshim_check_locked_mode(bd);
+  if (locked_mode < 0)
+    return -EIO;
+
+  if (locked_mode != bd->locked_mode) {
+    RSHIM_INFO("rshim%d set to %s mode\n", bd->index,
+        locked_mode ? "locked" : "unlocked");
+    bd->locked_mode = locked_mode;
+
+    /*
+     * When NIC has exited locked mode, other rshim driver like BMC USB rshim
+     * driver may have attached RSHIM. In that case, we will enter drop mode
+     */
+    if (!locked_mode) {
+      if (rshim_access_check(bd)) {
+        RSHIM_INFO("rshim%d attached by another device. Entering Drop Mode\n",
+            bd->index);
+        rshim_set_drop_mode(bd, 1);
+      }
+    }
+  }
+
+  return 0;
+}
+
+/* House-keeping timer. */
+static void rshim_timer_func(rshim_backend_t *bd) {
   int period = rshim_keepalive_period;
 
   if (bd->has_cons_work)
@@ -2097,6 +2194,9 @@ static void rshim_timer_func(rshim_backend_t *bd)
     bd->keepalive = 1;
     bd->last_keepalive = rshim_timer_ticks;
     rshim_work_signal(bd);
+
+    /* Piggy-back the keepalive update for locked mode update as well */
+    rshim_update_locked_mode(bd);
   }
 
   /* Some checking for PCIe backend. */
