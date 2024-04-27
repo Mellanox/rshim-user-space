@@ -1416,10 +1416,13 @@ static void rshim_fifo_output(rshim_backend_t *bd)
   if (bd->spin_flags & RSH_SFLG_WRITING)
     return;
 
-  if (bd->has_reprobe)
-    fifo_avail = WRITE_BUF_SIZE;
-  else
-    fifo_avail = rshim_fifo_tx_avail(bd) * sizeof(uint64_t);
+  fifo_avail = rshim_fifo_tx_avail(bd) * sizeof(uint64_t);
+  if (fifo_avail <= 0) {
+    bd->has_cons_work = 1;
+    rshim_work_signal(bd);
+    return;
+  }
+
   write_avail = fifo_avail - write_buf_next;
 
   if (!bd->write_buf_pkt_rem) {
@@ -1747,7 +1750,7 @@ static void rshim_work_handler(rshim_backend_t *bd)
     bd->spin_flags &= ~RSH_SFLG_WRITING;
     if (len == bd->fifo_work_buf_len) {
       pthread_cond_broadcast(&bd->fifo_write_complete_cond);
-      rshim_notify(bd, RSH_EVENT_FIFO_OUTPUT, 0);
+      rshim_fifo_output(bd);
     } else {
       RSHIM_DBG("fifo_write: completed abnormally (%d)\n", len);
     }
@@ -1995,11 +1998,9 @@ int rshim_notify(rshim_backend_t *bd, int event, int code)
 
   switch (event) {
   case RSH_EVENT_FIFO_INPUT:
-    rshim_fifo_input(bd);
-    break;
-
   case RSH_EVENT_FIFO_OUTPUT:
-    rshim_fifo_output(bd);
+    bd->has_cons_work = 1;
+    rshim_work_signal(bd);
     break;
 
   case RSH_EVENT_FIFO_ERR:
