@@ -2146,7 +2146,7 @@ static int rshim_check_locked_mode(rshim_backend_t *bd)
     rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad1, &value,
                         RSHIM_REG_SIZE_8B);
     if (rc < 0) {
-        RSHIM_ERR("RSHIM %d SCRATCHPAD1 register read error\n", bd->index);
+        RSHIM_DBG("RSHIM %d SCRATCHPAD1 register read error\n", bd->index);
         return -EIO;
     }
 
