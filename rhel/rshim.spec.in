@@ -54,6 +54,10 @@ via the virtual console or network interface.
 %{_mandir}/man8/rshim.8.gz
 
 %changelog
+* Tue Apr 30 2024 Liming Sun <limings@nvidia.com> - 2.0.29
+- Some robust fixes for rshim over USB
+- Lower log level for register read errors as it's normal during reset
+
 * Thu Apr 25 2024 Penghe Geng <pgeng@nvidia.com> - 2.0.28
 - Secure NIC Mode: Prevent running simultaneously on both bmc and host
 

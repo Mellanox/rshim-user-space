@@ -1,3 +1,10 @@
+rshim (2.0.29) UNRELEASED; urgency=low
+
+  * Some robust fixes for rshim over USB
+  * Lower log level for register read errors as it's normal during reset
+
+ -- Liming Sun <limings@nvidia.com>  Tue, 30 Apr 2024 12:31:10 -0400
+
 rshim (2.0.28) UNRELEASED; urgency=low
 
   * Secure NIC Mode: Prevent running simultaneously on both bmc and host
