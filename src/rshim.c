@@ -2158,7 +2158,9 @@ static int rshim_update_locked_mode(rshim_backend_t *bd)
 {
   int locked_mode;
 
+  pthread_mutex_lock(&bd->mutex);
   locked_mode = rshim_check_locked_mode(bd);
+  pthread_mutex_unlock(&bd->mutex);
   if (locked_mode < 0)
     return -EIO;
 
@@ -2172,7 +2174,14 @@ static int rshim_update_locked_mode(rshim_backend_t *bd)
      * driver may have attached RSHIM. In that case, we will enter drop mode
      */
     if (!locked_mode) {
-      if (rshim_access_check(bd)) {
+      int rt;
+
+      rshim_lock();
+      pthread_mutex_lock(&bd->mutex);
+      rt = rshim_access_check(bd); 
+      pthread_mutex_unlock(&bd->mutex);
+      rshim_unlock();
+      if (rt) {
         RSHIM_INFO("rshim%d attached by another device. Entering Drop Mode\n",
             bd->index);
         rshim_set_drop_mode(bd, 1);
