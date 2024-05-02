@@ -1,0 +1,11 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+  configure)
+    echo "Installation complete. To enable and start the rshim service, run:"
+    echo "  systemctl daemon-reload"
+    echo "  systemctl enable rshim"
+    echo "  systemctl start rshim"
+    ;;
+esac

@@ -65,9 +65,10 @@ make
 
 %post
 %if "%{with_systemd}" == "1"
-  systemctl daemon-reload
-  systemctl enable rshim
-  systemctl start rshim
+  echo "Installation complete. To enable and start the rshim service, run:"
+  echo "  systemctl daemon-reload"
+  echo "  systemctl enable rshim"
+  echo "  systemctl start rshim"
 %endif
 
 %preun
