@@ -100,6 +100,10 @@ extern int rshim_pcie_enable_uio;
 
 #define BF3_MAX_BOOT_FIFO_SIZE 8192 /* bytes */
 
+/*
+ * Possible error code during resetting, which can be used to check against
+ * registers with known values.
+ */
 #define RSHIM_BAD_CTRL_REG(v) \
   (((v) == 0xbad00acce55) || ((v) == (uint64_t)-1) || ((v) == 0xbadacce55))
 

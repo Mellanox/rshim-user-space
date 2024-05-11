@@ -661,7 +661,7 @@ int rshim_reset_control(rshim_backend_t *bd)
   int rc;
 
   rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->reset_control, &reg, RSHIM_REG_SIZE_8B);
-  if (rc < 0) {
+  if (rc < 0 || RSHIM_BAD_CTRL_REG(reg)) {
     RSHIM_ERR("failed to read rshim reset control error %d\n", rc);
     return rc;
   }
@@ -2142,11 +2142,11 @@ int rshim_set_drop_mode(rshim_backend_t *bd, int value)
 static int rshim_check_locked_mode(rshim_backend_t *bd)
 {
     int rc;
-    uint64_t value;
+    uint64_t value = 0;
 
     rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad1, &value,
                         RSHIM_REG_SIZE_8B);
-    if (rc < 0) {
+    if (rc < 0 || RSHIM_BAD_CTRL_REG(value)) {
         RSHIM_DBG("RSHIM %d SCRATCHPAD1 register read error\n", bd->index);
         return -EIO;
     }
@@ -2157,6 +2157,10 @@ static int rshim_check_locked_mode(rshim_backend_t *bd)
 static int rshim_update_locked_mode(rshim_backend_t *bd)
 {
   int locked_mode;
+
+  /* Skip locked-mode polling during reset. */
+  if (bd->is_booting)
+    return 0;
 
   pthread_mutex_lock(&bd->mutex);
   locked_mode = rshim_check_locked_mode(bd);
@@ -2444,7 +2448,7 @@ int rshim_access_check(rshim_backend_t *bd)
 
   /* One more read to make sure it's ready. */
   rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad1, &value, RSHIM_REG_SIZE_8B);
-  if (rc < 0) {
+  if (rc < 0 || RSHIM_BAD_CTRL_REG(value)) {
     RSHIM_ERR("access_check: failed to read rshim\n");
     return -ENODEV;
   }
