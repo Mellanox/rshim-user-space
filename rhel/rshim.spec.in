@@ -54,6 +54,11 @@ via the virtual console or network interface.
 %{_mandir}/man8/rshim.8.gz
 
 %changelog
+* Mon May 13 2024 Liming Sun <limings@nvidia.com> - 2.0.30
+- pcie: Adjust default reset delay to 3 seconds
+- Avoid polling blocked status during reset
+- Disable installation of rshim on host by default
+
 * Tue Apr 30 2024 Liming Sun <limings@nvidia.com> - 2.0.29
 - Some robust fixes for rshim over USB
 - Lower log level for register read errors as it's normal during reset
