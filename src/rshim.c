@@ -630,27 +630,6 @@ int rshim_mmio_read32(rshim_backend_t *bd, uintptr_t addr, uint32_t *data)
   }
 }
 
-static bool rshim_is_livefish(rshim_backend_t *bd)
-{
-  uint32_t yu_boot = 0, boot_status;
-  int rc;
-
-  /* No need to check livefish mode for pcie rshim driver. */
-  if (!strncmp(bd->dev_name, "pcie", 4) && strncmp(bd->dev_name + 4, "-lf", 3))
-    return false;
-
-  /*
-   * A value of 1 in yu_boot.boot_status indicates a successful FW
-   * boot, any other value indicates livefish mode.
-   */
-  rc = rshim_mmio_read32(bd, RSHIM_YU_BASE_ADDR + YU_BOOT, &yu_boot);
-  boot_status = (yu_boot >> 17) & 3;
-  RSHIM_DBG("yu_boot_status: %d\n", boot_status);
-
-  return (!rc && boot_status != 1);
-}
-
-
 /*
  * Write to the RShim reset control register.
  */
@@ -683,13 +662,6 @@ int rshim_reset_control(rshim_backend_t *bd)
   if (rc < 0) {
     RSHIM_ERR("failed to write rshim reset control error %d\n", rc);
     return rc;
-  }
-
-  if (bd->ver_id == RSHIM_BLUEFIELD_2 && bd->rev_id == BLUEFIELD_REV0 &&
-      rshim_is_livefish(bd)) {
-    RSHIM_DBG("Apply reset type 13\n");
-    /* yu.reset_mode_control.reset_mode_control.sw_reset_event_activation13 */
-    rshim_mmio_write32(bd, RSHIM_YU_BASE_ADDR + YU_RESET_ACTIVATION_13, 1);
   }
 
   return 0;
@@ -2293,82 +2265,6 @@ static void rshim_boot_workaround_check(rshim_backend_t *bd)
   }
 }
 
-static int rshim_bf2_a0_wa(rshim_backend_t *bd)
-{
-  uint32_t devid = 0, clk_en, reset_en, powerdown;
-  uint32_t main_clk_gate_en;
-  int i, rc;
-
-  rc = rshim_mmio_read32(bd, RSHIM_YU_BASE_ADDR + YU_BOOT_DEVID, &devid);
-  RSHIM_DBG("yu_boot_devid: 0x%x\n", devid);
-  if (rc)
-    return -1;
-
-  /* Workaround applies only to rev A0 in livefish mode */
-  if ((devid >> 16) > 0)
-    return 0;
-
-  RSHIM_INFO("Apply reset_mode_control WA\n");
-  if (rshim_mmio_read32(bd, RSHIM_YU_BASE_ADDR +
-                        YU_MAIN_CLK_GATE_EN, &main_clk_gate_en))
-    return -1;
-
-  main_clk_gate_en |= (1 << 13);
-  if (rshim_mmio_write32(bd, RSHIM_YU_BASE_ADDR + YU_MAIN_CLK_GATE_EN,
-                         main_clk_gate_en))
-    return -1;
-  RSHIM_DBG("main_clk_gate_en: 0x%x\n", main_clk_gate_en);
-
-  /*
-   * yu.reset_mode_control.reset_modes.reset_mode[13].clk_en_bits[i].clk_en_bits =
-   *   yu.reset_mode_control.reset_modes.reset_mode[8].clk_en_bits[i].clk_en_bits
-   */
-  for (i = 0; i < YU_CLK_EN_COUNT; ++i) {
-    if (rshim_mmio_read32(bd, RSHIM_YU_BASE_ADDR + YU_RESET_8_CLK_EN +
-                          (i * 4), &clk_en))
-      return -1;
-    if (rshim_mmio_write32(bd, RSHIM_YU_BASE_ADDR + YU_RESET_13_CLK_EN +
-                           (i * 4), clk_en))
-      return -1;
-  }
-
-  /*
-   * yu.reset_mode_control.reset_modes.reset_mode[13].reset_en_bits[i].reset_en_bits =
-   *   yu.reset_mode_control.reset_modes.reset_mode[8].reset_en_bits[i].reset_en_bits
-   */
-  for (i = 0; i < YU_RESET_EN_COUNT; ++i) {
-    if (rshim_mmio_read32(bd, RSHIM_YU_BASE_ADDR + YU_RESET_8_RESET_EN +
-                          (i * 4), &reset_en))
-      return -1;
-    if (rshim_mmio_write32(bd, RSHIM_YU_BASE_ADDR + YU_RESET_13_RESET_EN +
-                           (i * 4), reset_en))
-      return -1;
-  }
-
-  /*
-   * yu.reset_mode_control.reset_modes.reset_mode[13].powerdown_bits[i].powerdown_bits =
-   *   yu.reset_mode_control.reset_modes.reset_mode[8].powerdown_bits[i].powerdown_bits
-   */
-  for (i = 0; i < YU_POWERDOWN_COUNT; ++i) {
-    if (rshim_mmio_read32(bd, RSHIM_YU_BASE_ADDR + YU_RESET_8_POWERDOWN +
-                          (i * 4), &powerdown))
-      return -1;
-    if (rshim_mmio_write32(bd, RSHIM_YU_BASE_ADDR + YU_RESET_13_POWERDOWN +
-                           (i * 4), powerdown))
-      return -1;
-  }
-
-  /*
-   * yu.bootrecord.nic.power.power_clock_up_delay = 0x9
-   * yu.bootrecord.nic.power.power_clock_down_delay = 0x9
-   */
-  if (rshim_mmio_write32(bd, RSHIM_YU_BASE_ADDR + YU_POWER_CLK_DELAY,
-                         0x9 | (0x9 << 5)))
-      return -1;
-
-  return 0;
-}
-
 int rshim_access_check(rshim_backend_t *bd)
 {
   rshim_backend_t *other_bd;
@@ -2393,23 +2289,6 @@ int rshim_access_check(rshim_backend_t *bd)
   }
 
   rshim_boot_workaround_check(bd);
-
-  /* BLUEFIELD_2 REV0 workaround. */
-  if (bd->ver_id == RSHIM_BLUEFIELD_2 && bd->rev_id == BLUEFIELD_REV0 &&
-      rshim_is_livefish(bd)) {
-    if (rshim_bf2_a0_wa(bd) != 0) {
-      /*
-       * If the workaround fails it is likely because the mesh is already
-       * stuck. Issue a soft reset and try one more time. Ignore the error code
-       * since it's not reliable when doing reset.
-       */
-      bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->reset_control,
-                      RSH_RESET_CONTROL__RESET_CHIP_VAL_KEY,
-                      RSHIM_REG_SIZE_8B);
-      sleep(1);
-      rshim_bf2_a0_wa(bd);
-    }
-  }
 
   /* Write value 0 to RSH_SCRATCHPAD1. */
   rc = bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad1, 0, RSHIM_REG_SIZE_8B);
