@@ -1067,9 +1067,8 @@ static void rshim_fuse_rshim_ioctl(fuse_req_t req, int cmd, void *arg,
      */
     chan = msg.addr >> 16;
     offset = msg.addr & 0xFFFF;
-    if (bd->ver_id <= RSHIM_BLUEFIELD_2 || strncmp(bd->dev_name, "usb", 3)) {
+    if ((bd->ver_id <= RSHIM_BLUEFIELD_2) || (bd->type != RSH_BACKEND_USB))
       chan &= 0xF;
-    }
 
     if (cmd == RSHIM_IOC_WRITE) {
       pthread_mutex_lock(&bd->mutex);

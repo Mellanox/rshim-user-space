@@ -779,6 +779,7 @@ static int rshim_usb_probe_one(libusb_context *ctx, libusb_device *usb_dev,
 
     bd = &dev->bd;
     strcpy(bd->dev_name, dev_name);
+    bd->type = RSH_BACKEND_USB;
     bd->drop_mode = (rshim_drop_mode >= 0) ? rshim_drop_mode : 0;
     bd->read = rshim_usb_backend_read;
     bd->write = rshim_usb_backend_write;

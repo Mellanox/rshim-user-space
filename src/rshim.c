@@ -2130,6 +2130,10 @@ static int rshim_update_locked_mode(rshim_backend_t *bd)
 {
   int locked_mode;
 
+  /* Only do this for PCIE. */
+  if (bd->type != RSH_BACKEND_PCIE)
+    return 0;
+
   /* Skip locked-mode polling during reset. */
   if (bd->is_booting)
     return 0;
@@ -2186,7 +2190,7 @@ static void rshim_timer_func(rshim_backend_t *bd) {
   }
 
   /* Some checking for PCIe backend. */
-  if (!strncmp(bd->dev_name, "pcie", 4) && strncmp(bd->dev_name + 4, "-lf", 3))
+  if (bd->type == RSH_BACKEND_PCIE)
     rshim_pcie_check(bd);
 
   bd->timer = rshim_timer_ticks + period;

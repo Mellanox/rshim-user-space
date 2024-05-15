@@ -759,6 +759,7 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
     bd = &dev->bd;
     strcpy(bd->dev_name, dev_name);
     /* Enable drop mode by default if not configured. */
+    bd->type = RSH_BACKEND_PCIE_LF;
     bd->drop_mode = (rshim_drop_mode >= 0) ? rshim_drop_mode : 1;
     bd->read_rshim = rshim_pcie_read;
     bd->write_rshim = rshim_pcie_write;
