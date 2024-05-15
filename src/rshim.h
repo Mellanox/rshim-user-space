@@ -107,6 +107,14 @@ extern int rshim_pcie_enable_uio;
 #define RSHIM_BAD_CTRL_REG(v) \
   (((v) == 0xbad00acce55) || ((v) == (uint64_t)-1) || ((v) == 0xbadacce55))
 
+/* Backend type. */
+typedef enum {
+  RSH_BACKEND_NONE,
+  RSH_BACKEND_USB,
+  RSH_BACKEND_PCIE,
+  RSH_BACKEND_PCIE_LF
+} rshim_backend_type_t;
+
 /* Sub-device types. */
 enum {
   RSH_DEV_TYPE_RSHIM,
@@ -285,6 +293,8 @@ struct rshim_backend {
   uint32_t skip_boot_reset : 1;   /* Skip SW_RESET while pushing boot stream. */
   uint32_t locked_mode : 1;       /* Secure NIC mode Management. No RSHIM HW access */
 
+  /* type. */
+  rshim_backend_type_t type;
 
   /* reference count. */
   volatile int ref;
