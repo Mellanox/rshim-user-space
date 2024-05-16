@@ -764,9 +764,9 @@ int rshim_boot_open(rshim_backend_t *bd)
 boot_open_done:
   rshim_ref(bd);
 
-  /* Add a small delay for the reset. */
+  /* Add a small delay for the reset (livefish needs more delay). */
   if (!bd->has_reprobe)
-    usleep(500000);
+    usleep((bd->type == RSH_BACKEND_PCIE_LF) ? 1000000 : 500000);
   pthread_mutex_unlock(&bd->mutex);
 
   if (!bd->has_reprobe)
@@ -2612,10 +2612,10 @@ static void rshim_main(int argc, char *argv[])
   if (!rshim_backend_name && rshim_static_dev_name) {
     if (!strncmp(rshim_static_dev_name, "usb", 3))
       rshim_backend_name = "usb";
+    else if (!strncmp(rshim_static_dev_name, "pcie-lf", 7))
+      rshim_backend_name = "pcie-lf";
     else if (!strncmp(rshim_static_dev_name, "pcie", 4))
       rshim_backend_name = "pcie";
-    else if (!strncmp(rshim_static_dev_name, "pcie_lf", 7))
-      rshim_backend_name = "pcie_lf";
   }
   if (!rshim_backend_name) {
     rshim_pcie_init();
@@ -2623,10 +2623,10 @@ static void rshim_main(int argc, char *argv[])
   } else {
     if (!strcmp(rshim_backend_name, "usb"))
       rc = rshim_usb_init(epoll_fd);
+    else if (!strcmp(rshim_backend_name, "pcie-lf"))
+      rc = rshim_pcie_lf_init();
     else if (!strcmp(rshim_backend_name, "pcie"))
       rc = rshim_pcie_init();
-    else if (!strcmp(rshim_backend_name, "pcie_lf"))
-      rc = rshim_pcie_lf_init();
   }
   if (rc) {
     RSHIM_ERR("failed to initialize rshim backend\n");
@@ -2934,7 +2934,7 @@ static void print_help(void)
   printf("Usage: rshim [options]\n");
   printf("\n");
   printf("OPTIONS:\n");
-  printf("  -b, --backend     backend name (usb, pcie or pcie_lf)\n");
+  printf("  -b, --backend     backend name (usb, pcie or pcie-lf)\n");
   printf("  -d, --device      device to attach\n");
   printf("  -f, --foreground  run in foreground\n");
   printf("  -i, --index       use device path /dev/rshim<i>/\n");
