@@ -186,6 +186,12 @@ static int msn_gw_read(struct pci_dev *pci_dev, int addr,
   uint32_t data;
   int rc = 0;
 
+  /*
+   * rshim global MMIO address has BIT 28 set, which is not needed when
+   * programming via the MSN GW.
+   */
+  addr &= ~BF3_RSH_ADDR_MASK;
+
   /* Acquire MSN_GW_BOOT_LOCK */
   rc = msn_gw_lock_acquire(pci_dev);
   if (rc)
@@ -249,6 +255,8 @@ static int msn_gw_write(struct pci_dev *pci_dev, int addr,
 {
   uint32_t data;
   int rc;
+
+  addr &= ~BF3_RSH_ADDR_MASK;
 
   /* Acquire MSN_GW_BOOT_LOCK */
   rc = msn_gw_lock_acquire(pci_dev);
@@ -644,6 +652,24 @@ static int rshim_boot_fifo_write(struct pci_dev *pci_dev, int addr,
   return 0;
 }
 
+/*
+ * Convert rshim chan/addr to global MMIO address.
+ * The 'chan' could be the legacy rshim channel (<0xf) or the high 16-bits
+ * of the MMIO address.
+ */
+static uint32_t
+rshim_pcie_lf_bf3_chan_addr_convert(uint32_t chan, uint32_t addr)
+{
+  if (chan < 0xF)
+    addr += bf3_rshim_pcie_lf_chan_map[chan];
+  else
+    addr = (chan << 16) + addr;
+
+  addr |= BF3_RSH_ADDR_MASK;
+
+  return addr;
+}
+
 /* RShim read/write routines */
 static int __attribute__ ((noinline))
 rshim_pcie_read(struct rshim_backend *bd, uint32_t chan, uint32_t addr,
@@ -662,8 +688,8 @@ rshim_pcie_read(struct rshim_backend *bd, uint32_t chan, uint32_t addr,
   }
 
   if (pci_dev->device_id == BLUEFIELD3_DEVICE_ID) {
-    rc = msn_gw_read(pci_dev, bf3_rshim_pcie_lf_chan_map[chan] + addr,
-                     result);
+    addr = rshim_pcie_lf_bf3_chan_addr_convert(chan, addr);
+    rc = msn_gw_read(pci_dev, addr, result);
   }
   else {
     dev->write_count = 0;
@@ -690,8 +716,8 @@ rshim_pcie_write(struct rshim_backend *bd, uint32_t chan, uint32_t addr,
     return 0;
 
   if (pci_dev->device_id == BLUEFIELD3_DEVICE_ID) {
-    rc = msn_gw_write(pci_dev, bf3_rshim_pcie_lf_chan_map[chan] + addr,
-                      value);
+    addr = rshim_pcie_lf_bf3_chan_addr_convert(chan, addr);
+    rc = msn_gw_write(pci_dev, addr, value);
   }
   else {
      /*
