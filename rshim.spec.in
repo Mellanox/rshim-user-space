@@ -97,6 +97,11 @@ fi
 %{_mandir}/man8/bfb-install.8.gz
 
 %changelog
+* Fri May 17 2024 Liming Sun <limings@nvidia.com> - 2.0.31
+- bf3/pcie_lf: support register read/write via /dev/rshim0/rshim
+- Only poll/check locked mode for PCIe backend
+- Remove workaround support for BF2 A0 chip
+
 * Mon May 13 2024 Liming Sun <limings@nvidia.com> - 2.0.30
 - pcie: Adjust default reset delay to 3 seconds
 - Avoid polling blocked status during reset
