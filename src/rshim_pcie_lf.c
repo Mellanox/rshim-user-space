@@ -56,6 +56,7 @@
 #define MSN_GW_CR_64B_BOOT_ADDR             0xae01058
 #define MSN_GW_CR_64B_BOOT_ACC_WIDTH        0xae0105c
 #define MSN_GW_CR_64B_BOOT_64BIT_LINE       0x20000
+#define MSN_GW_CR_64B_BOOT_32BIT_MASK       0x1f00
 
 
 typedef struct {
@@ -180,7 +181,7 @@ static int msn_gw_poll_busy(struct pci_dev *pci_dev)
  * Mechanism to access RShim via the MSN GW_CR_64B gateway.
  */
 static int msn_gw_read(struct pci_dev *pci_dev, int addr,
-                               uint64_t *result)
+                               uint64_t *result, int size)
 {
   uint64_t read_result;
   uint32_t data;
@@ -202,9 +203,10 @@ static int msn_gw_read(struct pci_dev *pci_dev, int addr,
   if (rc)
     goto err;
 
-  /* Set access width to 64 bits */
+  /* Set access width */
   rc = pci_cap_write(pci_dev, MSN_GW_CR_64B_BOOT_ACC_WIDTH,
-                     MSN_GW_CR_64B_BOOT_64BIT_LINE);
+                     (size == 8) ? MSN_GW_CR_64B_BOOT_64BIT_LINE :
+                     MSN_GW_CR_64B_BOOT_32BIT_MASK);
   if (rc)
     goto err;
 
@@ -235,11 +237,14 @@ static int msn_gw_read(struct pci_dev *pci_dev, int addr,
     goto err;
   read_result = (uint64_t)data;
 
-  /* Read upper 32-bits of data */
-  rc = pci_cap_read(pci_dev, MSN_GW_CR_64B_BOOT_DATA_HIGH, &data);
-  if (rc)
-    goto err;
-  read_result |= ((uint64_t)data << 32);
+  if (size == 8) {
+    /* Read upper 32-bits of data */
+    rc = pci_cap_read(pci_dev, MSN_GW_CR_64B_BOOT_DATA_HIGH, &data);
+    if (rc)
+      goto err;
+    read_result |= ((uint64_t)data << 32);
+  }
+
   *result = read_result;
 
 err:
@@ -251,7 +256,7 @@ err:
 }
 
 static int msn_gw_write(struct pci_dev *pci_dev, int addr,
-                               uint64_t value)
+                               uint64_t value, int size)
 {
   uint32_t data;
   int rc;
@@ -268,9 +273,10 @@ static int msn_gw_write(struct pci_dev *pci_dev, int addr,
   if (rc)
     goto err;
 
-  /* Set access width to 64 bits */
+  /* Set access width */
   rc = pci_cap_write(pci_dev, MSN_GW_CR_64B_BOOT_ACC_WIDTH,
-                     MSN_GW_CR_64B_BOOT_64BIT_LINE);
+                     (size == 8) ? MSN_GW_CR_64B_BOOT_64BIT_LINE :
+                      MSN_GW_CR_64B_BOOT_32BIT_MASK);
   if (rc)
     goto err;
 
@@ -284,12 +290,14 @@ static int msn_gw_write(struct pci_dev *pci_dev, int addr,
   if (rc)
     goto err;
 
-  value = value >> 32;
+  if (size == 8) {
+    value = value >> 32;
 
-  /* Write higher 32 bits of data */
-  rc = pci_cap_write(pci_dev, MSN_GW_CR_64B_BOOT_DATA_HIGH, (uint32_t)value);
-  if (rc)
-    goto err;
+    /* Write higher 32 bits of data */
+    rc = pci_cap_write(pci_dev, MSN_GW_CR_64B_BOOT_DATA_HIGH, (uint32_t)value);
+    if (rc)
+      goto err;
+  }
 
   /* Set BUSY bit to trigger MSN_GW to write to addr */
   rc = pci_cap_read(pci_dev, MSN_GW_CR_64B_BOOT_REG0, &data);
@@ -682,6 +690,9 @@ rshim_pcie_read(struct rshim_backend *bd, uint32_t chan, uint32_t addr,
   if (!bd->has_rshim || !bd->has_tm)
     return -ENODEV;
 
+  if (size != 4 && size != 8)
+    return -EINVAL;
+
   if (bd->drop_mode) {
     *result = 0;
     return 0;
@@ -689,7 +700,7 @@ rshim_pcie_read(struct rshim_backend *bd, uint32_t chan, uint32_t addr,
 
   if (pci_dev->device_id == BLUEFIELD3_DEVICE_ID) {
     addr = rshim_pcie_lf_bf3_chan_addr_convert(chan, addr);
-    rc = msn_gw_read(pci_dev, addr, result);
+    rc = msn_gw_read(pci_dev, addr, result, size);
   }
   else {
     dev->write_count = 0;
@@ -712,12 +723,15 @@ rshim_pcie_write(struct rshim_backend *bd, uint32_t chan, uint32_t addr,
   if (!bd->has_rshim || !bd->has_tm)
     return -ENODEV;
 
+  if (size != 4 && size != 8)
+    return -EINVAL;
+
   if (bd->drop_mode)
     return 0;
 
   if (pci_dev->device_id == BLUEFIELD3_DEVICE_ID) {
     addr = rshim_pcie_lf_bf3_chan_addr_convert(chan, addr);
-    rc = msn_gw_write(pci_dev, addr, value);
+    rc = msn_gw_write(pci_dev, addr, value, size);
   }
   else {
      /*
