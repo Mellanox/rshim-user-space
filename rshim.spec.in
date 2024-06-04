@@ -97,6 +97,9 @@ fi
 %{_mandir}/man8/bfb-install.8.gz
 
 %changelog
+* Tue Jun 04 2024 Liming Sun <limings@nvidia.com> - 2.0.32
+- bf3/pcie_lf: Fix the 4B access via MSN GW
+
 * Fri May 17 2024 Liming Sun <limings@nvidia.com> - 2.0.31
 - bf3/pcie_lf: support register read/write via /dev/rshim0/rshim
 - Only poll/check locked mode for PCIe backend

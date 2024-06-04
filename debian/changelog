@@ -1,3 +1,9 @@
+rshim (2.0.32) UNRELEASED; urgency=low
+
+  * bf3/pcie_lf: Fix the 4B access via MSN GW
+
+ -- Liming Sun <limings@nvidia.com>  Tue, 04 Jun 2024 09:51:10 -0400
+
 rshim (2.0.31) UNRELEASED; urgency=low
 
   * bf3/pcie_lf: support register read/write via /dev/rshim0/rshim
