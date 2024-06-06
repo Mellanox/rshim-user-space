@@ -374,8 +374,9 @@ int rshim_log_show(rshim_backend_t *bd, char *buf, int size)
     }
   }
 
-  /* Restore the idx value. */
-  bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->scratch_buf_ctl, idx, RSHIM_REG_SIZE_8B);
+  /* Clear or Restore the idx value. */
+  bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->scratch_buf_ctl,
+                  bd->clear_on_read ? 0 : idx, RSHIM_REG_SIZE_8B);
 
 done:
   /* Release the semaphore. */
