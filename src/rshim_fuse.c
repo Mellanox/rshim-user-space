@@ -719,7 +719,7 @@ static int rshim_fuse_misc_read(struct cuse_dev *cdev, int fflags,
                  bd->locked_mode);
     p += n;
     len -= n;
-}
+  }
 
   if (bd->display_level == 1) {
     gettimeofday(&tp, NULL);
@@ -757,6 +757,11 @@ static int rshim_fuse_misc_read(struct cuse_dev *cdev, int fflags,
 
     n = snprintf(p, len, "%-16s%d %d (rw)\n",
                    "VLAN_ID", bd->vlan[0], bd->vlan[1]);
+    p += n;
+    len -= n;
+
+    n = snprintf(p, len, "%-16s%d (0:no, 1:yes)\n", "CLEAR_ON_READ",
+                 bd->clear_on_read);
     p += n;
   } else if (bd->display_level == 2) {
     n = rshim_log_show(bd, p, len);
@@ -847,6 +852,10 @@ static int rshim_fuse_misc_write(struct cuse_dev *cdev, int fflags,
     if (sscanf(p, "%d", &value) != 1)
       goto invalid;
     rshim_set_drop_mode(bd, value);
+  } else if (strcmp(key, "CLEAR_ON_READ") == 0) {
+    if (sscanf(p, "%d", &value) != 1)
+      goto invalid;
+    bd->clear_on_read = !!value;
   } else if (strcmp(key, "BOOT_MODE") == 0) {
     if (sscanf(p, "%x", &value) != 1)
       goto invalid;

@@ -292,6 +292,7 @@ struct rshim_backend {
   uint32_t drop_mode : 1;         /* A flag to drop all input/output. */
   uint32_t skip_boot_reset : 1;   /* Skip SW_RESET while pushing boot stream. */
   uint32_t locked_mode : 1;       /* Secure NIC mode Management. No RSHIM HW access */
+  uint32_t clear_on_read : 1;     /* Clear rshim log after read */
 
   /* type. */
   rshim_backend_type_t type;
