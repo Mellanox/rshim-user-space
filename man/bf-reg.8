@@ -1,0 +1,17 @@
+.\" Manpage for bf-reg.
+.TH man 8 "6 Jun 2024" "1.0" "bf-reg man page"
+.SH NAME
+bf-reg \- Register access of BlueField SoC over the rshim driver
+
+.SH SYNOPSIS
+.B bf-reg
+Usage: ./bf-reg rshim<N> <hex_addr>.<32|64> [value]
+
+.SH DESCRIPTION
+
+bf-reg is a utility script to access registers of BlueField SoC over the
+rshim driver.
+
+.SH KNOWN ISSUES
+
+This script only supports BF3 for now.

@@ -1,0 +1,75 @@
+#! /usr/bin/env perl
+#
+# Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+#
+
+use strict;
+use warnings;
+
+my $RSHIM_IOC_READ = 0xc00d5200;
+my $RSHIM_IOC_WRITE = 0xc00d5201;
+
+sub usage {
+    $0 =~ m|[^/]+$|;
+    print "Usage: ./$& rshim<N> <hex_addr>.<32|64> [value]\n";
+    print "\n";
+    exit 1;
+}
+
+sub str2int {
+    if (substr($_[0], 0, 2) eq "0x") {
+        return hex($_[0]);
+    } else {
+        return int($_[0]);
+    }
+}
+
+my $s1 = $ARGV[1] || usage;
+my @s2 = split(/\./, $s1);
+my $addr = str2int($s2[0]) | 0x10000000;
+if (scalar(@s2) != 2) {
+    usage
+}
+my $size = str2int($s2[1]) / 8;
+my $value_lo = 0;
+my $value_hi = 0;
+my $is_read = 1;
+if (scalar(@ARGV) > 2) {
+    if (substr($ARGV[2], 0, 2) eq "0x") {
+        if (length($ARGV[2]) <= 10) {
+            $value_lo = str2int($ARGV[2]);
+        } else {
+            $value_lo = hex(substr($ARGV[2], -8, 8));
+            $value_hi = hex(substr($ARGV[2], 0, length($ARGV[2]) - 8));
+        }
+    } else {
+        $value_lo = str2int($ARGV[2]);
+    }
+    $is_read = 0;
+}
+
+open(FH, '>', "/dev/$ARGV[0]/rshim") or die $!;
+
+my $data = pack('LLLC', $addr, $value_lo, $value_hi, $size);
+if ($is_read) {
+    ioctl FH, $RSHIM_IOC_READ, $data || die "can't ioctl: $!";
+} else {
+    ioctl FH, $RSHIM_IOC_WRITE, $data || die "can't ioctl: $!";
+    if ($size) {
+        printf "[0x%x] <- 0x%08x%08x\n", $addr, $value_hi, $value_lo;
+    } else {
+        printf "[0x%x] <- 0x%08x\n", $addr, $value_lo;
+    }
+}
+
+my @ret;
+if ($is_read) {
+    @ret = unpack('L<L<L<B', $data);
+    if ($size) {
+        printf "[0x%x] -> 0x%08x%08x\n", $addr, $ret[2], $ret[1];
+    } else {
+        printf "[0x%x] -> 0x%08x\n", $addr, $ret[1];
+    }
+}
+
+close(FH);

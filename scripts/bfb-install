@@ -33,6 +33,7 @@
 
 DEBUG=${DEBUG:-0}                             # Debug mode
 RSHIM_PIPE="/tmp/rshim_pipe"
+BF_REG=$(dirname $0)/bf-reg
 
 usage ()
 {
@@ -45,6 +46,7 @@ usage ()
   echo "  -m, --remote-mode <mode>       Remote mode to use (scp, nc, ncpipe)."
   echo "  -r, --rshim <device>           Rshim device, format [<ip>:<port>:]rshim<N>."
   echo "  -R, --reverse-nc               Reverse netcat mode."
+  echo "  -u, --runtime                  Runtime upgrade (BF3 + local rshim only)."
   echo "  -v, --verbose                  Enable verbose output."
 }
 
@@ -165,6 +167,19 @@ get_local_ip()
   echo $local_ip
 }
 
+clear_boot_fifo()
+{
+  local cnt
+
+  while true; do
+    # Read BOOT_FIFO_DATA if BOOT_FIFO_COUNT != 0
+    cnt=`${BF_REG} $(basename ${rshim_node}) 0x13001000.64 | awk '{print $3}'`
+    cnt=$((cnt))
+    [ $cnt -eq 0 ] && break
+    ${BF_REG} $(basename ${rshim_node}) 0x13002000.64 >/dev/null
+  done
+}
+
 # Push the boot stream to rshim via local rshim
 #
 # Global variables used:
@@ -173,7 +188,21 @@ push_boot_stream_via_local_rshim()
 {
   # Push the boot stream to local rshim
   echo "Pushing bfb${cfg:+ + cfg}${rootfs:+ + rootfs}"
+
+  if [ $runtime -eq 1 ]; then
+    # Skip reset when pushing bfb
+    echo "BOOT_RESET_SKIP 1" > ${rshim_node}/misc
+    # Clear the current boot fifo
+    clear_boot_fifo
+    # Set SP2.BIT2=1
+    ${BF_REG} $(basename ${rshim_node}) 0x13000c48.64 0x4 >/dev/null
+  fi
+
   $sudo_prefix sh -c "cat ${bfb} ${cfg:+$cfg} ${rootfs:+${rootfs}} ${pv:+| ${pv} | cat -} > ${rshim_node}/boot"
+
+  if [ $runtime -eq 1 ]; then
+    echo "BOOT_RESET_SKIP 0" > ${rshim_node}/misc
+  fi
 }
 
 # Push the boot stream to rshim via remote rshim with scp
@@ -348,6 +377,14 @@ push_boot_stream()
 #   $mode, $rshim_node, $remote_mode
 wait_for_update_to_finish()
 {
+  local filter="Reboot|finished|DPU is ready|Linux up"
+
+  if [ $runtime -eq 0 ]; then
+    filter="$filter|In Enhanced NIC mode"
+  else
+    filter="Runtime upgrade finished"
+  fi
+
   echo "Collecting BlueField booting status. Press Ctrl+C to stop…"
 
   # Set display level to 2 to show more information
@@ -363,9 +400,7 @@ wait_for_update_to_finish()
 
     sleep 1
 
-    if echo ${cur} | grep -Ei \
-      "Reboot|finished|DPU is ready|In Enhanced NIC mode|Linux up" \
-        >/dev/null; then
+    if echo ${cur} | grep -Ei "$filter" >/dev/null; then
       finished=1
     fi
 
@@ -438,6 +473,7 @@ rootfs=
 mode=local        # Values can be local or remote
 remote_mode=      # Values can be scp, nc, or ncpipe
 rshim=            # rshim device string, format [<ip>:<port>:]rshim<N>
+runtime=0         # Values can be 0 or 1.
 verbose=0         # Values can be 0 or 1.
 reverse_nc=0      # Values can be 0 or 1.
 
@@ -451,8 +487,8 @@ trap cleanup EXIT INT TERM
 run_cmd_local_ready=0     # whether run_cmd* local functions are ready to use
 run_cmd_remote_ready=0    # whether run_cmd* remote functions are ready to use
 
-options=`getopt -n bfb-install -o b:c:f:hm:r:Rv \
-        -l bfb:,config:,rootfs:,help,remote-mode:,rshim:,reverse-nc,verbose \
+options=`getopt -n bfb-install -o b:c:f:hm:r:Ruv \
+        -l bfb:,config:,rootfs:,help,remote-mode:,rshim:,reverse-nc,runtime,verbose \
         -- "$@"`
 if [ $? != 0 ]; then echo "Command line error" >&2; exit 1; fi
 eval set -- $options
@@ -465,6 +501,7 @@ while [ "$1" != -- ]; do
     --remote-mode|-m) shift; remote_mode=$1 ;;
     --rshim|-r) shift; rshim=$1 ;;
     --reverse-nc|-R) reverse_nc=1 ;;
+    --runtime|-u) runtime=1 ;;
     --verbose|-v) verbose=1 ;;
     --) shift; break;;
     *) echo "Error: Invalid argument: $1" >&2; usage >&2; exit 1 ;;
