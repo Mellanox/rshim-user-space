@@ -52,9 +52,11 @@ make
 %{__install} -d %{buildroot}%{_mandir}/man8
 %{__install} -m 0644 man/rshim.8 %{buildroot}%{_mandir}/man8
 %{__install} -m 0644 man/bfb-install.8 %{buildroot}%{_mandir}/man8
+%{__install} -m 0644 man/bf-reg.8 %{buildroot}%{_mandir}/man8
 %{__install} -d %{buildroot}%{_sysconfdir}
 %{__install} -m 0644 etc/rshim.conf %{buildroot}%{_sysconfdir}
 %{__install} -m 0755 scripts/bfb-install %{buildroot}%{_sbindir}
+%{__install} -m 0755 scripts/bf-reg %{buildroot}%{_sbindir}
 
 %pre
 %if "%{with_systemd}" == "1"
@@ -93,8 +95,10 @@ fi
 %endif
 %{_sbindir}/rshim
 %{_sbindir}/bfb-install
+%{_sbindir}/bf-reg
 %{_mandir}/man8/rshim.8.gz
 %{_mandir}/man8/bfb-install.8.gz
+%{_mandir}/man8/bf-reg.8.gz
 
 %changelog
 * Tue Jun 04 2024 Liming Sun <limings@nvidia.com> - 2.0.32
