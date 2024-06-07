@@ -54,6 +54,10 @@ via the virtual console or network interface.
 %{_mandir}/man8/rshim.8.gz
 
 %changelog
+* Thu Jun 06 2024 Liming Sun <limings@nvidia.com> - 2.0.33
+- misc: add 'CLEAR_ON_READ' command
+- bfb-install: add runtime image support
+
 * Tue Jun 04 2024 Liming Sun <limings@nvidia.com> - 2.0.32
 - bf3/pcie_lf: Fix the 4B access via MSN GW
 

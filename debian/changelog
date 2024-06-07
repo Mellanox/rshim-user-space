@@ -1,3 +1,10 @@
+rshim (2.0.33) UNRELEASED; urgency=low
+
+  * misc: add 'CLEAR_ON_READ' command
+  * bfb-install: add runtime image support
+
+ -- Liming Sun <limings@nvidia.com>  Thu, 06 Jun 2024 22:13:10 -0400
+
 rshim (2.0.32) UNRELEASED; urgency=low
 
   * bf3/pcie_lf: Fix the 4B access via MSN GW
