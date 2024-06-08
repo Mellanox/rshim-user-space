@@ -181,9 +181,6 @@ clear_boot_fifo()
 }
 
 # Push the boot stream to rshim via local rshim
-#
-# Global variables used:
-#   $bfb, $cfg, $rootfs, $pv, $rshim_node, $sudo_prefix
 push_boot_stream_via_local_rshim()
 {
   # Push the boot stream to local rshim
@@ -196,6 +193,8 @@ push_boot_stream_via_local_rshim()
     clear_boot_fifo
     # Set SP2.BIT2=1
     ${BF_REG} $(basename ${rshim_node}) 0x13000c48.64 0x4 >/dev/null
+    # Set SWINT2.BIT2
+    ${BF_REG} $(basename ${rshim_node}) 0x13000318.64 0x4 >/dev/null
   fi
 
   $sudo_prefix sh -c "cat ${bfb} ${cfg:+$cfg} ${rootfs:+${rootfs}} ${pv:+| ${pv} | cat -} > ${rshim_node}/boot"
@@ -433,9 +432,6 @@ wait_for_update_to_finish()
 
 # Clean up function whenever the script exits
 # shellcheck disable=SC2317
-#
-# Global variables used:
-#  $cleanup_started, $remote_mode
 cleanup() {
   # prevent cleanup from being called multiple times
   if [ "$cleanup_started" -eq 1 ]; then
@@ -458,6 +454,17 @@ cleanup() {
         "pgrep pipe_to_rshim >/dev/null && pgrep pipe_to_rshim | xargs kill -9"
       run_cmd remote "rm -f $RSHIM_PIPE"
     fi
+  fi
+
+  if [ $runtime -eq 1 ]; then
+    # Reset to default state.
+    echo "BOOT_RESET_SKIP 0" > ${rshim_node}/misc
+
+    # Cleanup SP2.BIT2 and trigger SWINT2.
+    sp2=`${BF_REG} $(basename ${rshim_node}) 0x13000c48.64 | awk '{print $3}'`
+    sp2=$((sp2 & ~4))
+    ${BF_REG} $(basename ${rshim_node}) 0x13000c48.64 $sp2 >/dev/null
+    ${BF_REG} $(basename ${rshim_node}) 0x13000318.64 0x4 >/dev/null
   fi
 }
 
