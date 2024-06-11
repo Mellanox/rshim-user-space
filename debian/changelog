@@ -1,3 +1,10 @@
+rshim (2.0.34) UNRELEASED; urgency=low
+
+  * bfb-install: Enable CLEAR_ON_READ
+  * bfb-install: add cleanup code for runtime update
+
+ -- Liming Sun <limings@nvidia.com>  Tue, 11 Jun 2024 15:39:10 -0400
+
 rshim (2.0.33) UNRELEASED; urgency=low
 
   * misc: add 'CLEAR_ON_READ' command

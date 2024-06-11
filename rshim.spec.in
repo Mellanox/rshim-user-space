@@ -101,6 +101,10 @@ fi
 %{_mandir}/man8/bf-reg.8.gz
 
 %changelog
+* Tue Jun 11 2024 Liming Sun <limings@nvidia.com> - 2.0.34
+- bfb-install: Enable CLEAR_ON_READ
+- bfb-install: add cleanup code for runtime update
+
 * Thu Jun 06 2024 Liming Sun <limings@nvidia.com> - 2.0.33
 - misc: add 'CLEAR_ON_READ' command
 - bfb-install: add runtime image support
