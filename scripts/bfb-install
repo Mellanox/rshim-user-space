@@ -32,8 +32,9 @@
 #
 
 DEBUG=${DEBUG:-0}                             # Debug mode
-RSHIM_PIPE="/tmp/rshim_pipe"
 BF_REG=$(dirname $0)/bf-reg
+RSHIM_PIPE="/tmp/rshim_pipe"
+LOG_FILE="/tmp/bfb-install.log"
 
 usage ()
 {
@@ -386,8 +387,14 @@ wait_for_update_to_finish()
 
   echo "Collecting BlueField booting status. Press Ctrl+C to stop…"
 
+  # Enable CLEAR_ON_READ, so rshim log will be cleared after read.
+  run_cmd_exit $mode "echo 'CLEAR_ON_READ 1' > ${rshim_node}/misc"
+
   # Set display level to 2 to show more information
   run_cmd_exit $mode "echo 'DISPLAY_LEVEL 2' > ${rshim_node}/misc"
+
+  # Remove old log file.
+  rm -f ${LOG_FILE}
 
   last=""
   finished=0
@@ -405,7 +412,7 @@ wait_for_update_to_finish()
 
     # Overwrite if current length smaller than previous length.
     if [ ${last_len} -eq 0 -o ${last_len} -gt ${cur_len} ]; then
-        echo "${cur}" | sed '/^[[:space:]]*$/d'
+        echo "${cur}" | sed '/^[[:space:]]*$/d' | tee -a ${LOG_FILE}
       last="${cur}"
       continue
     fi
@@ -413,7 +420,7 @@ wait_for_update_to_finish()
     # Overwrite if first portion does not match.
     sub_cur=$(echo "${cur}" | dd bs=1 count=${last_len} 2>/dev/null)
     if [ "${sub_cur}" != "${last}" ]; then
-      echo "${cur}" | sed '/^[[:space:]]*$/d'
+      echo "${cur}" | sed '/^[[:space:]]*$/d' | tee -a ${LOG_FILE}
       last="${cur}"
       continue
     fi
@@ -425,9 +432,13 @@ wait_for_update_to_finish()
 
     # Print the diff.
     echo "${cur}" | dd bs=1 skip=${last_len} 2>/dev/null | \
-      sed '/^[[:space:]]*$/d'
+      sed '/^[[:space:]]*$/d' | tee -a ${LOG_FILE}
+
     last="${cur}"
   done
+
+  # Disable CLEAR_ON_READ.
+  run_cmd_exit $mode "echo 'CLEAR_ON_READ 0' > ${rshim_node}/misc"
 }
 
 # Clean up function whenever the script exits
@@ -466,6 +477,9 @@ cleanup() {
     ${BF_REG} $(basename ${rshim_node}) 0x13000c48.64 $sp2 >/dev/null
     ${BF_REG} $(basename ${rshim_node}) 0x13000318.64 0x4 >/dev/null
   fi
+
+  # Disable CLEAR_ON_READ.
+  run_cmd_exit $mode "echo 'CLEAR_ON_READ 0' > ${rshim_node}/misc"
 }
 
 
