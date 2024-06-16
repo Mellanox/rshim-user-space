@@ -1004,6 +1004,7 @@ rshim_pcie_read(rshim_backend_t *bd, uint32_t chan, uint32_t addr,
       (chan != RSHIM_CHANNEL || addr != bd->regs->scratchpad6))
     sleep(RSHIM_PCIE_NIC_RESET_WAIT);
 
+#if 0
   if (bd->drop_mode) {
     *result = 0;
     return 0;
@@ -1011,6 +1012,10 @@ rshim_pcie_read(rshim_backend_t *bd, uint32_t chan, uint32_t addr,
 
   if (!bd->has_rshim || !bd->has_tm || !dev->rshim_regs)
     return -ENODEV;
+#else
+  if (!dev->rshim_regs)
+    return -ENODEV;
+#endif
 
   dev->write_count = 0;
 
@@ -1046,11 +1051,13 @@ rshim_pcie_write(rshim_backend_t *bd, uint32_t chan, uint32_t addr,
       (chan != RSHIM_CHANNEL || addr != bd->regs->scratchpad6))
     sleep(RSHIM_PCIE_NIC_RESET_WAIT);
 
+#if 0
   if (bd->drop_mode)
     return 0;
 
   if (!bd->has_rshim || !bd->has_tm || !dev->rshim_regs)
     return -ENODEV;
+#endif
 
   /*
    * We cannot stream large numbers of PCIe writes to the RShim's BAR.
@@ -1154,7 +1161,7 @@ static int rshim_pcie_enable(rshim_backend_t *bd, bool enable)
     rc = rshim_pcie_mmap(dev, true);
 #endif /* __linux__ */
 
-  RSHIM_INFO("rshim %s %s\n", bd->dev_name, enable ? "enable" : "disable");
+  RSHIM_INFO("rshim %s %s\n", bd->dev_name, enable ? "enabled" : "disabled");
 
   return rc;
 }
@@ -1246,6 +1253,7 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
   dev->dev = pci_dev->dev;
   dev->func = pci_dev->func;
 
+#if 0
   /* Enable the device and setup memory map. */
   if (!bd->drop_mode) {
     pthread_mutex_lock(&bd->mutex);
@@ -1254,6 +1262,13 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
     if (rc)
       goto rshim_probe_failed;
   }
+#else
+    pthread_mutex_lock(&bd->mutex);
+    rc = bd->enable_device(bd, true);
+    pthread_mutex_unlock(&bd->mutex);
+    if (rc)
+      goto rshim_probe_failed;
+#endif
 
   pthread_mutex_lock(&bd->mutex);
   /*
@@ -1262,7 +1277,7 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
    * registers and has assumption that the under layer is working.
    */
   bd->has_rshim = 1;
-  bd->has_tm = 1;
+  // bd->has_tm = bd->drop_mode ? 0 : 1;
   rc = rshim_register(bd);
 
   /* Notify that the device is attached */
@@ -1285,7 +1300,9 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
   return 0;
 
 rshim_probe_failed:
+#if 0  // keep bd usable even if rshim_register failed for ownership check
    rshim_deref(bd);
+#endif
    rshim_unlock();
    return rc;
 }

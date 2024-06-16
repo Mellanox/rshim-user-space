@@ -165,8 +165,10 @@ static int rshim_usb_read_rshim(rshim_backend_t *bd, uint32_t chan,
   struct rshim_usb_addr rsh_usb_addr;
   int rc;
 
+#if 0
   if (!bd->has_rshim)
     return -ENODEV;
+#endif
 
   if ((bd->ver_id == RSHIM_BLUEFIELD_3) && (size <= RSHIM_REG_SIZE_4B))
     size = RSHIM_REG_SIZE_4B;
@@ -209,8 +211,10 @@ static int rshim_usb_write_rshim(rshim_backend_t *bd, uint32_t chan,
   struct rshim_usb_addr rsh_usb_addr;
   int rc;
 
+#if 0
   if (!bd->has_rshim)
     return -ENODEV;
+#endif
 
   if ((bd->ver_id == RSHIM_BLUEFIELD_3) && (size <= RSHIM_REG_SIZE_4B))
     size = RSHIM_REG_SIZE_4B;
@@ -339,11 +343,6 @@ static void rshim_usb_fifo_read_callback(struct libusb_transfer *urb)
   rshim_backend_t *bd = &dev->bd;
   bool lock;
 
-  RSHIM_DBG("fifo_read_callback: %s urb completed, status %d, "
-            "actual length %d, intr buf 0x%x\n",
-            dev->read_urb_is_intr ? "interrupt" : "read",
-            urb->status, urb->actual_length, (int)*dev->intr_buf);
-
   lock = (pthread_mutex_trylock(&bd->ringlock) == 0) ? true : false;
 
   bd->spin_flags &= ~RSH_SFLG_READING;
@@ -391,7 +390,6 @@ static void rshim_usb_fifo_read_callback(struct libusb_transfer *urb)
       dev->read_or_intr_retries++;
       rc = libusb_submit_transfer(urb);
       if (rc) {
-        RSHIM_DBG("fifo_read_callback: resubmitted urb but got error %d\n", rc);
         /*
          * In this case, we won't try again; signal the
          * error to upper layers.
@@ -412,9 +410,6 @@ static void rshim_usb_fifo_read_callback(struct libusb_transfer *urb)
      * too many errors.  Either way we don't retry any more,
      * but we signal the error to upper layers.
      */
-    RSHIM_DBG("fifo_read_callback: %s urb completed abnormally, "
-              "error %d\n", dev->read_urb_is_intr ? "interrupt" : "read",
-              urb->status);
     rshim_notify(bd, RSH_EVENT_FIFO_ERR,
                  urb->status > 0 ? -urb->status : urb->status);
     break;
@@ -470,7 +465,6 @@ static void rshim_usb_fifo_read(rshim_usb_t *dev, char *buffer, size_t count)
       dev->bd.spin_flags &= ~RSH_SFLG_READING;
       RSHIM_ERR("usb_fifo_read: failed to submit read urb, error %d\n", rc);
     }
-    RSHIM_DBG("usb_fifo_read: submit read urb\n");
   } else {
     /* We're doing an interrupt. */
     urb = dev->read_or_intr_urb;
@@ -496,9 +490,7 @@ static void rshim_usb_fifo_read(rshim_usb_t *dev, char *buffer, size_t count)
     rc = libusb_submit_transfer(urb);
     if (rc) {
       dev->bd.spin_flags &= ~RSH_SFLG_READING;
-      RSHIM_DBG("usb_fifo_read: failed submitting interrupt urb %d\n", rc);
     }
-    RSHIM_DBG("usb_fifo_read: submit interrupt urb\n");
   }
 }
 
@@ -506,10 +498,6 @@ static void rshim_usb_fifo_write_callback(struct libusb_transfer *urb)
 {
   rshim_usb_t *dev = urb->user_data;
   rshim_backend_t *bd = &dev->bd;
-
-  RSHIM_DBG("usb_fifo_write_callback: urb completed, status %d, "
-            "actual length %d, intr buf %d\n",
-            urb->status, urb->actual_length, (int) *dev->intr_buf);
 
   pthread_mutex_lock(&bd->ringlock);
 
@@ -604,7 +592,6 @@ static int rshim_usb_fifo_write(rshim_usb_t *dev, const char *buffer,
   rc = libusb_submit_transfer(dev->write_urb);
   if (rc) {
     bd->spin_flags &= ~RSH_SFLG_WRITING;
-    RSHIM_DBG("usb_fifo_write: failed submitting write urb, error %d\n", rc);
     return -1;
   }
 
@@ -840,7 +827,6 @@ static int rshim_usb_probe_one(libusb_context *ctx, libusb_device *usb_dev,
     iface_desc = &interface->altsetting[0];
 
     if (iface_desc->bInterfaceSubClass == 0) {
-      RSHIM_DBG("Found rshim interface\n");
 
       /*
        * We only expect one endpoint here, just make sure its
@@ -862,7 +848,6 @@ static int rshim_usb_probe_one(libusb_context *ctx, libusb_device *usb_dev,
       bd->has_rshim = 1;
       dev->boot_fifo_ep = ep_addr(ep);
     } else if (iface_desc->bInterfaceSubClass == 1) {
-      RSHIM_DBG("Found tmfifo interface\n");
       /*
        * We expect 3 endpoints here.  Since they're listed in
        * random order we have to use their attributes to figure
@@ -940,7 +925,9 @@ error:
     free(dev->intr_buf);
     dev->intr_buf = NULL;
 
+#if 0  // keep bd usable even if rshim_register failed for ownership check
     rshim_deref(bd);
+#endif
   }
 
   rshim_unlock();

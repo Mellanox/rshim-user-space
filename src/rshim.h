@@ -293,6 +293,8 @@ struct rshim_backend {
   uint32_t skip_boot_reset : 1;   /* Skip SW_RESET while pushing boot stream. */
   uint32_t locked_mode : 1;       /* Secure NIC mode Management. No RSHIM HW access */
   uint32_t clear_on_read : 1;     /* Clear rshim log after read */
+  uint32_t has_locked_work : 1;   /* Need to check locked mode in worker. */
+  uint32_t has_osp_work : 1;      /* Need to run ownership (osp) state machine. */
 
   /* type. */
   rshim_backend_type_t type;
@@ -424,6 +426,10 @@ struct rshim_backend {
 
   /* Up to two VLAN IDs for PXE purpose. */
   uint16_t vlan[2];
+
+ /* rshim ownership state management */
+  bool force_cmd_pending; /* User requested rshim ownership transfer */
+  uint32_t osp_mgt_ticks; /* Owership management ticks. May overflow but OK */
 
   /* APIs provided by backend. */
 

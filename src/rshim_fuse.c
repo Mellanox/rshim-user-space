@@ -721,7 +721,12 @@ static int rshim_fuse_misc_read(struct cuse_dev *cdev, int fflags,
     len -= n;
   }
 
-  if (bd->display_level == 1) {
+  n = snprintf(p, len, "%-16s%d (0:no, 1:yes)\n", "FORCE_CMD",
+      bd->force_cmd_pending);
+  p += n;
+  len -= n;
+
+   if (bd->display_level == 1) {
     gettimeofday(&tp, NULL);
 
     /* Skip SW_RESET while pushing boot stream. */
@@ -733,8 +738,7 @@ static int rshim_fuse_misc_read(struct cuse_dev *cdev, int fflags,
     /*
      * Display the target-side information. Send a request and wait for
      * some time for the response.
-     */
-    bd->peer_ctrl_req = 1;
+     */ bd->peer_ctrl_req = 1;
     bd->peer_ctrl_resp = 0;
     memset(mac, 0, 6);
     bd->has_cons_work = 1;
@@ -851,7 +855,9 @@ static int rshim_fuse_misc_write(struct cuse_dev *cdev, int fflags,
   } else if (strcmp(key, "DROP_MODE") == 0) {
     if (sscanf(p, "%d", &value) != 1)
       goto invalid;
+    pthread_mutex_lock(&bd->mutex);
     rshim_set_drop_mode(bd, value);
+    pthread_mutex_unlock(&bd->mutex);
   } else if (strcmp(key, "CLEAR_ON_READ") == 0) {
     if (sscanf(p, "%d", &value) != 1)
       goto invalid;
@@ -942,6 +948,12 @@ static int rshim_fuse_misc_write(struct cuse_dev *cdev, int fflags,
     if (!rc)
       bd->debug_code = val64;
     pthread_mutex_unlock(&bd->mutex);
+  } else if (strcmp(key, "FORCE_CMD") == 0) {
+    if (sscanf(p, "%x", &value) != 1)
+      goto invalid;
+    if (value && bd->drop_mode) {
+        bd->force_cmd_pending = 1;
+    }
   } else {
 invalid:
 #ifdef __linux__
