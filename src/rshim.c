@@ -28,7 +28,7 @@
 #define RSHIM_MAX_DEV 64
 
 /* RShim timer interval in milliseconds. */
-#define RSHIM_TIMER_INTERVAL 1
+#define RSHIM_TIMER_INTERVAL 100
 
 /* Intervals to check the locked mode. */
 #define CHECK_LOCKED_MODE_MS      100
@@ -50,14 +50,13 @@
 
 /* Keepalive period in milliseconds. */
 #define RSHIM_KEEPALIVE_PERIOD 300
-static int rshim_keepalive_period = RSHIM_KEEPALIVE_PERIOD;
+static int rshim_keepalive_ticks = RSHIM_KEEPALIVE_PERIOD / RSHIM_TIMER_INTERVAL;
 
 /* Keepalive magic number. */
 #define RSHIM_KEEPALIVE_MAGIC_NUM 0x5089836482ULL
 
 /* Rshim ownership management. */
-// #define OSP_MGT_INTERVAL_MS        5 /* Ownership state machine interval */
-#define OSP_MGT_INTERVAL_MS        1000 /* Ownership state machine interval */
+#define OSP_MGT_INTERVAL_MS        100 /* Ownership state machine interval */
 #define OSP_MGT_INTERVAL_TICKS     (OSP_MGT_INTERVAL_MS / RSHIM_TIMER_INTERVAL)
 #define RSHIM_OWNERSHIP_REQ_MAGIC_NUM 0x4F53505F524551ULL /* OSP_REQ */
 #define RSHIM_OWNERSHIP_ACK_MAGIC_NUM 0x4F53505F41434BULL /* OSP_ACK */
@@ -254,6 +253,24 @@ static int rshim_update_locked_mode(rshim_backend_t *bd);
 
 static int handle_ownership_transfer(rshim_backend_t *bd);
 
+struct timespec start_time;
+
+void init_start_time()
+{
+  clock_gettime(CLOCK_MONOTONIC, &start_time);
+}
+
+double get_relative_time()
+{
+  struct timespec current_time;
+  clock_gettime(CLOCK_MONOTONIC, &current_time);
+
+  double elapsed = (current_time.tv_sec - start_time.tv_sec) +
+    (current_time.tv_nsec - start_time.tv_nsec) / 1e9;
+
+  return elapsed;
+}
+
 /* Global lock / unlock. */
 void rshim_lock(void)
 {
@@ -284,6 +301,7 @@ static int rshim_fd_full_read(int fd, void *data, int len)
         usleep(1000);
         continue;
       }
+      perror("read");
       pthread_mutex_unlock(&rshim_fd_mutex);
       return -1;
     }
@@ -2320,23 +2338,30 @@ static int handle_ownership_transfer(rshim_backend_t *bd) {
 
 /* House-keeping timer. */
 static void rshim_timer_func(rshim_backend_t *bd) {
-  int period = rshim_keepalive_period;
+  int ticks = rshim_keepalive_ticks;
 
-  if (bd->has_cons_work)
+  RSHIM_DBG("rshim%d rshim_timer_func\n", bd->index);
+
+  if (bd->has_cons_work) {
+    RSHIM_DBG("rshim%d requesting console work\n", bd->index);
     rshim_work_signal(bd);
+  }
 
   /* Request keepalive update and restart the ~300ms timer. */
-  if (rshim_timer_ticks - (bd->last_keepalive + period) > 0) {
+  if (rshim_timer_ticks - (bd->last_keepalive + ticks) > 0) {
+    RSHIM_DBG("rshim%d requesting keepalive and restarting timer\n", bd->index);
     bd->keepalive = 1;
     bd->last_keepalive = rshim_timer_ticks;
     rshim_work_signal(bd);
   }
 
   /* Some checking for PCIe backend. */
-  if (bd->type == RSH_BACKEND_PCIE)
+  if (bd->type == RSH_BACKEND_PCIE) {
+    RSHIM_DBG("rshim%d checking locked mode\n", bd->index);
     rshim_pcie_check(bd);
+  }
 
-  bd->timer = rshim_timer_ticks + period;
+  bd->timer = rshim_timer_ticks + ticks;
 }
 
 static void rshim_timer_run(void)
@@ -2357,7 +2382,7 @@ static void rshim_timer_run(void)
         rshim_work_signal(bd);
       }
 
-      if ((rshim_timer_ticks + i) % OSP_MGT_INTERVAL_TICKS == 3) {
+      if (rshim_timer_ticks % OSP_MGT_INTERVAL_TICKS == 3) {
         bd->has_osp_work = 1;
         rshim_work_signal(bd);
       }
@@ -2711,6 +2736,8 @@ static void rshim_main(int argc, char *argv[])
   time_t t0, t1;
   uint8_t tmp;
 
+  init_start_time();
+
   memset(&event, 0, sizeof(event));
   memset(events, 0, sizeof(events));
 
@@ -2796,6 +2823,7 @@ static void rshim_main(int argc, char *argv[])
 
   time(&t0);
 
+  int epoll_cnt = 0;
   while (rshim_run) {
     num = epoll_wait(epoll_fd, events, MAXEVENTS, -1);
     if (num <= 0) {
@@ -2803,6 +2831,9 @@ static void rshim_main(int argc, char *argv[])
         RSHIM_DBG("epoll_wait failed; %m\n");
       continue;
     }
+    epoll_cnt++;
+    //if (epoll_cnt % 1000 == 0)
+      //RSHIM_DBG("epoll_cnt: %d\n", epoll_cnt);
 
     for (i = 0; i < num; i++) {
       fd = events[i].data.fd;
@@ -2816,9 +2847,15 @@ static void rshim_main(int argc, char *argv[])
       if (fd == timer_fd) {
         uint64_t res;
 
-        rshim_fd_full_read(timer_fd, &res, sizeof(res));
+        RSHIM_DBG("timer event\n");
+        ssize_t s = rshim_fd_full_read(timer_fd, &res, sizeof(res));
+        if (s != sizeof(res)) {
+          RSHIM_DBG("timer read failed\n");
+          continue;
+        }
         rshim_timer_run();
       } else if (fd == rshim_work_fd[0]) {
+        RSHIM_DBG("work event\n");
         rc = rshim_fd_full_read(rshim_work_fd[0], &index, sizeof(index));
         if (rc == sizeof(index) && index >=0 && index < RSHIM_MAX_DEV) {
           bd = rshim_devs[index];

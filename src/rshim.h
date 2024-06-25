@@ -7,6 +7,8 @@
 #ifndef _RSHIM_H
 #define _RSHIM_H
 
+#include <time.h>
+
 #ifdef __linux__
 #include <endian.h>
 #else
@@ -72,8 +74,14 @@ extern int rshim_pcie_enable_uio;
   if (rshim_log_level >= log_level) { \
     if (rshim_daemon_mode) \
       RSHIM_SYSLOG(log_level, fmt); \
-    else \
+    else { \
+      extern struct timespec start_time; \
+      struct timespec current_time; \
+      clock_gettime(CLOCK_MONOTONIC, &current_time);  \
+      double elapsed = (current_time.tv_sec - start_time.tv_sec) + (current_time.tv_nsec - start_time.tv_nsec) / 1e9; \
+      printf("%.6f: ", elapsed); \
       printf(fmt); \
+    } \
   } \
 } while (0)
 
