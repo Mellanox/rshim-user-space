@@ -1253,7 +1253,6 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
   dev->dev = pci_dev->dev;
   dev->func = pci_dev->func;
 
-#if 0
   /* Enable the device and setup memory map. */
   if (!bd->drop_mode) {
     pthread_mutex_lock(&bd->mutex);
@@ -1262,13 +1261,6 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
     if (rc)
       goto rshim_probe_failed;
   }
-#else
-    pthread_mutex_lock(&bd->mutex);
-    rc = bd->enable_device(bd, true);
-    pthread_mutex_unlock(&bd->mutex);
-    if (rc)
-      goto rshim_probe_failed;
-#endif
 
   pthread_mutex_lock(&bd->mutex);
   /*
@@ -1277,7 +1269,7 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
    * registers and has assumption that the under layer is working.
    */
   bd->has_rshim = 1;
-  // bd->has_tm = bd->drop_mode ? 0 : 1;
+  bd->has_tm = 1;
   rc = rshim_register(bd);
 
   /* Notify that the device is attached */
@@ -1300,9 +1292,7 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
   return 0;
 
 rshim_probe_failed:
-#if 0  // keep bd usable even if rshim_register failed for ownership check
    rshim_deref(bd);
-#endif
    rshim_unlock();
    return rc;
 }
