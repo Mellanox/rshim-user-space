@@ -2895,6 +2895,7 @@ static void rshim_main(int argc, char *argv[])
         rshim_pcie_lf_init_done = true;
       }
     } else {
+#if 0
       /* Disable the timer if no rshim devices are found. */
       if (rshim_dev_bitmask) {
         if (!rshim_timer_interval)
@@ -2902,6 +2903,7 @@ static void rshim_main(int argc, char *argv[])
       } else if (rshim_timer_interval) {
           rshim_set_timer(timer_fd, 0);
       }
+#endif
 
       /* Check USB for timeout or unhandled fd. */
       rshim_usb_poll(rshim_dev_bitmask ? false : true);
