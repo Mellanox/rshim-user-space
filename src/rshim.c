@@ -28,7 +28,8 @@
 #define RSHIM_MAX_DEV 64
 
 /* RShim timer interval in milliseconds. */
-#define RSHIM_TIMER_INTERVAL 100
+// #define RSHIM_TIMER_INTERVAL 1
+#define RSHIM_TIMER_INTERVAL 100   // for slow debugging
 
 /* Intervals to check the locked mode. */
 #define CHECK_LOCKED_MODE_MS      100
@@ -2340,8 +2341,6 @@ static int handle_ownership_transfer(rshim_backend_t *bd) {
 static void rshim_timer_func(rshim_backend_t *bd) {
   int ticks = rshim_keepalive_ticks;
 
-  RSHIM_DBG("rshim%d rshim_timer_func\n", bd->index);
-
   if (bd->has_cons_work) {
     RSHIM_DBG("rshim%d requesting console work\n", bd->index);
     rshim_work_signal(bd);
@@ -2349,7 +2348,6 @@ static void rshim_timer_func(rshim_backend_t *bd) {
 
   /* Request keepalive update and restart the ~300ms timer. */
   if (rshim_timer_ticks - (bd->last_keepalive + ticks) > 0) {
-    RSHIM_DBG("rshim%d requesting keepalive and restarting timer\n", bd->index);
     bd->keepalive = 1;
     bd->last_keepalive = rshim_timer_ticks;
     rshim_work_signal(bd);
@@ -2357,7 +2355,6 @@ static void rshim_timer_func(rshim_backend_t *bd) {
 
   /* Some checking for PCIe backend. */
   if (bd->type == RSH_BACKEND_PCIE) {
-    RSHIM_DBG("rshim%d checking locked mode\n", bd->index);
     rshim_pcie_check(bd);
   }
 
@@ -2847,7 +2844,6 @@ static void rshim_main(int argc, char *argv[])
       if (fd == timer_fd) {
         uint64_t res;
 
-        RSHIM_DBG("timer event\n");
         ssize_t s = rshim_fd_full_read(timer_fd, &res, sizeof(res));
         if (s != sizeof(res)) {
           RSHIM_DBG("timer read failed\n");
