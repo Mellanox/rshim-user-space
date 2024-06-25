@@ -680,7 +680,17 @@ static int rshim_fuse_misc_read(struct cuse_dev *cdev, int fflags,
   p += n;
   len -= n;
 
-  /* SW reset flag is always 0. */
+  n = snprintf(p, len, "%-16s%d (0:no access, 1:has access)\n", "RSHIM ACCESS",
+               !bd->access_check_failed);
+  p += n;
+  len -= n;
+
+  n = snprintf(p, len, "%-16s%d (0:no, 1:yes)\n", "MONITOR_MODE",
+               bd->monitor_mode);
+  p += n;
+  len -= n;
+
+    /* SW reset flag is always 0. */
   n = snprintf(p, len, "%-16s%d (1: reset)\n", "SW_RESET", 0);
   p += n;
   len -= n;
@@ -720,6 +730,11 @@ static int rshim_fuse_misc_read(struct cuse_dev *cdev, int fflags,
     p += n;
     len -= n;
   }
+
+  n = snprintf(p, len, "%-16s%d (0:no, 1:yes)\n", "FORCE_CMD",
+      bd->force_cmd_pending);
+  p += n;
+  len -= n;
 
   if (bd->display_level == 1) {
     gettimeofday(&tp, NULL);
@@ -942,6 +957,12 @@ static int rshim_fuse_misc_write(struct cuse_dev *cdev, int fflags,
     if (!rc)
       bd->debug_code = val64;
     pthread_mutex_unlock(&bd->mutex);
+  } else if (strcmp(key, "FORCE_CMD") == 0) {
+    if (sscanf(p, "%x", &value) != 1)
+      goto invalid;
+    if (value && bd->monitor_mode) {
+        bd->force_cmd_pending = 1;
+    }
   } else {
 invalid:
 #ifdef __linux__
@@ -1294,6 +1315,8 @@ int rshim_fuse_init(rshim_backend_t *bd)
 #endif
 
   for (i = 0; i < RSH_DEV_TYPES; i++) {
+    if (bd->access_check_failed && i != RSH_DEV_TYPE_MISC)
+      continue;
 #ifdef __linux__
     static const char * const argv[] = {"./rshim", "-f"};
     int multithreaded = 0;
@@ -1305,6 +1328,10 @@ int rshim_fuse_init(rshim_backend_t *bd)
      * device was re-ceated during SW_RESET.
      */
     snprintf(buf, sizeof(buf), "/dev/rshim%d/%s", bd->index, name);
+    if (i == RSH_DEV_TYPE_MISC && !access(buf, F_OK)) {
+      /* It's OK for misc file to be persistent after fuse_del() */
+      continue;
+    }
     time(&t0);
     while (!access(buf, F_OK)) {
       time(&t1);
@@ -1354,11 +1381,19 @@ int rshim_fuse_init(rshim_backend_t *bd)
   return 0;
 }
 
-int rshim_fuse_del(rshim_backend_t *bd)
+/*
+ * If has_misc is true, we will not delete the "misc" device file even if
+ * other device files like "boot" etc are deregistered. This allows user
+ * to send commands to the driver even if it's not fully attached to rshim
+ * device.
+ */
+int rshim_fuse_del(rshim_backend_t *bd, bool has_misc)
 {
   int i;
 
   for (i = 0; i < RSH_DEV_TYPES; i++) {
+    if (i == RSH_DEV_TYPE_MISC && has_misc)
+      continue;
     if (bd->fuse_session[i]) {
 #ifdef __linux__
       fuse_session_exit(bd->fuse_session[i]);
@@ -1370,6 +1405,8 @@ int rshim_fuse_del(rshim_backend_t *bd)
   }
 
   for (i = 0; i < RSH_DEV_TYPES; i++) {
+    if (i == RSH_DEV_TYPE_MISC && has_misc)
+      continue;
     if (bd->fuse_thread[i]) {
       pthread_kill(bd->fuse_thread[i], SIGINT);
       pthread_join(bd->fuse_thread[i], NULL);

@@ -687,7 +687,7 @@ rshim_pcie_read(struct rshim_backend *bd, uint32_t chan, uint32_t addr,
   struct pci_dev *pci_dev = dev->pci_dev;
   int rc = 0;
 
-  if (!bd->has_rshim || !bd->has_tm)
+  if (!bd->has_rshim)
     return -ENODEV;
 
   if (size != 4 && size != 8)
@@ -720,7 +720,7 @@ rshim_pcie_write(struct rshim_backend *bd, uint32_t chan, uint32_t addr,
   uint64_t result;
   int rc = 0;
 
-  if (!bd->has_rshim || !bd->has_tm)
+  if (!bd->has_rshim)
     return -ENODEV;
 
   if (size != 4 && size != 8)
@@ -764,7 +764,7 @@ static void rshim_pcie_delete(struct rshim_backend *bd)
 {
   rshim_pcie_lf_t *dev = container_of(bd, rshim_pcie_lf_t, bd);
 
-  rshim_deregister(bd);
+  rshim_deregister(bd, true);
   free(dev);
 }
 
@@ -844,16 +844,24 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
   bd->has_rshim = 1;
   bd->has_tm = 1;
   ret = rshim_register(bd);
-  if (ret) {
+  if (ret && !bd->access_check_failed) {
     pthread_mutex_unlock(&bd->mutex);
     goto rshim_map_failed;
   }
 
-  /* Notify that the device is attached */
-  ret = rshim_notify(bd, RSH_EVENT_ATTACH, 0);
+  if (!bd->access_check_failed) {
+    /* Notify that the device is attached */
+    ret = rshim_notify(bd, RSH_EVENT_ATTACH, 0);
+  }
+
+  if (rshim_force_mode && bd->monitor_mode) {
+    RSHIM_INFO("rshim%d will send force cmd to the other rshim-active end\n",
+        bd->index);
+    bd->force_cmd_pending = 1;
+  }
 
   pthread_mutex_unlock(&bd->mutex);
-  if (ret)
+  if (ret && !bd->access_check_failed)
     goto rshim_map_failed;
 
   rshim_unlock();

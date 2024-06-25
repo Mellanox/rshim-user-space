@@ -20,6 +20,7 @@
 #include <sys/timerfd.h>
 #include <sys/time.h>
 #include <unistd.h>
+#include <inttypes.h>
 
 #include "rshim.h"
 
@@ -29,6 +30,18 @@
 /* RShim timer interval in milliseconds. */
 #define RSHIM_TIMER_INTERVAL 1
 
+/* Intervals to check the locked mode. */
+#define CHECK_LOCKED_MODE_MS      100
+#define CHECK_LOCKED_MODE_TICKS   (CHECK_LOCKED_MODE_MS / RSHIM_TIMER_INTERVAL)
+
+/* Timeouts in ms */
+#define TO_RSHIM_REQ_MS 5000
+#define TO_RSHIM_ONLINE_MS 5000
+
+/* Timeouts in ticks */
+#define TO_TICKS_RSHIM_REQ (TO_RSHIM_REQ_MS / OSP_MGT_INTERVAL_MS)
+#define TO_TICKS_RSHIM_ONLINE (TO_RSHIM_ONLINE_MS / OSP_MGT_INTERVAL_MS)
+
 /* Cycles to poll the network initialization before timeout. */
 #define RSHIM_NET_INIT_DELAY (60000 / RSHIM_TIMER_INTERVAL)
 
@@ -36,10 +49,34 @@
 #define RSHIM_FIFO_SPACE_RESERV  3
 
 /* Keepalive period in milliseconds. */
-static int rshim_keepalive_period = 300;
+#define RSHIM_KEEPALIVE_PERIOD 300
+static int rshim_keepalive_ticks = RSHIM_KEEPALIVE_PERIOD / RSHIM_TIMER_INTERVAL;
 
 /* Keepalive magic number. */
 #define RSHIM_KEEPALIVE_MAGIC_NUM 0x5089836482ULL
+
+/* Rshim ownership management. */
+#define OSP_MGT_INTERVAL_MS        100 /* Ownership state machine interval */
+#define OSP_MGT_INTERVAL_TICKS     (OSP_MGT_INTERVAL_MS / RSHIM_TIMER_INTERVAL)
+#define RSHIM_OWNERSHIP_REQ_MAGIC_NUM 0x4F53505F524551ULL /* OSP_REQ */
+#define RSHIM_OWNERSHIP_ACK_MAGIC_NUM 0x4F53505F41434BULL /* OSP_ACK */
+
+/* Pause RSHIM_DBG() here after 10 messages, then resume after 1 minute */
+#define RSHIM_DBG_PAUSE 6   /* messages limit for burst print */
+#define RSHIM_DBG_RESUME 10   /* seconds before resuming */
+
+const char* magic_to_str(uint64_t magic){
+  switch(magic){
+    case RSHIM_KEEPALIVE_MAGIC_NUM:
+      return "MAGIC_KEEPALIVE";
+    case RSHIM_OWNERSHIP_REQ_MAGIC_NUM:
+      return "MAGIC_OSP_REQ";
+    case RSHIM_OWNERSHIP_ACK_MAGIC_NUM:
+      return "MAGIC_OSP_ACK";
+    default:
+      return "UNKNOWN";
+  }
+}
 
 /* Circular buffer macros. */
 #define CIRC_SPACE(head, tail, size) CIRC_CNT((tail), ((head)+1), (size))
@@ -192,6 +229,7 @@ bool rshim_has_pcie_reset_delay = false;
 int rshim_pcie_enable_vfio = 1;
 int rshim_pcie_enable_uio = 1;
 int rshim_pcie_intr_poll_interval = 10;  /* Interrupt polling in milliseconds */
+int rshim_force_mode = 0;  /* Request ownship when entering monitor mode */
 
 /* Array of devices and device names. */
 rshim_backend_t *rshim_devs[RSHIM_MAX_DEV];
@@ -212,6 +250,28 @@ volatile bool rshim_run = true;
 static uint32_t rshim_timer_interval = RSHIM_TIMER_INTERVAL;
 
 static void rshim_fifo_msg_update_checksum(rshim_tmfifo_msg_hdr_t *hdr);
+
+static int rshim_update_locked_mode(rshim_backend_t *bd);
+
+static int handle_ownership_transfer(rshim_backend_t *bd);
+
+struct timespec start_time;
+
+void init_start_time()
+{
+  clock_gettime(CLOCK_MONOTONIC, &start_time);
+}
+
+double get_relative_time()
+{
+  struct timespec current_time;
+  clock_gettime(CLOCK_MONOTONIC, &current_time);
+
+  double elapsed = (current_time.tv_sec - start_time.tv_sec) +
+    (current_time.tv_nsec - start_time.tv_nsec) / 1e9;
+
+  return elapsed;
+}
 
 /* Global lock / unlock. */
 void rshim_lock(void)
@@ -1244,10 +1304,11 @@ again:
    */
   if (bd->read_buf_next < bd->read_buf_bytes ||
       (bd->spin_flags & RSH_SFLG_READING)) {
+
     /* We're doing nothing. */
     RSHIM_DBG("fifo_input: no new read: %s\n",
-              (bd->read_buf_next < bd->read_buf_bytes) ?
-              "have data" : "already reading");
+        (bd->read_buf_next < bd->read_buf_bytes) ?
+        "have data" : "already reading");
   } else {
     int len;
 
@@ -1290,7 +1351,8 @@ ssize_t rshim_fifo_read(rshim_backend_t *bd, char *buffer, size_t count,
     int pass1;
     int pass2;
 
-    RSHIM_DBG("fifo_read, top of loop, remaining count %zd\n", count);
+    /* Remove this for now as it's every chatty with -l 4*/
+    /* RSHIM_DBG("fifo_read, top of loop, remaining count %zd\n", count); */
 
     /*
      * We check this each time through the loop since the
@@ -1677,13 +1739,13 @@ static void rshim_work_handler(rshim_backend_t *bd)
 
   bd->work_pending = false;
 
-  if (bd->keepalive && bd->has_rshim && !bd->debug_code) {
+  if (bd->keepalive && bd->has_rshim && !bd->debug_code && !bd->access_check_failed) {
     bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad1,
                     RSHIM_KEEPALIVE_MAGIC_NUM, RSHIM_REG_SIZE_8B);
     bd->keepalive = 0;
   }
 
-  if (bd->boot_work_buf != NULL) {
+  if (bd->boot_work_buf != NULL && !bd->access_check_failed) {
     bd->boot_work_buf_actual_len = rshim_write_delayed(bd,
                                                        RSH_DEV_TYPE_BOOT,
                                                        bd->boot_work_buf,
@@ -1693,7 +1755,8 @@ static void rshim_work_handler(rshim_backend_t *bd)
   }
 
   if (!rshim_no_net && bd->net_fd < 0 &&
-      (rshim_timer_ticks - bd->net_init_time) < RSHIM_NET_INIT_DELAY) {
+      (rshim_timer_ticks - bd->net_init_time) < RSHIM_NET_INIT_DELAY &&
+      !bd->access_check_failed) {
     rc = rshim_net_init(bd);
     if (!rc) {
       bd->is_net_open = 1;
@@ -1703,14 +1766,14 @@ static void rshim_work_handler(rshim_backend_t *bd)
     }
   }
 
-  if (bd->is_boot_open || bd->is_booting) {
+  if ((bd->is_boot_open || bd->is_booting) && !bd->access_check_failed) {
     if (bd->is_boot_open && bd->has_cons_work)
       rshim_fifo_input(bd);
     pthread_mutex_unlock(&bd->mutex);
     return;
   }
 
-  if (bd->has_fifo_work) {
+  if (bd->has_fifo_work && !bd->access_check_failed) {
     int len;
 
     len = rshim_write_delayed(bd, bd->fifo_work_devtype,
@@ -1729,7 +1792,7 @@ static void rshim_work_handler(rshim_backend_t *bd)
     pthread_mutex_unlock(&bd->ringlock);
   }
 
-  if (bd->has_cons_work) {
+  if (bd->has_cons_work && !bd->access_check_failed) {
     pthread_mutex_lock(&bd->ringlock);
     /* FIFO output. */
     rshim_fifo_output(bd);
@@ -1740,13 +1803,23 @@ static void rshim_work_handler(rshim_backend_t *bd)
     bd->has_cons_work = 0;
   }
 
-  if (!bd->has_reprobe && bd->is_cons_open) {
+  if (!bd->has_reprobe && bd->is_cons_open && !bd->access_check_failed) {
     bd->has_cons_work = 1;
     if (bd->timer - rshim_timer_ticks > 100)
       bd->timer = rshim_timer_ticks + 100;
   }
 
+  if (bd->has_locked_work) {
+    bd->has_locked_work = 0;
+    rshim_update_locked_mode(bd);
+  }
   pthread_mutex_unlock(&bd->mutex);
+
+  /* Ownership transfer needs to run without holding bd->mutex. */
+  if (bd->has_osp_work) {
+    bd->has_osp_work = 0;
+    handle_ownership_transfer(bd);
+  }
 }
 
 static int rshim_boot_done(rshim_backend_t *bd)
@@ -2138,9 +2211,7 @@ static int rshim_update_locked_mode(rshim_backend_t *bd)
   if (bd->is_booting)
     return 0;
 
-  pthread_mutex_lock(&bd->mutex);
   locked_mode = rshim_check_locked_mode(bd);
-  pthread_mutex_unlock(&bd->mutex);
   if (locked_mode < 0)
     return -EIO;
 
@@ -2157,9 +2228,7 @@ static int rshim_update_locked_mode(rshim_backend_t *bd)
       int rt;
 
       rshim_lock();
-      pthread_mutex_lock(&bd->mutex);
       rt = rshim_access_check(bd); 
-      pthread_mutex_unlock(&bd->mutex);
       rshim_unlock();
       if (rt) {
         RSHIM_INFO("rshim%d attached by another device. Entering Drop Mode\n",
@@ -2172,15 +2241,207 @@ static int rshim_update_locked_mode(rshim_backend_t *bd)
   return 0;
 }
 
+static int read_rshim_sp1(rshim_backend_t *bd, uint64_t* sp1)
+{
+  int rc;
+
+  rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad1, sp1, RSHIM_REG_SIZE_8B);
+  if (rc) {
+    RSHIM_ERR("rshim%d failed to read sp1\n", bd->index);
+    return rc;
+  }
+
+  return 0;
+}
+
+static int check_rshim_sp1_magic(rshim_backend_t *bd, uint64_t magic,
+    bool* result)
+{
+  int rc;
+  uint64_t sp1;
+
+  rc = read_rshim_sp1(bd, &sp1);
+  if (rc) {
+    RSHIM_ERR("rshim%d failed to read sp1: %d\n", bd->index, rc);
+    return rc;
+  }
+
+  *result = (sp1 == magic);
+
+  return 0;
+}
+
+static int check_rshim_magic_ownership_req(rshim_backend_t *bd, bool* result)
+{
+  *result = false;
+  return check_rshim_sp1_magic(bd, RSHIM_OWNERSHIP_REQ_MAGIC_NUM, result);
+}
+
+static int check_rshim_magic_ownership_ack(rshim_backend_t *bd, bool* result)
+{
+  *result = false;
+  return check_rshim_sp1_magic(bd, RSHIM_OWNERSHIP_ACK_MAGIC_NUM, result);
+}
+
+static int write_rshim_sp1_magic(rshim_backend_t *bd, uint64_t magic)
+{
+  int rc;
+
+  rc = bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad1, magic,
+      RSHIM_REG_SIZE_8B);
+  if (rc) {
+    RSHIM_ERR("rshim%d failed to write sp1: %d\n", bd->index, rc);
+    return -ENODEV;
+  }
+
+  return 0;
+}
+
+static int write_rshim_magic_ownership_req(rshim_backend_t *bd)
+{
+  RSHIM_INFO("rshim%d writing ownership req magic: 0x%llx\n", bd->index,
+      RSHIM_OWNERSHIP_REQ_MAGIC_NUM);
+
+  return write_rshim_sp1_magic(bd, RSHIM_OWNERSHIP_REQ_MAGIC_NUM);
+}
+
+static int write_rshim_magic_ownership_ack(rshim_backend_t *bd)
+{
+  RSHIM_INFO("rshim%d writing ownership ack magic 0x%llx\n", bd->index,
+      RSHIM_OWNERSHIP_ACK_MAGIC_NUM);
+
+  return write_rshim_sp1_magic(bd, RSHIM_OWNERSHIP_ACK_MAGIC_NUM);
+}
+
+static int handle_ownership_transfer(rshim_backend_t *bd) {
+  int i, rt;
+  bool has_ack;
+  bool has_req;
+
+  if (bd->monitor_mode) {
+    if (bd->force_cmd_pending) {
+      RSHIM_INFO("rshim%d executing Force command\n", bd->index);
+      bd->force_cmd_pending = 0;
+
+      /* sending req and checking ack multiple times to ensure the transfer */
+      for (i = 0; i < 10; i++) {
+        rt = write_rshim_magic_ownership_req(bd);
+        if (rt) {
+          RSHIM_ERR("rshim%d failed to write ownership transfer req\n",
+              bd->index);
+          continue;
+        }
+
+        usleep(100000);
+
+        has_ack = false;
+        rt = check_rshim_magic_ownership_ack(bd, &has_ack);
+
+        if (!rt && has_ack) {
+          break;
+        }
+      }
+
+      if (rt || !has_ack) {
+        RSHIM_WARN("rshim%d failed to receive ownership transfer ack\n",
+            bd->index);
+        return -EIO;
+      }
+      RSHIM_INFO("rshim%d received ownership transfer ack\n", bd->index);
+
+      /* skip running the time-consuming access check and set flag directly*/
+      bd->access_check_failed = 0;
+
+      RSHIM_INFO("Sending RSH_EVENT_DETACH\n");
+      rt = rshim_notify(bd, RSH_EVENT_DETACH, 0);
+      if (rt) {
+        RSHIM_ERR("Failed to detach rshim%d\n", bd->index);
+        return rt;
+      }
+      RSHIM_INFO("De-registering the rshim device\n");
+      rshim_deregister(bd, false);
+      RSHIM_INFO("Re-registering the rshim device\n");
+      bd->has_rshim = 1;
+      bd->has_tm = 1;
+      rt = rshim_register(bd);
+      if (rt || bd->monitor_mode) {
+        RSHIM_ERR("Failed to register rshim%d\n", bd->index);
+        rshim_deregister(bd, false);
+        return rt;
+      }
+      RSHIM_INFO("Sending RSH_EVENT_ATTACH\n");
+      rt = rshim_notify(bd, RSH_EVENT_ATTACH, 0);
+      if (rt) {
+        RSHIM_ERR("Failed to attach rshim%d\n", bd->index);
+        rshim_deregister(bd, false);
+        return rt;
+      }
+      RSHIM_INFO("rshim%d regained ownership successfully\n", bd->index);
+    }
+  } else {
+    has_req = false;
+    rt = check_rshim_magic_ownership_req(bd, &has_req);
+
+    if (!rt && has_req) {
+      RSHIM_INFO("rshim%d received ownership transfer request\n", bd->index);
+
+      RSHIM_INFO("De-registering the rshim device\n");
+      rshim_lock();
+      rt = rshim_notify(bd, RSH_EVENT_DETACH, 0);
+      if (rt) {
+        RSHIM_ERR("Failed to detach rshim%d\n", bd->index);
+        return rt;
+      }
+      rshim_deregister(bd, false);
+
+      RSHIM_INFO("Notifying the requester with ACK\n");
+      for (i = 0; i < 10; i++) {
+        write_rshim_magic_ownership_ack(bd);
+        usleep(100000);
+      }
+
+      RSHIM_INFO("Verifying the requester end is active\n");
+      if (!rshim_access_check(bd)) {
+        RSHIM_ERR("rshim%d failed to be passed to the requester\n", bd->index);
+        RSHIM_INFO("To recover, try to restart the driver\n");
+        return -EACCES;
+      }
+
+      /* This delay is necessary to ensure the requester is stable */
+      usleep(1000000);
+
+      RSHIM_INFO("Registering the rshim device in monitor mode\n");
+      bd->has_rshim = 1;
+      bd->has_tm = 1;
+      rt = rshim_register(bd);
+      if (rt) {
+        RSHIM_ERR("Failed to register rshim%d\n", bd->index);
+        rshim_deregister(bd, false);
+        return rt;
+      }
+      rt = rshim_notify(bd, RSH_EVENT_ATTACH, 0);
+      if (rt) {
+        RSHIM_ERR("Failed to attach rshim%d\n", bd->index);
+        rshim_deregister(bd, false);
+        return rt;
+      }
+      rshim_unlock();
+
+      RSHIM_INFO("rshim%d passed to the requester\n", bd->index);
+    }
+  }
+  return 0;
+}
+
 /* House-keeping timer. */
 static void rshim_timer_func(rshim_backend_t *bd) {
-  int period = rshim_keepalive_period;
+  int ticks = rshim_keepalive_ticks;
 
   if (bd->has_cons_work)
     rshim_work_signal(bd);
 
   /* Request keepalive update and restart the ~300ms timer. */
-  if (rshim_timer_ticks - (bd->last_keepalive + period) > 0) {
+  if (rshim_timer_ticks - (bd->last_keepalive + ticks) > 0) {
     bd->keepalive = 1;
     bd->last_keepalive = rshim_timer_ticks;
     rshim_work_signal(bd);
@@ -2193,7 +2454,7 @@ static void rshim_timer_func(rshim_backend_t *bd) {
   if (bd->type == RSH_BACKEND_PCIE)
     rshim_pcie_check(bd);
 
-  bd->timer = rshim_timer_ticks + period;
+  bd->timer = rshim_timer_ticks + ticks;
 }
 
 static void rshim_timer_run(void)
@@ -2208,6 +2469,16 @@ static void rshim_timer_run(void)
     if (bd) {
       if (rshim_timer_ticks - bd->timer > 0)
         rshim_timer_func(bd);
+
+      if (rshim_timer_ticks % CHECK_LOCKED_MODE_TICKS == 2) {
+        bd->has_locked_work = 1;
+        rshim_work_signal(bd);
+      }
+
+      if (rshim_timer_ticks % OSP_MGT_INTERVAL_TICKS == 3) {
+        bd->has_osp_work = 1;
+        rshim_work_signal(bd);
+      }
 
       /* Push out remaining data if not sent out in the epoll loop. */
       if (bd->net_fd >= 0) {
@@ -2275,6 +2546,8 @@ int rshim_access_check(rshim_backend_t *bd)
   uint64_t value = 0;
   int i, rc;
 
+  bd->access_check_failed = 1;
+
   /*
    * Add a check and delay to make sure rshim is ready.
    * It's mainly used in BlueField-2+ where the rshim (like USB) access is
@@ -2336,6 +2609,8 @@ int rshim_access_check(rshim_backend_t *bd)
     return -ENODEV;
   }
 
+  bd->access_check_failed = 0;
+
   return 0;
 }
 
@@ -2343,8 +2618,10 @@ int rshim_register(rshim_backend_t *bd)
 {
   int i, rc, index;
 
-  if (bd->registered)
-    return 0;
+  if (bd->registered) {
+    RSHIM_WARN("rshim already registered\n");
+    return EALREADY;
+  }
 
   index = rshim_find_index(bd->dev_name);
   if (index < 0)
@@ -2356,8 +2633,11 @@ int rshim_register(rshim_backend_t *bd)
   }
 
   rc = rshim_access_check(bd);
-  if (rc)
-    return rc;
+  if (rc) {
+    /* Rshim is already used by another device, but we still want to register
+     * this Rshim to allow monitoring the registers for ownership transfer */
+    RSHIM_INFO("rshim%d will be registered in monitor mode\n", index);
+  }
 
   if (!bd->write)
     bd->write = rshim_write_default;
@@ -2409,25 +2689,40 @@ int rshim_register(rshim_backend_t *bd)
   bd->boot_timeout = rshim_boot_timeout;
   bd->display_level = rshim_display_level;
 
-  /* Start the keepalive timer. */
-  bd->last_keepalive = rshim_timer_ticks;
-  bd->timer = rshim_timer_ticks + 1;
+  if (!bd->access_check_failed) {
+    /* Start the keepalive timer. */
+    bd->last_keepalive = rshim_timer_ticks;
+    bd->timer = rshim_timer_ticks + 1;
+  }
 
   /* create character devices. */
 #ifdef HAVE_RSHIM_FUSE
   rc = rshim_fuse_init(bd);
   if (rc) {
-    rshim_deregister(bd);
+    rshim_deregister(bd, true);
     return rc;
   }
 #endif
 
   rshim_dev_bitmask |= (1ULL << index);
 
+  if (bd->access_check_failed) {
+    RSHIM_INFO("rshim%d registered in monitor mode\n", index);
+    bd->monitor_mode = 1;
+  } else {
+    bd->monitor_mode = 0;
+  }
+
   return 0;
 }
 
-void rshim_deregister(rshim_backend_t *bd)
+/*
+ * If has_misc is true, we will not delete the "misc" device file even if
+ * other device files like "boot" etc are deregistered. This allows user
+ * to send commands to the driver even if it's not fully attached to rshim
+ * device.
+ */
+void rshim_deregister(rshim_backend_t *bd, bool has_misc)
 {
   int i;
 
@@ -2437,7 +2732,7 @@ void rshim_deregister(rshim_backend_t *bd)
   rshim_dev_bitmask &= ~(1ULL << bd->index);
 
 #ifdef HAVE_RSHIM_FUSE
-  rshim_fuse_del(bd);
+  rshim_fuse_del(bd, has_misc);
 #endif
 
   for (i = 0; i < 2; i++) {
@@ -2515,7 +2810,7 @@ static void rshim_stop(void)
     pthread_mutex_lock(&bd->mutex);
     if (bd->enable_device)
       bd->enable_device(bd, false);
-    rshim_deregister(bd);
+    rshim_deregister(bd, true);
     pthread_mutex_unlock(&bd->mutex);
   }
 
@@ -2697,13 +2992,10 @@ static void rshim_main(int argc, char *argv[])
         rshim_pcie_lf_init_done = true;
       }
     } else {
-      /* Disable the timer if no rshim devices are found. */
-      if (rshim_dev_bitmask) {
-        if (!rshim_timer_interval)
-          rshim_set_timer(timer_fd, RSHIM_TIMER_INTERVAL);
-      } else if (rshim_timer_interval) {
-          rshim_set_timer(timer_fd, 0);
-      }
+      /* Always enable the timer even if no rshim devices are found, so we can
+       * do the ownership transfer. */
+      if (!rshim_timer_interval)
+        rshim_set_timer(timer_fd, RSHIM_TIMER_INTERVAL);
 
       /* Check USB for timeout or unhandled fd. */
       rshim_usb_poll(rshim_dev_bitmask ? false : true);
@@ -2834,6 +3126,9 @@ static int rshim_load_cfg(void)
     } else if (!strcmp(key, "DROP_MODE")) {
       rshim_drop_mode = (atoi(value) > 0) ? 1 : 0;
       continue;
+    } else if (!strcmp(key, "FORCE_CMD")) {
+      rshim_force_mode = (atoi(value) > 0) ? 1 : 0;
+      continue;
     } else if (!strcmp(key, "USB_RESET_DELAY")) {
       rshim_usb_reset_delay = atoi(value);
       rshim_has_usb_reset_delay = true;
@@ -2946,11 +3241,17 @@ static void print_help(void)
 
 int main(int argc, char *argv[])
 {
-  static const char short_options[] = "b:d:fhi:l:nv";
+  init_start_time();
+
+  if (rshim_log_level >= 4)
+    printf("Rshim v%s. Built on %s %s\n", VERSION, __DATE__, __TIME__);
+
+  static const char short_options[] = "b:d:fFhi:l:nv";
   static struct option long_options[] = {
     { "backend", required_argument, NULL, 'b' },
     { "device", required_argument, NULL, 'd' },
     { "foreground", no_argument, NULL, 'f' },
+    { "force", no_argument, NULL, 'F' },
     { "help", no_argument, NULL, 'h' },
     { "index", required_argument, NULL, 'i' },
     { "log-level", required_argument, NULL, 'l' },
@@ -2972,6 +3273,9 @@ int main(int argc, char *argv[])
       break;
     case 'f':
       rshim_daemon_mode = false;
+      break;
+    case 'F':
+      rshim_force_mode = true;
       break;
     case 'i':
       rshim_static_index = atoi(optarg);
