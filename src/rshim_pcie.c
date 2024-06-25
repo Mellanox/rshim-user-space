@@ -1004,7 +1004,6 @@ rshim_pcie_read(rshim_backend_t *bd, uint32_t chan, uint32_t addr,
       (chan != RSHIM_CHANNEL || addr != bd->regs->scratchpad6))
     sleep(RSHIM_PCIE_NIC_RESET_WAIT);
 
-#if 0
   if (bd->drop_mode) {
     *result = 0;
     return 0;
@@ -1012,10 +1011,6 @@ rshim_pcie_read(rshim_backend_t *bd, uint32_t chan, uint32_t addr,
 
   if (!bd->has_rshim || !bd->has_tm || !dev->rshim_regs)
     return -ENODEV;
-#else
-  if (!dev->rshim_regs)
-    return -ENODEV;
-#endif
 
   dev->write_count = 0;
 
@@ -1051,13 +1046,11 @@ rshim_pcie_write(rshim_backend_t *bd, uint32_t chan, uint32_t addr,
       (chan != RSHIM_CHANNEL || addr != bd->regs->scratchpad6))
     sleep(RSHIM_PCIE_NIC_RESET_WAIT);
 
-#if 0
   if (bd->drop_mode)
     return 0;
 
   if (!bd->has_rshim || !bd->has_tm || !dev->rshim_regs)
     return -ENODEV;
-#endif
 
   /*
    * We cannot stream large numbers of PCIe writes to the RShim's BAR.
