@@ -371,18 +371,50 @@ push_boot_stream()
   fi
 }
 
+check_nic_mode()
+{
+  local str
+
+  [ "$mode" != "local" ] && return
+
+  # Get PCIE BDF
+  str=`cat ${rshim_node}/misc | grep DEV_NAME | awk '{print $2}'`
+  str=${str:5}
+  str=${str/.*/.0}
+  pcie_bdf="$str"
+
+  # Check NIC mode
+  str=`mlxconfig -d $pcie_bdf -e q INTERNAL_CPU_OFFLOAD_ENGINE 2>/dev/null | grep INTERNAL_CPU_OFFLOAD_ENGINE | awk '{print $(NF-1)}'`
+  if [ ."$str" = ."DISABLED(1)" ]; then
+    is_nic_mode=1
+  else
+    is_nic_mode=0
+  fi
+}
+
 # Wait for RSHIM to finish updating by monitoring keywords in the RSHIM log
 #
 # Global variables used:
 #   $mode, $rshim_node, $remote_mode
 wait_for_update_to_finish()
 {
-  local filter="Reboot|finished|DPU is ready|Linux up"
+  # 'filter0' indicates bfb installation completion, thus CLEAR_ON_READ
+  # can be disabled for next boot. 'filter' is related to specific mode
+  # which might include extra configuration or booting, and is used as
+  # the exit condition of the bfb-install script.
+  local filter0 filter
 
+  filter0="Reboot|finished|DPU is ready|Linux up"
   if [ $runtime -eq 0 ]; then
-    filter="$filter|In Enhanced NIC mode"
+    filter0="$filter0|In Enhanced NIC mode"
   else
-    filter="Runtime upgrade finished"
+    filter0="Runtime upgrade finished"
+  fi
+
+  if [ $is_nic_mode -eq 1 ]; then
+    filter="In Enhanced NIC mode"
+  else
+    filter="$filter0"
   fi
 
   echo "Collecting BlueField booting status. Press Ctrl+C to stop…"
@@ -408,6 +440,11 @@ wait_for_update_to_finish()
 
     if echo ${cur} | grep -Ei "$filter" >/dev/null; then
       finished=1
+    fi
+
+    if echo ${cur} | grep -Ei "$filter0" >/dev/null; then
+      # Disable CLEAR_ON_READ.
+      run_cmd_exit $mode "echo 'CLEAR_ON_READ 0' > ${rshim_node}/misc"
     fi
 
     # Overwrite if current length smaller than previous length.
@@ -480,6 +517,11 @@ cleanup() {
 
   # Disable CLEAR_ON_READ.
   run_cmd_exit $mode "echo 'CLEAR_ON_READ 0' > ${rshim_node}/misc"
+
+  # Bind driver back for NIC mode.
+  if [ $is_nic_mode -eq 1 -a -n "$pcie_bdf" ]; then
+    echo "$pcie_bdf" > /sys/bus/pci/drivers/mlx5_core/bind >&/dev/null
+  fi
 }
 
 
@@ -507,6 +549,9 @@ trap cleanup EXIT INT TERM
 
 run_cmd_local_ready=0     # whether run_cmd* local functions are ready to use
 run_cmd_remote_ready=0    # whether run_cmd* remote functions are ready to use
+
+is_nic_mode=0     # Flag to indicate whether DPU in NIC mod or not
+pcie_bdf=""       # PCIE BDF
 
 options=`getopt -n bfb-install -o b:c:f:hm:r:Ruv \
         -l bfb:,config:,rootfs:,help,remote-mode:,rshim:,reverse-nc,runtime,verbose \
@@ -727,6 +772,12 @@ fi
 pv=$(which pv 2>/dev/null)
 if [ -z "${pv}" ]; then
   echo "Warn: 'pv' command not found. Continue without showing BFB progress."
+fi
+
+# Check NIC mode and unbind mlx5_core driver in NIC mode.
+check_nic_mode
+if [ $is_nic_mode -eq 1 -a -n "$pcie_bdf" ]; then
+  echo "$pcie_bdf" > /sys/bus/pci/drivers/mlx5_core/unbind >&/dev/null &
 fi
 
 push_boot_stream
