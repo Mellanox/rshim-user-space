@@ -764,7 +764,7 @@ static void rshim_pcie_delete(struct rshim_backend *bd)
 {
   rshim_pcie_lf_t *dev = container_of(bd, rshim_pcie_lf_t, bd);
 
-  rshim_deregister(bd, true);
+  rshim_deregister(bd, false);
   free(dev);
 }
 

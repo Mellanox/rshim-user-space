@@ -2359,21 +2359,21 @@ static int handle_ownership_transfer(rshim_backend_t *bd) {
         return rt;
       }
       RSHIM_INFO("De-registering the rshim device\n");
-      rshim_deregister(bd, false);
+      rshim_deregister(bd, true);
       RSHIM_INFO("Re-registering the rshim device\n");
       bd->has_rshim = 1;
       bd->has_tm = 1;
       rt = rshim_register(bd);
       if (rt || bd->monitor_mode) {
         RSHIM_ERR("Failed to register rshim%d\n", bd->index);
-        rshim_deregister(bd, false);
+        rshim_deregister(bd, true);
         return rt;
       }
       RSHIM_INFO("Sending RSH_EVENT_ATTACH\n");
       rt = rshim_notify(bd, RSH_EVENT_ATTACH, 0);
       if (rt) {
         RSHIM_ERR("Failed to attach rshim%d\n", bd->index);
-        rshim_deregister(bd, false);
+        rshim_deregister(bd, true);
         return rt;
       }
       RSHIM_INFO("rshim%d regained ownership successfully\n", bd->index);
@@ -2392,7 +2392,7 @@ static int handle_ownership_transfer(rshim_backend_t *bd) {
         RSHIM_ERR("Failed to detach rshim%d\n", bd->index);
         return rt;
       }
-      rshim_deregister(bd, false);
+      rshim_deregister(bd, true);
 
       RSHIM_INFO("Notifying the requester with ACK\n");
       for (i = 0; i < 10; i++) {
@@ -2416,13 +2416,13 @@ static int handle_ownership_transfer(rshim_backend_t *bd) {
       rt = rshim_register(bd);
       if (rt) {
         RSHIM_ERR("Failed to register rshim%d\n", bd->index);
-        rshim_deregister(bd, false);
+        rshim_deregister(bd, true);
         return rt;
       }
       rt = rshim_notify(bd, RSH_EVENT_ATTACH, 0);
       if (rt) {
         RSHIM_ERR("Failed to attach rshim%d\n", bd->index);
-        rshim_deregister(bd, false);
+        rshim_deregister(bd, true);
         return rt;
       }
       rshim_unlock();
@@ -2699,7 +2699,7 @@ int rshim_register(rshim_backend_t *bd)
 #ifdef HAVE_RSHIM_FUSE
   rc = rshim_fuse_init(bd);
   if (rc) {
-    rshim_deregister(bd, true);
+    rshim_deregister(bd, false);
     return rc;
   }
 #endif
@@ -2810,7 +2810,7 @@ static void rshim_stop(void)
     pthread_mutex_lock(&bd->mutex);
     if (bd->enable_device)
       bd->enable_device(bd, false);
-    rshim_deregister(bd, true);
+    rshim_deregister(bd, false);
     pthread_mutex_unlock(&bd->mutex);
   }
 

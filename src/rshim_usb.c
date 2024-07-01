@@ -70,7 +70,7 @@ static void rshim_usb_delete(rshim_backend_t *bd)
 {
   rshim_usb_t *dev = container_of(bd, rshim_usb_t, bd);
 
-  rshim_deregister(bd, true);
+  rshim_deregister(bd, false);
   RSHIM_INFO("rshim %s deleted\n", bd->dev_name);
   if (dev->handle) {
     libusb_close(dev->handle);

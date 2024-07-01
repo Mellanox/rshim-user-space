@@ -1090,7 +1090,7 @@ static void rshim_pcie_delete(rshim_backend_t *bd)
 {
   rshim_pcie_t *dev = container_of(bd, rshim_pcie_t, bd);
 
-  rshim_deregister(bd, true);
+  rshim_deregister(bd, false);
   free(dev);
 }
 
