@@ -680,7 +680,7 @@ static int rshim_fuse_misc_read(struct cuse_dev *cdev, int fflags,
   p += n;
   len -= n;
 
-  n = snprintf(p, len, "%-16s%d (0:no access, 1:has access)\n", "RSHIM ACCESS",
+  n = snprintf(p, len, "%-16s%d (0:no access, 1:has access)\n", "RSHIM_ACCESS",
                !bd->access_check_failed);
   p += n;
   len -= n;
