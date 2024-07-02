@@ -7,6 +7,8 @@
 #ifndef _RSHIM_H
 #define _RSHIM_H
 
+#include <time.h>
+
 #ifdef __linux__
 #include <endian.h>
 #else
@@ -40,6 +42,7 @@
 extern int rshim_log_level;
 extern bool rshim_daemon_mode;
 extern int rshim_drop_mode;
+extern int rshim_force_mode;
 extern int rshim_usb_reset_delay;
 extern bool rshim_has_usb_reset_delay;
 extern int rshim_pcie_reset_delay;
@@ -72,7 +75,14 @@ extern int rshim_pcie_enable_uio;
   if (rshim_log_level >= log_level) { \
     if (rshim_daemon_mode) \
       RSHIM_SYSLOG(log_level, fmt); \
-    else \
+    else if (rshim_log_level >= LOG_DEBUG) { \
+      extern struct timespec start_time; \
+      struct timespec current_time; \
+      clock_gettime(CLOCK_MONOTONIC, &current_time);  \
+      double elapsed = (current_time.tv_sec - start_time.tv_sec) + (current_time.tv_nsec - start_time.tv_nsec) / 1e9; \
+      printf("%.6f: ", elapsed); \
+      printf(fmt); \
+    } else \
       printf(fmt); \
   } \
 } while (0)
@@ -293,6 +303,10 @@ struct rshim_backend {
   uint32_t skip_boot_reset : 1;   /* Skip SW_RESET while pushing boot stream. */
   uint32_t locked_mode : 1;       /* Secure NIC mode Management. No RSHIM HW access */
   uint32_t clear_on_read : 1;     /* Clear rshim log after read */
+  uint32_t access_check_failed : 1;     /* Last Rshim access check failed */
+  uint32_t has_locked_work : 1;   /* Need to check locked mode in worker. */
+  uint32_t has_osp_work : 1;      /* Need to run ownership (osp) state machine. */
+  uint32_t monitor_mode : 1;      /* Mode that has register access but no fifo access */
 
   /* type. */
   rshim_backend_type_t type;
@@ -425,6 +439,9 @@ struct rshim_backend {
   /* Up to two VLAN IDs for PXE purpose. */
   uint16_t vlan[2];
 
+  /* rshim ownership state management */
+  bool force_cmd_pending; /* User requested rshim ownership transfer */
+
   /* APIs provided by backend. */
 
   /* API to write bulk data to RShim via the backend. */
@@ -495,7 +512,7 @@ extern volatile bool rshim_run;
 
 /* Register/unregister backend. */
 int rshim_register(rshim_backend_t *bd);
-void rshim_deregister(rshim_backend_t *bd);
+void rshim_deregister(rshim_backend_t *bd, bool has_misc);
 
 /* Find backend by name. */
 rshim_backend_t *rshim_find_by_name(char *dev_name);
@@ -617,7 +634,7 @@ static inline void rshim_pcie_check(rshim_backend_t *bd)
 
 #ifdef HAVE_RSHIM_FUSE
 int rshim_fuse_init(rshim_backend_t *bd);
-int rshim_fuse_del(rshim_backend_t *bd);
+int rshim_fuse_del(rshim_backend_t *bd, bool has_misc);
 void rshim_fuse_input_notify(rshim_backend_t *bd);
 int rshim_fuse_got_peer_signal(void);
 #endif

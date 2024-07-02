@@ -51,6 +51,15 @@ echo "SW_RESET 1" > /dev/rshim<N>/misc
 .fi
 .in
 
+Send a Force command to request the other rshim driver to release the rshim
+device
+
+.in +4n
+.nf
+echo "FORCE_CMD 1" > /dev/rshim<N>/misc
+.fi
+.in
+
 Enable the advanced options
 
 .in +4n
@@ -95,6 +104,17 @@ Specify the device name to attach with the format below. The backend driver can 
 -f, --foreground
 .in +4n
 Run in forground.
+.in
+
+-F, --force
+.in +4n
+Trying to force the other rshim driver to release the rshim device.
+
+For example, if the current rshim driver is running from host via PCIe, but the
+rshim device is already in use by the other rshim driver running from BMC via
+USB, then the user can use this option to try to force the other rshim driver to
+release the rshim device. The success of this operation depends on the other
+rshim driver's implementation and behavior.
 .in
 
 -i, --index
