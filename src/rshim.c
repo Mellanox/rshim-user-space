@@ -30,16 +30,12 @@
 #define RSHIM_TIMER_INTERVAL 1
 
 /* Intervals to check the locked mode. */
-#define CHECK_LOCKED_MODE_MS      100
-#define CHECK_LOCKED_MODE_TICKS   (CHECK_LOCKED_MODE_MS / RSHIM_TIMER_INTERVAL)
+#define RSHIM_CHECK_LOCKED_MODE_MS      100
+#define RSHIM_CHECK_LOCKED_MODE_TICKS   (RSHIM_CHECK_LOCKED_MODE_MS / RSHIM_TIMER_INTERVAL)
 
-/* Timeouts in ms */
-#define TO_RSHIM_REQ_MS 5000
-#define TO_RSHIM_ONLINE_MS 5000
-
-/* Timeouts in ticks */
-#define TO_TICKS_RSHIM_REQ (TO_RSHIM_REQ_MS / OSP_MGT_INTERVAL_MS)
-#define TO_TICKS_RSHIM_ONLINE (TO_RSHIM_ONLINE_MS / OSP_MGT_INTERVAL_MS)
+/* Ownership protocol timeouts in ms */
+#define RSHIM_OSP_TO_REQ_MS 1000
+#define RSHIM_OSP_TO_ONLINE_MS 1000
 
 /* Cycles to poll the network initialization before timeout. */
 #define RSHIM_NET_INIT_DELAY (60000 / RSHIM_TIMER_INTERVAL)
@@ -55,22 +51,18 @@ static int rshim_keepalive_ticks = RSHIM_KEEPALIVE_PERIOD / RSHIM_TIMER_INTERVAL
 #define RSHIM_KEEPALIVE_MAGIC_NUM 0x5089836482ULL
 
 /* Rshim ownership management. */
-#define OSP_MGT_INTERVAL_MS        100 /* Ownership state machine interval */
-#define OSP_MGT_INTERVAL_TICKS     (OSP_MGT_INTERVAL_MS / RSHIM_TIMER_INTERVAL)
-#define RSHIM_OWNERSHIP_REQ_MAGIC_NUM 0x4F53505F524551ULL /* OSP_REQ */
-#define RSHIM_OWNERSHIP_ACK_MAGIC_NUM 0x4F53505F41434BULL /* OSP_ACK */
-
-/* Pause RSHIM_DBG() here after 10 messages, then resume after 1 minute */
-#define RSHIM_DBG_PAUSE 6   /* messages limit for burst print */
-#define RSHIM_DBG_RESUME 10   /* seconds before resuming */
+#define RSHIM_OSP_MGT_INTERVAL_MS        100 /* Ownership handler running interval */
+#define RSHIM_OSP_MGT_INTERVAL_TICKS     (RSHIM_OSP_MGT_INTERVAL_MS / RSHIM_TIMER_INTERVAL)
+#define RSHIM_OSP_REQ_MAGIC_NUM 0x4F53505F524551ULL /* OSP_REQ */
+#define RSHIM_OSP_ACK_MAGIC_NUM 0x4F53505F41434BULL /* OSP_ACK */
 
 const char* magic_to_str(uint64_t magic){
   switch(magic){
     case RSHIM_KEEPALIVE_MAGIC_NUM:
       return "MAGIC_KEEPALIVE";
-    case RSHIM_OWNERSHIP_REQ_MAGIC_NUM:
+    case RSHIM_OSP_REQ_MAGIC_NUM:
       return "MAGIC_OSP_REQ";
-    case RSHIM_OWNERSHIP_ACK_MAGIC_NUM:
+    case RSHIM_OSP_ACK_MAGIC_NUM:
       return "MAGIC_OSP_ACK";
     default:
       return "UNKNOWN";
@@ -252,7 +244,7 @@ static void rshim_fifo_msg_update_checksum(rshim_tmfifo_msg_hdr_t *hdr);
 
 static int rshim_update_locked_mode(rshim_backend_t *bd);
 
-static int handle_ownership_transfer(rshim_backend_t *bd);
+static int rshim_handle_ownership_transfer(rshim_backend_t *bd);
 
 /* Global lock / unlock. */
 void rshim_lock(void)
@@ -1791,13 +1783,13 @@ static void rshim_work_handler(rshim_backend_t *bd)
     bd->has_locked_work = 0;
     rshim_update_locked_mode(bd);
   }
-  pthread_mutex_unlock(&bd->mutex);
 
-  /* Ownership transfer needs to run without holding bd->mutex. */
   if (bd->has_osp_work) {
     bd->has_osp_work = 0;
-    handle_ownership_transfer(bd);
+    rshim_handle_ownership_transfer(bd);
   }
+
+  pthread_mutex_unlock(&bd->mutex);
 }
 
 static int rshim_boot_done(rshim_backend_t *bd)
@@ -2122,9 +2114,6 @@ rshim_backend_t *rshim_find_by_dev(void *dev)
 
 /*
  * Must run with bd->mutex held.
- *
- * No need to call this function when value is set to 1. Just set bd->drop_mode
- * to 1.
  * */
 int rshim_set_drop_mode(rshim_backend_t *bd, int value)
 {
@@ -2137,7 +2126,10 @@ int rshim_set_drop_mode(rshim_backend_t *bd, int value)
     return -EALREADY;
   }
 
-  bd->drop_mode = value;
+  if (bd->enable_device && bd->enable_device(bd, value ? false : true))
+    bd->drop_mode = 1;
+  else
+    bd->drop_mode = value;
 
   if (bd->drop_mode)
     bd->drop_pkt = 1;
@@ -2218,27 +2210,14 @@ static int rshim_update_locked_mode(rshim_backend_t *bd)
   return 0;
 }
 
-static int read_rshim_sp1(rshim_backend_t *bd, uint64_t* sp1)
-{
-  int rc;
-
-  rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad1, sp1, RSHIM_REG_SIZE_8B);
-  if (rc) {
-    RSHIM_ERR("rshim%d failed to read sp1\n", bd->index);
-    return rc;
-  }
-
-  return 0;
-}
-
-static int check_rshim_sp1_magic(rshim_backend_t *bd, uint64_t magic,
+static int rshim_check_sp1_magic(rshim_backend_t *bd, uint64_t magic,
     bool* result)
 {
   int rc;
   uint64_t sp1;
 
-  rc = read_rshim_sp1(bd, &sp1);
-  if (rc) {
+  rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad1, &sp1, RSHIM_REG_SIZE_8B);
+  if (rc || RSHIM_BAD_CTRL_REG(sp1)) {
     RSHIM_ERR("rshim%d failed to read sp1: %d\n", bd->index, rc);
     *result = false;
     return rc;
@@ -2249,19 +2228,12 @@ static int check_rshim_sp1_magic(rshim_backend_t *bd, uint64_t magic,
   return 0;
 }
 
-static int check_rshim_magic_ownership_req(rshim_backend_t *bd, bool* result)
-{
-  return check_rshim_sp1_magic(bd, RSHIM_OWNERSHIP_REQ_MAGIC_NUM, result);
-}
-
-static int check_rshim_magic_ownership_ack(rshim_backend_t *bd, bool* result)
-{
-  return check_rshim_sp1_magic(bd, RSHIM_OWNERSHIP_ACK_MAGIC_NUM, result);
-}
-
-static int write_rshim_sp1_magic(rshim_backend_t *bd, uint64_t magic)
+static int rshim_write_sp1_magic(rshim_backend_t *bd, uint64_t magic)
 {
   int rc;
+
+  RSHIM_INFO("rshim%d writing sp1 magic %s (0x%llx)\n", bd->index,
+      magic_to_str(magic), (unsigned long long)magic);
 
   rc = bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad1, magic,
       RSHIM_REG_SIZE_8B);
@@ -2273,23 +2245,8 @@ static int write_rshim_sp1_magic(rshim_backend_t *bd, uint64_t magic)
   return 0;
 }
 
-static int write_rshim_magic_ownership_req(rshim_backend_t *bd)
+static int rshim_handle_ownership_transfer(rshim_backend_t *bd)
 {
-  RSHIM_INFO("rshim%d writing ownership req magic: 0x%llx\n", bd->index,
-      RSHIM_OWNERSHIP_REQ_MAGIC_NUM);
-
-  return write_rshim_sp1_magic(bd, RSHIM_OWNERSHIP_REQ_MAGIC_NUM);
-}
-
-static int write_rshim_magic_ownership_ack(rshim_backend_t *bd)
-{
-  RSHIM_INFO("rshim%d writing ownership ack magic 0x%llx\n", bd->index,
-      RSHIM_OWNERSHIP_ACK_MAGIC_NUM);
-
-  return write_rshim_sp1_magic(bd, RSHIM_OWNERSHIP_ACK_MAGIC_NUM);
-}
-
-static int handle_ownership_transfer(rshim_backend_t *bd) {
   int i, rt;
   bool has_ack;
   bool has_req;
@@ -2299,21 +2256,26 @@ static int handle_ownership_transfer(rshim_backend_t *bd) {
       RSHIM_INFO("rshim%d executing Force command\n", bd->index);
       bd->force_cmd_pending = 0;
 
+      if (bd->enable_device && bd->enable_device(bd, true)) {
+        RSHIM_ERR("rshim%d failed to enable device\n", bd->index);
+        return -EIO;
+      }
+
       bd->requesting_rshim = 1;
 
       /* sending req and checking ack multiple times to ensure the transfer */
       for (i = 0; i < 10; i++) {
-        rt = write_rshim_magic_ownership_req(bd);
+        rt = rshim_write_sp1_magic(bd, RSHIM_OSP_REQ_MAGIC_NUM);
         if (rt) {
           RSHIM_ERR("rshim%d failed to write ownership transfer req\n",
               bd->index);
           continue;
         }
 
-        usleep(100000);
+        usleep(RSHIM_OSP_TO_REQ_MS * 1000 / 10);
 
         has_ack = false;
-        rt = check_rshim_magic_ownership_ack(bd, &has_ack);
+        rt = rshim_check_sp1_magic(bd, RSHIM_OSP_ACK_MAGIC_NUM, &has_ack);
 
         if (!rt && has_ack) {
           break;
@@ -2339,7 +2301,7 @@ static int handle_ownership_transfer(rshim_backend_t *bd) {
     }
   } else {
     has_req = false;
-    rt = check_rshim_magic_ownership_req(bd, &has_req);
+    rt = rshim_check_sp1_magic(bd, RSHIM_OSP_REQ_MAGIC_NUM, &has_req);
 
     if (!rt && has_req) {
       RSHIM_INFO("rshim%d received ownership transfer request\n", bd->index);
@@ -2348,12 +2310,11 @@ static int handle_ownership_transfer(rshim_backend_t *bd) {
 
      RSHIM_INFO("Notifying the requester with ACK\n");
       for (i = 0; i < 10; i++) {
-        write_rshim_magic_ownership_ack(bd);
-        usleep(100000);
+        rshim_write_sp1_magic(bd, RSHIM_OSP_ACK_MAGIC_NUM);
+        usleep(RSHIM_OSP_TO_REQ_MS * 1000 / 10);
       }
 
-      /* Make sure the requester is stable */
-      usleep(1000000);
+      usleep(RSHIM_OSP_TO_ONLINE_MS * 1000);
 
       RSHIM_INFO("rshim%d entering drop mode\n", bd->index);
       rt = rshim_set_drop_mode(bd, 1);
@@ -2365,7 +2326,7 @@ static int handle_ownership_transfer(rshim_backend_t *bd) {
 
       rshim_unlock();
 
-      RSHIM_INFO("rshim%d passed to the requester\n", bd->index);
+      RSHIM_INFO("rshim%d passed to the requester successfully\n", bd->index);
     }
   }
   return 0;
@@ -2408,12 +2369,12 @@ static void rshim_timer_run(void)
       if (rshim_timer_ticks - bd->timer > 0)
         rshim_timer_func(bd);
 
-      if (rshim_timer_ticks % CHECK_LOCKED_MODE_TICKS == 0) {
+      if (rshim_timer_ticks % RSHIM_CHECK_LOCKED_MODE_TICKS == 0) {
         bd->has_locked_work = 1;
         rshim_work_signal(bd);
       }
 
-      if (rshim_timer_ticks % OSP_MGT_INTERVAL_TICKS == 0) {
+      if (rshim_timer_ticks % RSHIM_OSP_MGT_INTERVAL_TICKS == 0) {
         bd->has_osp_work = 1;
         rshim_work_signal(bd);
       }
