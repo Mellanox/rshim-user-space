@@ -70,7 +70,7 @@ static void rshim_usb_delete(rshim_backend_t *bd)
 {
   rshim_usb_t *dev = container_of(bd, rshim_usb_t, bd);
 
-  rshim_deregister(bd, false);
+  rshim_deregister(bd);
   RSHIM_INFO("rshim %s deleted\n", bd->dev_name);
   if (dev->handle) {
     libusb_close(dev->handle);
@@ -925,7 +925,7 @@ static int rshim_usb_probe_one(libusb_context *ctx, libusb_device *usb_dev,
   if (rc)
     goto error;
 
-  if (rshim_force_mode && bd->monitor_mode) {
+  if (rshim_force_mode && bd->drop_mode) {
     RSHIM_INFO("rshim%d will send force cmd to the other rshim-active end\n",
         bd->index);
     bd->force_cmd_pending = 1;
