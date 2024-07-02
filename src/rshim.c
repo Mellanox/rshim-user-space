@@ -1304,11 +1304,10 @@ again:
    */
   if (bd->read_buf_next < bd->read_buf_bytes ||
       (bd->spin_flags & RSH_SFLG_READING)) {
-
     /* We're doing nothing. */
     RSHIM_DBG("fifo_input: no new read: %s\n",
-        (bd->read_buf_next < bd->read_buf_bytes) ?
-        "have data" : "already reading");
+              (bd->read_buf_next < bd->read_buf_bytes) ?
+              "have data" : "already reading");
   } else {
     int len;
 
@@ -1351,8 +1350,7 @@ ssize_t rshim_fifo_read(rshim_backend_t *bd, char *buffer, size_t count,
     int pass1;
     int pass2;
 
-    /* Remove this for now as it's every chatty with -l 4*/
-    /* RSHIM_DBG("fifo_read, top of loop, remaining count %zd\n", count); */
+    RSHIM_DBG("fifo_read, top of loop, remaining count %zd\n", count);
 
     /*
      * We check this each time through the loop since the

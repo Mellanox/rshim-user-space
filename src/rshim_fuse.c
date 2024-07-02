@@ -1315,6 +1315,13 @@ int rshim_fuse_init(rshim_backend_t *bd)
 #endif
 
   for (i = 0; i < RSH_DEV_TYPES; i++) {
+    /* When we don't own the rshim device, we only want to create the "misc"
+     * device file, so the user can monitor the rshim ownership status and
+     * send Force/RequestOwnership to the other end (rshim owner).
+     *
+     * Other functionalities provided by "boot", "console", and "rshim" won't
+     * be available.
+     */
     if (bd->access_check_failed && i != RSH_DEV_TYPE_MISC)
       continue;
 #ifdef __linux__
