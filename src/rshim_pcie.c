@@ -1004,12 +1004,12 @@ rshim_pcie_read(rshim_backend_t *bd, uint32_t chan, uint32_t addr,
       (chan != RSHIM_CHANNEL || addr != bd->regs->scratchpad6))
     sleep(RSHIM_PCIE_NIC_RESET_WAIT);
 
-  if (bd->drop_mode) {
+  if (bd->drop_mode && !bd->requesting_rshim) {
     *result = 0;
     return 0;
   }
 
-  if (!bd->has_rshim || !dev->rshim_regs)
+  if (!bd->has_rshim || !bd->has_tm || !dev->rshim_regs)
     return -ENODEV;
 
   dev->write_count = 0;
@@ -1046,10 +1046,10 @@ rshim_pcie_write(rshim_backend_t *bd, uint32_t chan, uint32_t addr,
       (chan != RSHIM_CHANNEL || addr != bd->regs->scratchpad6))
     sleep(RSHIM_PCIE_NIC_RESET_WAIT);
 
-  if (bd->drop_mode)
+  if (bd->drop_mode && !bd->requesting_rshim)
     return 0;
 
-  if (!bd->has_rshim || !dev->rshim_regs)
+  if (!bd->has_rshim || !bd->has_tm || !dev->rshim_regs)
     return -ENODEV;
 
   /*
@@ -1090,7 +1090,7 @@ static void rshim_pcie_delete(rshim_backend_t *bd)
 {
   rshim_pcie_t *dev = container_of(bd, rshim_pcie_t, bd);
 
-  rshim_deregister(bd, false);
+  rshim_deregister(bd);
   free(dev);
 }
 
@@ -1265,13 +1265,13 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
   bd->has_tm = 1;
   rc = rshim_register(bd);
   /* Notify that the device is attached */
-  if (!rc && !bd->access_check_failed)
+  if (!rc && !bd->drop_mode)
     rc = rshim_notify(bd, RSH_EVENT_ATTACH, 0);
   pthread_mutex_unlock(&bd->mutex);
   if (rc)
     goto rshim_probe_failed;
 
-  if (rshim_force_mode && bd->monitor_mode) {
+  if (rshim_force_mode && bd->drop_mode) {
     RSHIM_INFO("rshim%d will send force cmd to the other rshim-active end\n",
         bd->index);
     bd->force_cmd_pending = 1;
