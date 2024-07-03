@@ -2176,6 +2176,7 @@ static int rshim_check_locked_mode(rshim_backend_t *bd)
 static int rshim_update_locked_mode(rshim_backend_t *bd)
 {
   int locked_mode;
+  int has_lock;
 
   /* Only do this for PCIE. */
   if (bd->type != RSH_BACKEND_PCIE)
@@ -2185,9 +2186,14 @@ static int rshim_update_locked_mode(rshim_backend_t *bd)
   if (bd->is_booting)
     return 0;
 
+  has_lock = !pthread_mutex_trylock(&bd->mutex);
+
   locked_mode = rshim_check_locked_mode(bd);
-  if (locked_mode < 0)
+  if (locked_mode < 0) {
+    if (has_lock)
+      pthread_mutex_unlock(&bd->mutex);
     return -EIO;
+  }
 
   if (locked_mode != bd->locked_mode) {
     RSHIM_INFO("rshim%d set to %s mode\n", bd->index,
@@ -2210,11 +2216,16 @@ static int rshim_update_locked_mode(rshim_backend_t *bd)
         rt = rshim_set_drop_mode(bd, 1);
         if (rt) {
           RSHIM_ERR("rshim%d failed to enter drop mode\n", bd->index);
+          if (has_lock)
+            pthread_mutex_unlock(&bd->mutex);
           return -EIO;
         }
       }
     }
   }
+
+  if (has_lock)
+    pthread_mutex_unlock(&bd->mutex);
 
   return 0;
 }
