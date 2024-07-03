@@ -2126,6 +2126,7 @@ int rshim_set_drop_mode(rshim_backend_t *bd, int value)
     return -EALREADY;
   }
 
+  bd->drop_mode = 0;
   if (bd->enable_device && bd->enable_device(bd, value ? false : true))
     bd->drop_mode = 1;
   else
