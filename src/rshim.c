@@ -2214,7 +2214,8 @@ static int rshim_update_locked_mode(rshim_backend_t *bd)
       has_bd_lock = !pthread_mutex_trylock(&bd->mutex);
       rt = rshim_access_check(bd); 
       if (has_bd_lock)
-        rshim_unlock();
+        pthread_mutex_unlock(&bd->mutex);
+      rshim_unlock();
       if (rt) {
         RSHIM_INFO("rshim%d attached by another device. Entering Drop Mode\n",
             bd->index);
