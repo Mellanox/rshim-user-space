@@ -2138,22 +2138,26 @@ int rshim_set_drop_mode(rshim_backend_t *bd, int value)
     bd->drop_pkt = 1;
   else
     rshim_fifo_sync(bd, true);
+
+  if (has_bd_lock)
+    pthread_mutex_unlock(&bd->mutex);
+
   /*
    * Check if another endpoint driver has already attached to the
    * same rshim device before enabling it.
    */
   if (!bd->drop_mode) {
     rshim_lock();
+    has_bd_lock = !pthread_mutex_trylock(&bd->mutex);
     if (rshim_access_check(bd)) {
       RSHIM_WARN("rshim%d is not accessible\n", bd->index);
       bd->drop_mode = 1;
       rt = -EACCES;
     }
+    if (has_bd_lock)
+      pthread_mutex_unlock(&bd->mutex);
     rshim_unlock();
   }
-
-  if (has_bd_lock)
-    pthread_mutex_unlock(&bd->mutex);
 
   return rt;
 }
