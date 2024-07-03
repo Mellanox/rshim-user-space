@@ -856,9 +856,7 @@ static int rshim_fuse_misc_write(struct cuse_dev *cdev, int fflags,
   } else if (strcmp(key, "DROP_MODE") == 0) {
     if (sscanf(p, "%d", &value) != 1)
       goto invalid;
-    pthread_mutex_lock(&bd->mutex);
     rshim_set_drop_mode(bd, value);
-    pthread_mutex_unlock(&bd->mutex);
   } else if (strcmp(key, "CLEAR_ON_READ") == 0) {
     if (sscanf(p, "%d", &value) != 1)
       goto invalid;

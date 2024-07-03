@@ -922,8 +922,10 @@ static int rshim_usb_probe_one(libusb_context *ctx, libusb_device *usb_dev,
 
   /* Notify that device is attached. */
   rc = rshim_notify(bd, RSH_EVENT_ATTACH, 0);
-  if (rc)
+  if (rc) {
+    pthread_mutex_unlock(&bd->mutex);
     goto error;
+  }
 
   if (rshim_force_mode && bd->drop_mode) {
     RSHIM_INFO("rshim%d will send force cmd to the other rshim-active end\n",

@@ -2119,10 +2119,15 @@ int rshim_set_drop_mode(rshim_backend_t *bd, int value)
 {
   int old_value;
   int rt = 0;
+  int has_bd_lock;
+
+  has_bd_lock = !pthread_mutex_trylock(&bd->mutex);
 
   old_value = (int)bd->drop_mode;
   value = !!value;
   if (value == old_value) {
+    if (has_bd_lock)
+      pthread_mutex_unlock(&bd->mutex);
     return -EALREADY;
   }
 
@@ -2149,6 +2154,10 @@ int rshim_set_drop_mode(rshim_backend_t *bd, int value)
     }
     rshim_unlock();
   }
+
+  if (has_bd_lock)
+    pthread_mutex_unlock(&bd->mutex);
+
   return rt;
 }
 
@@ -2201,9 +2210,7 @@ static int rshim_update_locked_mode(rshim_backend_t *bd)
       if (rt) {
         RSHIM_INFO("rshim%d attached by another device. Entering Drop Mode\n",
             bd->index);
-        pthread_mutex_lock(&bd->mutex);
         rshim_set_drop_mode(bd, 1);
-        pthread_mutex_unlock(&bd->mutex);
       }
     }
   }
@@ -2278,9 +2285,8 @@ static int rshim_handle_ownership_transfer(rshim_backend_t *bd)
         has_ack = false;
         rt = rshim_check_sp1_magic(bd, RSHIM_OSP_ACK_MAGIC_NUM, &has_ack);
 
-        if (!rt && has_ack) {
+        if (!rt && has_ack)
           break;
-        }
       }
 
       if (rt || !has_ack) {
@@ -2307,9 +2313,7 @@ static int rshim_handle_ownership_transfer(rshim_backend_t *bd)
     if (!rt && has_req) {
       RSHIM_INFO("rshim%d received ownership transfer request\n", bd->index);
 
-      rshim_lock();
-
-     RSHIM_INFO("Notifying the requester with ACK\n");
+      RSHIM_INFO("Notifying the requester with ACK\n");
       for (i = 0; i < 10; i++) {
         rshim_write_sp1_magic(bd, RSHIM_OSP_ACK_MAGIC_NUM);
         usleep(RSHIM_OSP_TO_REQ_MS * 1000 / 10);
@@ -2324,8 +2328,6 @@ static int rshim_handle_ownership_transfer(rshim_backend_t *bd)
         rshim_unlock();
         return rt;
       }
-
-      rshim_unlock();
 
       RSHIM_INFO("rshim%d passed to the requester successfully\n", bd->index);
     }
