@@ -2112,9 +2112,6 @@ rshim_backend_t *rshim_find_by_dev(void *dev)
   return NULL;
 }
 
-/*
- * Must run with bd->mutex held.
- * */
 int rshim_set_drop_mode(rshim_backend_t *bd, int value)
 {
   int old_value;
@@ -2128,7 +2125,7 @@ int rshim_set_drop_mode(rshim_backend_t *bd, int value)
   if (value == old_value) {
     if (has_bd_lock)
       pthread_mutex_unlock(&bd->mutex);
-    return -EALREADY;
+    return 0;
   }
 
   bd->drop_mode = 0;
@@ -2210,7 +2207,11 @@ static int rshim_update_locked_mode(rshim_backend_t *bd)
       if (rt) {
         RSHIM_INFO("rshim%d attached by another device. Entering Drop Mode\n",
             bd->index);
-        rshim_set_drop_mode(bd, 1);
+        rt = rshim_set_drop_mode(bd, 1);
+        if (rt) {
+          RSHIM_ERR("rshim%d failed to enter drop mode\n", bd->index);
+          return -EIO;
+        }
       }
     }
   }
