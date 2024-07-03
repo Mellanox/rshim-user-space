@@ -2342,7 +2342,6 @@ static int rshim_handle_ownership_transfer(rshim_backend_t *bd)
       rt = rshim_set_drop_mode(bd, 1);
       if (rt) {
         RSHIM_ERR("rshim%d failed to enter drop mode\n", bd->index);
-        rshim_unlock();
         return rt;
       }
 
