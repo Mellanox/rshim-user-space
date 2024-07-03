@@ -2264,13 +2264,12 @@ static int rshim_handle_ownership_transfer(rshim_backend_t *bd)
     if (bd->force_cmd_pending) {
       RSHIM_INFO("rshim%d executing Force command\n", bd->index);
       bd->force_cmd_pending = 0;
+      bd->requesting_rshim = 1;
 
       if (bd->enable_device && bd->enable_device(bd, true)) {
         RSHIM_ERR("rshim%d failed to enable device\n", bd->index);
         return -EIO;
       }
-
-      bd->requesting_rshim = 1;
 
       /* sending req and checking ack multiple times to ensure the transfer */
       for (i = 0; i < 10; i++) {
