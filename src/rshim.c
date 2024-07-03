@@ -2193,11 +2193,10 @@ static int rshim_update_locked_mode(rshim_backend_t *bd)
   has_bd_lock = !pthread_mutex_trylock(&bd->mutex);
 
   locked_mode = rshim_check_locked_mode(bd);
-  if (locked_mode < 0) {
-    if (has_bd_lock)
-      pthread_mutex_unlock(&bd->mutex);
+  if (has_bd_lock)
+    pthread_mutex_unlock(&bd->mutex);
+  if (locked_mode < 0)
     return -EIO;
-  }
 
   if (locked_mode != bd->locked_mode) {
     RSHIM_INFO("rshim%d set to %s mode\n", bd->index,
@@ -2212,24 +2211,21 @@ static int rshim_update_locked_mode(rshim_backend_t *bd)
       int rt;
 
       rshim_lock();
+      has_bd_lock = !pthread_mutex_trylock(&bd->mutex);
       rt = rshim_access_check(bd); 
-      rshim_unlock();
+      if (has_bd_lock)
+        rshim_unlock();
       if (rt) {
         RSHIM_INFO("rshim%d attached by another device. Entering Drop Mode\n",
             bd->index);
         rt = rshim_set_drop_mode(bd, 1);
         if (rt) {
           RSHIM_ERR("rshim%d failed to enter drop mode\n", bd->index);
-          if (has_bd_lock)
-            pthread_mutex_unlock(&bd->mutex);
           return -EIO;
         }
       }
     }
   }
-
-  if (has_bd_lock)
-    pthread_mutex_unlock(&bd->mutex);
 
   return 0;
 }
