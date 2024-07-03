@@ -2277,6 +2277,7 @@ static int rshim_handle_ownership_transfer(rshim_backend_t *bd)
         if (rt) {
           RSHIM_ERR("rshim%d failed to write ownership transfer req\n",
               bd->index);
+          usleep(RSHIM_OSP_TO_REQ_MS * 1000 / 10);
           continue;
         }
 
@@ -2315,8 +2316,13 @@ static int rshim_handle_ownership_transfer(rshim_backend_t *bd)
 
       RSHIM_INFO("Notifying the requester with ACK\n");
       for (i = 0; i < 10; i++) {
-        rshim_write_sp1_magic(bd, RSHIM_OSP_ACK_MAGIC_NUM);
+        rt = rshim_write_sp1_magic(bd, RSHIM_OSP_ACK_MAGIC_NUM);
         usleep(RSHIM_OSP_TO_REQ_MS * 1000 / 10);
+        if (rt) {
+          RSHIM_ERR("rshim%d failed to write ownership transfer ack\n",
+              bd->index);
+          continue;
+        }
       }
 
       usleep(RSHIM_OSP_TO_ONLINE_MS * 1000);
