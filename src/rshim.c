@@ -1710,7 +1710,8 @@ static void rshim_work_handler(rshim_backend_t *bd)
 
   bd->work_pending = false;
 
-  if (bd->keepalive && bd->has_rshim && !bd->debug_code) {
+  if (bd->keepalive && bd->has_rshim && !bd->debug_code && !bd->drop_mode &&
+      !bd->in_access_check) {
     bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad1,
                     RSHIM_KEEPALIVE_MAGIC_NUM, RSHIM_REG_SIZE_8B);
     bd->keepalive = 0;
@@ -2465,6 +2466,8 @@ int rshim_access_check(rshim_backend_t *bd)
   uint64_t value = 0;
   int i, rc;
 
+  bd->in_access_check = 1;  /* must be cleared before return */
+
   /*
    * Add a check and delay to make sure rshim is ready.
    * It's mainly used in BlueField-2+ where the rshim (like USB) access is
@@ -2479,6 +2482,7 @@ int rshim_access_check(rshim_backend_t *bd)
   }
   if (RSHIM_BAD_CTRL_REG(value)) {
     RSHIM_ERR("Unable to read from rshim\n");
+    bd->in_access_check = 0;
     return -ETIMEDOUT;
   }
 
@@ -2488,6 +2492,7 @@ int rshim_access_check(rshim_backend_t *bd)
   rc = bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad1, 0, RSHIM_REG_SIZE_8B);
   if (rc < 0) {
     RSHIM_ERR("failed to write rshim rc=%d\n", rc);
+    bd->in_access_check = 0;
     return -ENODEV;
   }
 
@@ -2513,6 +2518,7 @@ int rshim_access_check(rshim_backend_t *bd)
 
     if (!rc && value == RSHIM_KEEPALIVE_MAGIC_NUM) {
       RSHIM_INFO("another backend already attached\n");
+      bd->in_access_check = 0;
       return -EEXIST;
     }
 
@@ -2523,8 +2529,11 @@ int rshim_access_check(rshim_backend_t *bd)
   rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad1, &value, RSHIM_REG_SIZE_8B);
   if (rc < 0 || RSHIM_BAD_CTRL_REG(value)) {
     RSHIM_ERR("access_check: failed to read rshim\n");
+    bd->in_access_check = 0;
     return -ENODEV;
   }
+
+  bd->in_access_check = 0;
 
   return 0;
 }

@@ -297,6 +297,7 @@ struct rshim_backend {
   uint32_t has_locked_work : 1;   /* Need to check locked mode in worker. */
   uint32_t has_osp_work : 1;      /* Need to run ownership (osp) state machine. */
   uint32_t requesting_rshim : 1;  /* Mode that a request is being made to other end */
+  uint32_t in_access_check : 1;   /* Access check is in progress */
 
   /* type. */
   rshim_backend_type_t type;
