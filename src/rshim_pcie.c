@@ -1004,7 +1004,7 @@ rshim_pcie_read(rshim_backend_t *bd, uint32_t chan, uint32_t addr,
       (chan != RSHIM_CHANNEL || addr != bd->regs->scratchpad6))
     sleep(RSHIM_PCIE_NIC_RESET_WAIT);
 
-  if (bd->drop_mode) {
+  if (bd->drop_mode && !bd->requesting_rshim) {
     *result = 0;
     return 0;
   }
@@ -1046,7 +1046,7 @@ rshim_pcie_write(rshim_backend_t *bd, uint32_t chan, uint32_t addr,
       (chan != RSHIM_CHANNEL || addr != bd->regs->scratchpad6))
     sleep(RSHIM_PCIE_NIC_RESET_WAIT);
 
-  if (bd->drop_mode)
+  if (bd->drop_mode && !bd->requesting_rshim)
     return 0;
 
   if (!bd->has_rshim || !bd->has_tm || !dev->rshim_regs)
@@ -1264,13 +1264,18 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
   bd->has_rshim = 1;
   bd->has_tm = 1;
   rc = rshim_register(bd);
-
   /* Notify that the device is attached */
-  if (!rc)
+  if (!rc && !bd->drop_mode)
     rc = rshim_notify(bd, RSH_EVENT_ATTACH, 0);
   pthread_mutex_unlock(&bd->mutex);
   if (rc)
     goto rshim_probe_failed;
+
+  if (rshim_force_mode && bd->drop_mode) {
+    RSHIM_INFO("rshim%d will send force cmd to the other rshim-active end\n",
+        bd->index);
+    bd->force_cmd_pending = 1;
+  }
 
 #ifdef __linux__
   /* Create interrupt handling thread for BlueField-2 and above. */

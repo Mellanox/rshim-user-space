@@ -40,6 +40,7 @@
 extern int rshim_log_level;
 extern bool rshim_daemon_mode;
 extern int rshim_drop_mode;
+extern int rshim_force_mode;
 extern int rshim_usb_reset_delay;
 extern bool rshim_has_usb_reset_delay;
 extern int rshim_pcie_reset_delay;
@@ -293,6 +294,10 @@ struct rshim_backend {
   uint32_t skip_boot_reset : 1;   /* Skip SW_RESET while pushing boot stream. */
   uint32_t locked_mode : 1;       /* Secure NIC mode Management. No RSHIM HW access */
   uint32_t clear_on_read : 1;     /* Clear rshim log after read */
+  uint32_t has_locked_work : 1;   /* Need to check locked mode in worker. */
+  uint32_t has_osp_work : 1;      /* Need to run ownership (osp) state machine. */
+  uint32_t requesting_rshim : 1;  /* Mode that a request is being made to other end */
+  uint32_t in_access_check : 1;   /* Access check is in progress */
 
   /* type. */
   rshim_backend_type_t type;
@@ -424,6 +429,9 @@ struct rshim_backend {
 
   /* Up to two VLAN IDs for PXE purpose. */
   uint16_t vlan[2];
+
+  /* rshim ownership state management */
+  bool force_cmd_pending; /* User requested rshim ownership transfer */
 
   /* APIs provided by backend. */
 

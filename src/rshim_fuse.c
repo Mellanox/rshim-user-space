@@ -721,6 +721,11 @@ static int rshim_fuse_misc_read(struct cuse_dev *cdev, int fflags,
     len -= n;
   }
 
+  n = snprintf(p, len, "%-16s%d (1: send Force command)\n", "FORCE_CMD",
+      bd->force_cmd_pending);
+  p += n;
+  len -= n;
+
   if (bd->display_level == 1) {
     gettimeofday(&tp, NULL);
 
@@ -851,7 +856,7 @@ static int rshim_fuse_misc_write(struct cuse_dev *cdev, int fflags,
   } else if (strcmp(key, "DROP_MODE") == 0) {
     if (sscanf(p, "%d", &value) != 1)
       goto invalid;
-    rshim_set_drop_mode(bd, value);
+    rc = rshim_set_drop_mode(bd, value);
   } else if (strcmp(key, "CLEAR_ON_READ") == 0) {
     if (sscanf(p, "%d", &value) != 1)
       goto invalid;
@@ -942,6 +947,12 @@ static int rshim_fuse_misc_write(struct cuse_dev *cdev, int fflags,
     if (!rc)
       bd->debug_code = val64;
     pthread_mutex_unlock(&bd->mutex);
+  } else if (strcmp(key, "FORCE_CMD") == 0) {
+    if (sscanf(p, "%x", &value) != 1)
+      goto invalid;
+    if (value && bd->drop_mode) {
+        bd->force_cmd_pending = 1;
+    }
   } else {
 invalid:
 #ifdef __linux__
