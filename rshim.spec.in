@@ -101,6 +101,10 @@ fi
 %{_mandir}/man8/bf-reg.8.gz
 
 %changelog
+* Fri Jul 05 2024 Penghe Geng <pgeng@nvidia.com> - 2.0.35
+- Add ownership transfer feature (primarily via "FORCE_CMD")
+- bfb-install: enhancement for NIC mode
+
 * Tue Jun 11 2024 Liming Sun <limings@nvidia.com> - 2.0.34
 - bfb-install: Enable CLEAR_ON_READ
 - bfb-install: add cleanup code for runtime update

@@ -1,3 +1,10 @@
+rshim (2.0.35) UNRELEASED; urgency=low
+
+  * Add ownership transfer feature (primarily via "FORCE_CMD")
+  * bfb-install: enhancement for NIC mode
+
+ -- Penghe Geng <pgeng@nvidia.com>  Fri, 05 Jul 2024 10:12:27 -0400
+
 rshim (2.0.34) UNRELEASED; urgency=low
 
   * bfb-install: Enable CLEAR_ON_READ
