@@ -2370,9 +2370,11 @@ static void rshim_timer_func(rshim_backend_t *bd) {
     rshim_update_locked_mode(bd);
   }
 
+#ifdef __linux__
   /* Some checking for PCIe backend. */
   if (bd->type == RSH_BACKEND_PCIE)
     rshim_pcie_check(bd);
+#endif
 
   bd->timer = rshim_timer_ticks + ticks;
 }
