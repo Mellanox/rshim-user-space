@@ -27,14 +27,13 @@
 # of the authors and should not be interpreted as representing official policies,
 # either expressed or implied, of the FreeBSD Project.
 
-#
-# Configurations
-#
-
 DEBUG=${DEBUG:-0}                             # Debug mode
 BF_REG=$(dirname $0)/bf-reg
 RSHIM_PIPE="/tmp/rshim_pipe"
 LOG_FILE="/tmp/bfb-install.log"
+
+run_cmd_local_ready=0     # whether run_cmd* local functions are ready to use
+run_cmd_remote_ready=0    # whether run_cmd* remote functions are ready to use
 
 usage ()
 {
@@ -516,7 +515,12 @@ cleanup() {
   fi
 
   # Disable CLEAR_ON_READ.
-  run_cmd_exit $mode "echo 'CLEAR_ON_READ 0' > ${rshim_node}/misc"
+  if [ $mode == "local" ] && [ $run_cmd_local_ready -eq 1 ]; then
+    run_cmd_exit local "echo 'CLEAR_ON_READ 0' > ${rshim_node}/misc"
+  fi
+  if [ $mode == "remote" ] && [ $run_cmd_remote_ready -eq 1 ]; then
+    run_cmd_exit remote "echo 'CLEAR_ON_READ 0' > ${rshim_node}/misc"
+  fi
 
   # Bind driver back for NIC mode.
   if [ $is_nic_mode -eq 1 -a -n "$pcie_bdf" ]; then
@@ -546,9 +550,6 @@ port=
 
 cleanup_started=0
 trap cleanup EXIT INT TERM
-
-run_cmd_local_ready=0     # whether run_cmd* local functions are ready to use
-run_cmd_remote_ready=0    # whether run_cmd* remote functions are ready to use
 
 is_nic_mode=0     # Flag to indicate whether DPU in NIC mod or not
 pcie_bdf=""       # PCIE BDF
@@ -730,9 +731,9 @@ if [ $mode == "remote" ]; then
   run_cmd_exit local "nc -z $ip 22" \
     "Error: Remote does not have SSH server running"
 
-  echo "Checking if Remote has root SSH access..."
-  if ! ssh root@$ip "$check_root_cmd"; then
-    echo "Error: Remote does not have root SSH access"
+  echo "Checking if Remote has password-less root SSH access..."
+  if ! ssh -o BatchMode=yes -o ConnectTimeout=5 root@$ip "exit"; then
+    echo "Error: Remote does not have password-less (public key authentication) root SSH access"
     exit 1
   fi
 
