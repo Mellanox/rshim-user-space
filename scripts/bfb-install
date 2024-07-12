@@ -520,7 +520,7 @@ cleanup() {
 
   # Bind driver back for NIC mode.
   if [ $is_nic_mode -eq 1 -a -n "$pcie_bdf" ]; then
-    echo "$pcie_bdf" > /sys/bus/pci/drivers/mlx5_core/bind >&/dev/null
+    echo "$pcie_bdf" > /sys/bus/pci/drivers/mlx5_core/bind
   fi
 }
 
@@ -777,9 +777,8 @@ fi
 # Check NIC mode and unbind mlx5_core driver in NIC mode.
 check_nic_mode
 if [ $is_nic_mode -eq 1 -a -n "$pcie_bdf" ]; then
-  echo "$pcie_bdf" > /sys/bus/pci/drivers/mlx5_core/unbind >&/dev/null &
+  echo "$pcie_bdf" > /sys/bus/pci/drivers/mlx5_core/unbind
 fi
-
 push_boot_stream
 
 wait_for_update_to_finish
