@@ -54,6 +54,13 @@ via the virtual console or network interface.
 %{_mandir}/man8/rshim.8.gz
 
 %changelog
+* Mon Jul 15 2024 Penghe Geng <pgeng@nvidia.com> - 2.0.36
+- Allow /dev/rshim<N> devfs creation only with --force option enabled
+- bfb-install: fix for NIC mode
+- bfb-install: Exit with error if running remote bfb-install without
+  password-less root SSH
+- Fix compiling issue for FreeBSD
+
 * Fri Jul 05 2024 Penghe Geng <pgeng@nvidia.com> - 2.0.35
 - Add ownership transfer feature (primarily via "FORCE_CMD")
 - bfb-install: enhancement for NIC mode

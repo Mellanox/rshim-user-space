@@ -1,3 +1,13 @@
+rshim (2.0.36) UNRELEASED; urgency=low
+
+  * Allow /dev/rshim<N> devfs creation only with --force option enabled
+  * bfb-install: fix for NIC mode
+  * bfb-install: Exit with error if running remote bfb-install without
+    password-less root SSH
+  * Fix compiling issue for FreeBSD
+
+ -- Penghe Geng <pgeng@nvidia.com>  Mon, 15 Jul 2024 17:57:21 -0400
+
 rshim (2.0.35) UNRELEASED; urgency=low
 
   * Add ownership transfer feature (primarily via "FORCE_CMD")
