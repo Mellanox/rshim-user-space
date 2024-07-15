@@ -2560,6 +2560,8 @@ int rshim_register(rshim_backend_t *bd)
   if (rc) {
     RSHIM_INFO("rshim%d entering drop mode\n", index);
     bd->drop_mode = 1;
+    if (!rshim_force_mode)
+      return rc;
   }
 
   if (!bd->write)
