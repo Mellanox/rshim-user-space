@@ -101,6 +101,9 @@ fi
 %{_mandir}/man8/bf-reg.8.gz
 
 %changelog
+* Tue Jul 16 2024 Penghe Geng <pgeng@nvidia.com> - 2.0.37
+- add missing --force in help menu
+
 * Mon Jul 15 2024 Penghe Geng <pgeng@nvidia.com> - 2.0.36
 - Allow /dev/rshim<N> devfs creation only with --force option enabled
 - bfb-install: fix for NIC mode
