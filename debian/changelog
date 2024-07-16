@@ -1,3 +1,9 @@
+rshim (2.0.37) UNRELEASED; urgency=low
+
+  * add missing --force in help menu
+
+ -- Penghe Geng <pgeng@nvidia.com>  Tue, 16 Jul 2024 10:08:48 -0400
+
 rshim (2.0.36) UNRELEASED; urgency=low
 
   * Allow /dev/rshim<N> devfs creation only with --force option enabled
