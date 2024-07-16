@@ -3145,6 +3145,7 @@ static void print_help(void)
   printf("  -b, --backend     backend name (usb, pcie or pcie-lf)\n");
   printf("  -d, --device      device to attach\n");
   printf("  -f, --foreground  run in foreground\n");
+  printf("  -F, --force       run in force mode\n");
   printf("  -i, --index       use device path /dev/rshim<i>/\n");
   printf("  -l, --log-level   log level");
   printf("(0:none, 1:error, 2:warning, 3:notice, 4:debug)\n");
