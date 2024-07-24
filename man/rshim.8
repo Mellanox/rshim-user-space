@@ -111,18 +111,26 @@ Run in forground.
 
 -F, --force
 .in +4n
-Put rshim driver in ownership-forceable mode (aka. force mode). In this mode, the driver will send
-a one time ownership request command to the other rshim backends upon start-up
-if the rshim interface is already attached by another backend.  It also enables
-"/dev/rshim<N>/" creation even when rshim is not attached, allowing user to
-manually send a ownership request (aka FORCE_CMD) to "/dev/rshim<N>/misc"
-interface at any time.
+Put rshim driver in ownership-forceable mode (aka. force mode). In this mode,
+the driver will be put rshim driver in ownership-forceable mode (aka, Force
+Mode):
+
+1. It also always enables "/dev/rshim<N>/" creation even when rshim is not
+attached, allowing user to manually send a ownership request to
+"/dev/rshim<N>/misc" interface at any time.
+
+2. It will send a one time ownership request command to the other rshim backend
+upon start-up if the rshim interface is already attached by another backend.
+This one-time request is for each rshim device present (one request for rshim0,
+one for rshim1, etc) and will not be repeated until the next driver restart.
 
 For example, if the current rshim driver is running from host via PCIe, but the
 rshim device is already in use by the other rshim driver running from BMC via
 USB, then the user can use this option to try to force the other rshim driver to
 release the rshim device. The success of this operation depends on the other
 rshim driver's implementation and behavior.
+
+This option is equivalent to setting "FORCE_MODE" to 1 in rshim.conf.
 .in
 
 -i, --index
