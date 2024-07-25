@@ -424,8 +424,8 @@ wait_for_update_to_finish()
   # Set display level to 2 to show more information
   run_cmd_exit $mode "echo 'DISPLAY_LEVEL 2' > ${rshim_node}/misc"
 
-  # Remove old log file.
-  rm -f ${LOG_FILE}
+  # Create log file with date
+  echo "# $(date)" > ${LOG_FILE}
 
   last=""
   finished=0
@@ -621,6 +621,9 @@ if echo "$rshim" | grep -q ':'; then
 else
   # Local mode, rshim_node is directly the value of rshim
   rshim_node=$rshim
+
+  # Adjust log file to be per rshim
+  LOG_FILE=${LOG_FILE%.*}-$(basename $rshim_node).log
 fi
 
 # We don't allow remote modes for local rshim
@@ -778,7 +781,7 @@ fi
 # Check NIC mode and unbind mlx5_core driver in NIC mode.
 check_nic_mode
 if [ $is_nic_mode -eq 1 -a -n "$pcie_bdf" ]; then
-  echo "$pcie_bdf" > /sys/bus/pci/drivers/mlx5_core/unbind
+  echo "$pcie_bdf" > /sys/bus/pci/drivers/mlx5_core/unbind 2>/dev/null
 fi
 push_boot_stream
 
