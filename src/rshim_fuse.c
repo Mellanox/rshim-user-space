@@ -722,7 +722,7 @@ static int rshim_fuse_misc_read(struct cuse_dev *cdev, int fflags,
   }
 
   n = snprintf(p, len, "%-16s%d (1: send Force command)\n", "FORCE_CMD",
-      bd->force_cmd_pending);
+      rshim_force_cmd_pending[bd->index]);
   p += n;
   len -= n;
 
@@ -950,8 +950,11 @@ static int rshim_fuse_misc_write(struct cuse_dev *cdev, int fflags,
   } else if (strcmp(key, "FORCE_CMD") == 0) {
     if (sscanf(p, "%x", &value) != 1)
       goto invalid;
-    if (value && bd->drop_mode) {
-        bd->force_cmd_pending = 1;
+    if (value) {
+      if (!bd->drop_mode)
+        rc = -EINVAL;
+      else
+        rshim_force_cmd_pending[bd->index] = 1;
     }
   } else {
 invalid:

@@ -1271,12 +1271,6 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
   if (rc)
     goto rshim_probe_failed;
 
-  if (rshim_force_mode && bd->drop_mode) {
-    RSHIM_INFO("rshim%d will send force cmd to the other rshim-active end\n",
-        bd->index);
-    bd->force_cmd_pending = 1;
-  }
-
 #ifdef __linux__
   /* Create interrupt handling thread for BlueField-2 and above. */
   if (pci_dev->device_id != BLUEFIELD1_DEVICE_ID) {

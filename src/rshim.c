@@ -220,12 +220,15 @@ bool rshim_has_pcie_reset_delay = false;
 int rshim_pcie_enable_vfio = 1;
 int rshim_pcie_enable_uio = 1;
 int rshim_pcie_intr_poll_interval = 10;  /* Interrupt polling in milliseconds */
-int rshim_force_mode = 0;  /* Request ownship when entering drop mode */
+int rshim_force_mode = 0;  /* always keep /dev/rshim<N> & send a force cmd */
 
 /* Array of devices and device names. */
 rshim_backend_t *rshim_devs[RSHIM_MAX_DEV];
 char *rshim_dev_names[RSHIM_MAX_DEV];
 char *rshim_blocked_dev_names[RSHIM_MAX_DEV];
+
+/* Whether to send a force command to the rshim device. */
+bool rshim_force_cmd_pending[RSHIM_MAX_DEV];
 
 /* Bitmask of the used rshim device id. */
 #if RSHIM_MAX_DEV > 64
@@ -2274,9 +2277,9 @@ static int rshim_handle_ownership_transfer(rshim_backend_t *bd)
   bool has_req;
 
   if (bd->drop_mode) {
-    if (bd->force_cmd_pending) {
+    if (rshim_force_cmd_pending[bd->index]) {
       RSHIM_INFO("rshim%d executing Force command\n", bd->index);
-      bd->force_cmd_pending = 0;
+      rshim_force_cmd_pending[bd->index] = 0;
       bd->requesting_rshim = 1;
 
       if (bd->enable_device && bd->enable_device(bd, true)) {
@@ -2321,6 +2324,12 @@ static int rshim_handle_ownership_transfer(rshim_backend_t *bd)
       RSHIM_INFO("rshim%d regained ownership successfully\n", bd->index);
     }
   } else {
+    if (rshim_force_cmd_pending[bd->index]) {
+      RSHIM_INFO("Skipping Force command for rshim%d (already attached)\n",
+          bd->index);
+      rshim_force_cmd_pending[bd->index] = 0;
+    }
+
     has_req = false;
     rt = rshim_check_sp1_magic(bd, RSHIM_OSP_REQ_MAGIC_NUM, &has_req);
 
@@ -3039,7 +3048,7 @@ static int rshim_load_cfg(void)
     } else if (!strcmp(key, "DROP_MODE")) {
       rshim_drop_mode = (atoi(value) > 0) ? 1 : 0;
       continue;
-    } else if (!strcmp(key, "FORCE_CMD")) {
+    } else if (!strcmp(key, "FORCE_MODE")) {
       rshim_force_mode = (atoi(value) > 0) ? 1 : 0;
       continue;
     } else if (!strcmp(key, "USB_RESET_DELAY")) {
@@ -3169,6 +3178,7 @@ int main(int argc, char *argv[])
     { NULL, 0, NULL, 0 }
   };
   int c;
+  int i;
 
   /* Parse arguments. */
   while ((c = getopt_long(argc, argv, short_options, long_options, NULL))
@@ -3251,6 +3261,14 @@ int main(int argc, char *argv[])
 
   rshim_load_cfg();
 
+  /* In force mode, we will send a one-time ownership request command for each
+   * rshim backend if they are found to be detached (aka. in drop mode) */
+  if (rshim_force_mode) {
+    for (i = 0; i < RSHIM_MAX_DEV; i++) {
+        rshim_force_cmd_pending[i] = 1;
+    }
+  }
+  
   set_signals();
 
   rshim_main(argc, argv);

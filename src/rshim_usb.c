@@ -927,12 +927,6 @@ static int rshim_usb_probe_one(libusb_context *ctx, libusb_device *usb_dev,
     goto error;
   }
 
-  if (rshim_force_mode && bd->drop_mode) {
-    RSHIM_INFO("rshim%d will send force cmd to the other rshim-active end\n",
-        bd->index);
-    bd->force_cmd_pending = 1;
-  }
-
   pthread_mutex_unlock(&bd->mutex);
   rshim_unlock();
   return 0;

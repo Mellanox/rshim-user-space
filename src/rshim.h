@@ -48,6 +48,7 @@ extern bool rshim_has_pcie_reset_delay;
 extern int rshim_pcie_intr_poll_interval;
 extern int rshim_pcie_enable_vfio;
 extern int rshim_pcie_enable_uio;
+extern bool rshim_force_cmd_pending[];
 
 #ifndef offsetof
 #define offsetof(TYPE, MEMBER)	((size_t)&((TYPE *)0)->MEMBER)
@@ -429,9 +430,6 @@ struct rshim_backend {
 
   /* Up to two VLAN IDs for PXE purpose. */
   uint16_t vlan[2];
-
-  /* rshim ownership state management */
-  bool force_cmd_pending; /* User requested rshim ownership transfer */
 
   /* APIs provided by backend. */
 
