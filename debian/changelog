@@ -1,3 +1,10 @@
+rshim (2.0.38) UNRELEASED; urgency=low
+
+  * Make sending the initial force command a one-time event
+  * bfb-install: adjust the log file to be per rshim
+
+ -- Penghe Geng <pgeng@nvidia.com>  Fri, 26 Jul 2024 14:19:37 -0400
+
 rshim (2.0.37) UNRELEASED; urgency=low
 
   * add missing --force in help menu
