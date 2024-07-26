@@ -54,6 +54,10 @@ via the virtual console or network interface.
 %{_mandir}/man8/rshim.8.gz
 
 %changelog
+* Fri Jul 26 2024 Penghe Geng <pgeng@nvidia.com> - 2.0.38
+- Make sending the initial force command a one-time event
+- bfb-install: adjust the log file to be per rshim
+
 * Tue Jul 16 2024 Penghe Geng <pgeng@nvidia.com> - 2.0.37
 - add missing --force in help menu
 
