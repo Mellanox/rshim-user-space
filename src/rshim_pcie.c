@@ -323,8 +323,10 @@ static void rshim_pcie_mmap_release(rshim_pcie_t *dev)
 
 static void rshim_pcie_bind(rshim_pcie_t *dev, bool enable)
 {
+  uint16_t device_id[] = {BLUEFIELD1_DEVICE_ID, BLUEFIELD2_DEVICE_ID,
+                          BLUEFIELD3_DEVICE_ID, BLUEFIELD3_DEVICE_ID2};
   char cmd[RSHIM_CMD_MAX];
-  int rc;
+  int i, rc;
 
   /*
    * Linux kernel prior 4.18 has a bug which could cause crash when uio is
@@ -345,21 +347,24 @@ static void rshim_pcie_bind(rshim_pcie_t *dev, bool enable)
                dev->pci_path);
       if (system(cmd) == -1)
         RSHIM_DBG("Failed to unbind device\n");
+    } else if (dev->mmap_mode == RSHIM_PCIE_MMAP_VFIO) {
+      /* Clear driver_override. */
+      snprintf(cmd, sizeof(cmd),
+               "echo \"\" > %s/%04x:%02x:%02x.%1u/driver_override 2>/dev/null",
+               SYS_BUS_PCI_PATH, dev->domain, dev->bus,
+               dev->dev, dev->func);
+      if (system(cmd) == -1)
+        RSHIM_DBG("Failed to enable pcie\n");
     }
 
-    snprintf(cmd, sizeof(cmd), "echo '%x %x' > %s/%s 2>/dev/null",
-             TILERA_VENDOR_ID, BLUEFIELD1_DEVICE_ID, dev->pci_path,
-             enable ? "new_id" : "remove_id");
-    rc = system(cmd);
-    if (rc == -1)
-      RSHIM_DBG("Failed to write device id %m\n");
-
-    snprintf(cmd, sizeof(cmd), "echo '%x %x' > %s/%s 2>/dev/null",
-             TILERA_VENDOR_ID, BLUEFIELD2_DEVICE_ID, dev->pci_path,
-             enable ? "new_id" : "remove_id");
-    rc = system(cmd);
-    if (rc == -1)
-      RSHIM_DBG("Failed to write device id %m\n");
+    for (i = 0; i < sizeof(device_id) / sizeof(uint16_t); i++) {
+      snprintf(cmd, sizeof(cmd), "echo '%x %x' > %s/%s 2>/dev/null",
+               TILERA_VENDOR_ID, device_id[i], dev->pci_path,
+               enable ? "new_id" : "remove_id");
+      rc = system(cmd);
+      if (rc == -1)
+        RSHIM_DBG("Failed to write device id %m\n");
+    }
 
     if (enable) {
       snprintf(cmd, sizeof(cmd),
