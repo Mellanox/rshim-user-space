@@ -370,11 +370,16 @@ push_boot_stream()
   fi
 }
 
+# Checks BF3 NIC_MODE
 check_nic_mode()
 {
   local str
 
   [ "$mode" != "local" ] && return
+
+  # Only needs to check for BF3.
+  str=`cat ${rshim_node}/misc | grep DEV_INFO | grep BlueField-3`
+  [ -z "$str" ] && return
 
   # Get PCIE BDF
   str=`cat ${rshim_node}/misc | grep DEV_NAME | awk '{print $2}'`
