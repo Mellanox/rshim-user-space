@@ -1,3 +1,11 @@
+rshim (2.0.39) UNRELEASED; urgency=low
+
+  * Fix rshim masking issue on Ubuntu
+  * bfb-install: Fix NIC_MODE installation for BlueField-2
+  * pcie: Add VFIO support for BlueField-3
+
+ -- Penghe Geng <pgeng@nvidia.com>  Fri, 02 Aug 2024 10:34:37 -0400
+
 rshim (2.0.38) UNRELEASED; urgency=low
 
   * Make sending the initial force command a one-time event

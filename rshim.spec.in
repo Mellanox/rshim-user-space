@@ -101,6 +101,11 @@ fi
 %{_mandir}/man8/bf-reg.8.gz
 
 %changelog
+* Fri Aug 02 2024 Penghe Geng <pgeng@nvidia.com> - 2.0.39
+- Fix rshim masking issue on Ubuntu
+- bfb-install: Fix NIC_MODE installation for BlueField-2
+- pcie: Add VFIO support for BlueField-3
+
 * Fri Jul 26 2024 Penghe Geng <pgeng@nvidia.com> - 2.0.38
 - Make sending the initial force command a one-time event
 - bfb-install: adjust the log file to be per rshim
