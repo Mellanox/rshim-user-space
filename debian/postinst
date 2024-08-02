@@ -2,6 +2,9 @@
 set -e
 
 case "$1" in
+  # Unmask the service if it was previously masked.
+  # rshim service will be masked after "dpkg -i" or "apt remove" before 2.0.30
+  deb-systemd-helper unmask 'rshim.service' >/dev/null || true
   configure)
     echo "Installation complete. To enable and start the rshim service, run:"
     echo "  systemctl daemon-reload"
