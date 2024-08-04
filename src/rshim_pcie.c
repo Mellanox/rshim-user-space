@@ -718,6 +718,10 @@ static int rshim_pcie_mmap_uio(rshim_pcie_t *dev)
     if (str)
       break;
   }
+
+  if (str)
+    uio_num = atoi(str);
+
   closedir(dir);
 
   if (!str)
@@ -729,7 +733,6 @@ static int rshim_pcie_mmap_uio(rshim_pcie_t *dev)
     return rc;
 
   /* Open the control fd to handle interrupt. */
-  uio_num = atoi(str);
   snprintf(devname, sizeof(devname), "/dev/uio%u", uio_num);
   if (dev->intr_fd >= 0) {
     dev->intr_reset_seq++;
