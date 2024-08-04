@@ -171,7 +171,8 @@ void rshim_fuse_input_notify(rshim_backend_t *bd)
 {
   int chan = bd->rx_chan;
 
-  RSHIM_DBG("rshim_fifo_input: woke up readable chan %d\n", chan);
+  RSHIM_DBG("rshim%d(fuse_input_notify) woke up readable chan %d\n",
+            bd->index, chan);
 
 #ifdef __linux__
   if (bd->fuse_poll_handle[chan])
@@ -653,7 +654,7 @@ static int rshim_fuse_misc_read(struct cuse_dev *cdev, int fflags,
   /* Boot mode. */
   rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->boot_control, &value, RSHIM_REG_SIZE_8B);
   if (rc) {
-    RSHIM_ERR("couldn't read BOOT_CONTROL register\n");
+    RSHIM_ERR("rshim%d failed to read BOOT_CONTROL(%d)\n", bd->index, rc);
     value = 0;
   }
 
@@ -749,7 +750,7 @@ static int rshim_fuse_misc_read(struct cuse_dev *cdev, int fflags,
     ts.tv_nsec = tp.tv_usec * 1000;
     rc = pthread_cond_timedwait(&bd->ctrl_wait_cond, &bd->mutex, &ts);
     if (rc)
-      RSHIM_DBG("Timeout in getting peer response.\n");
+      RSHIM_DBG("rshim%d timeout in getting peer response\n", bd->index);
     n = snprintf(p, len, "%-16s%02x:%02x:%02x:%02x:%02x:%02x (rw)\n",
                    "PEER_MAC", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
     p += n;
@@ -887,6 +888,7 @@ static int rshim_fuse_misc_write(struct cuse_dev *cdev, int fflags,
       }
 
       /* SW reset. */
+      RSHIM_INFO("rshim%d SW RESET\n", bd->index);
       pthread_mutex_lock(&bd->mutex);
       rc = rshim_reset_control(bd);
       pthread_mutex_unlock(&bd->mutex);
@@ -1334,14 +1336,14 @@ int rshim_fuse_init(rshim_backend_t *bd)
                                       (char **)argv,
                                       &ci, ops[i], &multithreaded, bd);
     if (!bd->fuse_session[i]) {
-      RSHIM_ERR("Failed to setup CUSE %s\n", name);
+      RSHIM_ERR("rshim%d failed to setup CUSE %s\n", bd->index, name);
       return -1;
     }
     fuse_remove_signal_handlers(bd->fuse_session[i]);
     rc = pthread_create(&bd->fuse_thread[i], NULL, cuse_worker,
                         bd->fuse_session[i]);
     if (rc) {
-      RSHIM_ERR("Failed to create cuse thread %m\n");
+      RSHIM_ERR("rshim%d failed to create cuse thread\n", bd->index);
       return rc;
     }
 #elif defined(__FreeBSD__)
@@ -1353,13 +1355,13 @@ int rshim_fuse_init(rshim_backend_t *bd)
       cuse_dev_create(ops[i], bd, NULL, 0 /* UID_ROOT */, 0 /* GID_WHEEL */,
                       0600, "rshim%d/%s", bd->index, name);
     if (!bd->fuse_session[i]) {
-      RSHIM_ERR("Failed to setup CUSE %s\n", name);
+      RSHIM_ERR("rshim%d failed to setup CUSE %s\n", bd->index, name);
       return -1;
     }
     rc = pthread_create(&bd->fuse_thread[i], NULL, cuse_worker,
                         bd->fuse_session[i]);
     if (rc) {
-      RSHIM_ERR("Failed to create cuse thread %m");
+      RSHIM_ERR("rshim%d failed to create cuse thread\n", bd->index);
       return rc;
     }
 #endif

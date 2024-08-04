@@ -355,7 +355,7 @@ static ssize_t rshim_read_default(rshim_backend_t *bd, int devtype,
 
   /* Read is only supported for RShim TMFIFO. */
   if (devtype != RSH_DEV_TYPE_TMFIFO) {
-    RSHIM_ERR("bad devtype %d\n", devtype);
+    RSHIM_ERR("rshim%d bad devtype %d\n", bd->index, devtype);
     return -EINVAL;
   }
 
@@ -428,7 +428,7 @@ static ssize_t rshim_write_delayed(rshim_backend_t *bd, int devtype,
     break;
 
   default:
-    RSHIM_ERR("bad devtype %d\n", devtype);
+    RSHIM_ERR("rshim%d bad devtype %d\n", bd->index, devtype);
     return -EINVAL;
   }
 
@@ -477,7 +477,7 @@ static ssize_t rshim_write_delayed(rshim_backend_t *bd, int devtype,
     reg = htole64(reg);
     rc = bd->write_rshim(bd, RSHIM_CHANNEL, data_addr, reg, RSHIM_REG_SIZE_8B);
     if (rc < 0) {
-      RSHIM_ERR("write_rshim error %d\n", rc);
+      RSHIM_ERR("rshim%d write_rshim error %d\n", bd->index, rc);
       break;
     }
     byte_cnt += sizeof(reg);
@@ -527,7 +527,7 @@ static ssize_t rshim_write_default(rshim_backend_t *bd, int devtype,
     return bd->boot_work_buf_actual_len;
 
   default:
-    RSHIM_ERR("bad devtype %d\n", devtype);
+    RSHIM_ERR("rshim%d bad devtype %d\n", bd->index, devtype);
     return -EINVAL;
   }
 }
@@ -557,14 +557,14 @@ static int wait_for_boot_done(rshim_backend_t *bd)
 
   if (!bd->has_rshim || bd->is_booting) {
     while (bd->is_booting) {
-      RSHIM_INFO("boot write, waiting for re-probe\n");
+      RSHIM_INFO("rshim%d boot write, waiting for re-probe\n", bd->index);
       /*
        * FIXME: might we want a timeout here, too?  If the reprobe takes a very
        * long time, something's probably wrong.  Maybe a couple of minutes?
        */
       rc = pthread_cond_timedwait(&bd->boot_complete_cond, &bd->mutex, &ts);
       if (rc) {
-        RSHIM_DBG("Failed to detect re-probe, continues anyway.\n");
+        RSHIM_DBG("rshim%d failed to detect re-probe, continues.\n", bd->index);
         bd->is_booting = 0;
         return 0;
       }
@@ -596,7 +596,7 @@ static int rshim_reg_indirect_wait(rshim_backend_t *bd, uint64_t resp_count)
     if (count != resp_count)
       return 0;
   }
-  RSHIM_DBG("Rshim byte access widget timeout\n");
+  RSHIM_DBG("rshim%d byte access widget timeout\n", bd->index);
   return -1;
 }
 
@@ -675,9 +675,10 @@ int rshim_reset_control(rshim_backend_t *bd)
   uint8_t shift;
   int rc;
 
-  rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->reset_control, &reg, RSHIM_REG_SIZE_8B);
+  rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->reset_control, &reg,
+                      RSHIM_REG_SIZE_8B);
   if (rc < 0 || RSHIM_BAD_CTRL_REG(reg)) {
-    RSHIM_ERR("failed to read rshim reset control error %d\n", rc);
+    RSHIM_ERR("rshim%d failed to read reset control(%d)\n", bd->index, rc);
     return rc;
   }
 
@@ -694,9 +695,10 @@ int rshim_reset_control(rshim_backend_t *bd)
    * in theory this should not impact the behavior of the RShim
    * driver.
    */
-  rc = bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->reset_control, reg, RSHIM_REG_SIZE_8B);
+  rc = bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->reset_control, reg,
+                       RSHIM_REG_SIZE_8B);
   if (rc < 0) {
-    RSHIM_ERR("failed to write rshim reset control error %d\n", rc);
+    RSHIM_ERR("rshim%d failed to write reset control(%d)\n", bd->index, rc);
     return rc;
   }
 
@@ -719,19 +721,19 @@ int rshim_boot_open(rshim_backend_t *bd)
   }
 
   if (bd->drop_mode) {
-    RSHIM_INFO("rshim is in drop mode\n");
+    RSHIM_INFO("rshim%d boot fail (drop mode)\n", bd->index);
     pthread_mutex_unlock(&bd->mutex);
     return -EINVAL;
   }
 
   if (bd->locked_mode) {
-    RSHIM_ERR("rshim is in locked mode\n");
+    RSHIM_ERR("rshim%d boot fail (locked mode)\n", bd->index);
     pthread_mutex_unlock(&bd->mutex);
     return -EPERM;
   }
 
   if (bd->is_boot_open) {
-    RSHIM_INFO("can't boot, boot file already open\n");
+    RSHIM_INFO("rshim%d boot already open\n", bd->index);
     pthread_mutex_unlock(&bd->mutex);
     return -EBUSY;
   }
@@ -761,7 +763,7 @@ int rshim_boot_open(rshim_backend_t *bd)
   rc = bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->boot_control,
                        RSH_BOOT_CONTROL__BOOT_MODE_VAL_NONE, RSHIM_REG_SIZE_8B);
   if (rc) {
-    RSHIM_ERR("boot_open: error %d writing boot control\n", rc);
+    RSHIM_ERR("rshim%d boot failed to write boot control(%d)\n", bd->index, rc);
     bd->is_booting = 0;
     pthread_mutex_unlock(&bd->mutex);
     return rc;
@@ -797,14 +799,14 @@ int rshim_boot_open(rshim_backend_t *bd)
    */
   if (rc && rc != -EPROTO && rc != -ESHUTDOWN &&
     rc != -ETIMEDOUT && rc != -EPIPE) {
-    RSHIM_ERR("boot_open: error %d writing reset control\n", rc);
+    RSHIM_ERR("rshim%d boot failed to write reset control(%d)\n", bd->index, rc);
     bd->is_boot_open = 0;
     pthread_mutex_unlock(&bd->mutex);
     return rc;
   }
 
   if (rc)
-    RSHIM_ERR("boot_open: got error %d on reset write\n", rc);
+    RSHIM_ERR("rshim%d boot reset error (%d)\n", bd->index, rc);
 
 boot_open_done:
   rshim_ref(bd);
@@ -836,7 +838,7 @@ int rshim_boot_write(rshim_backend_t *bd, const char *user_buffer, size_t count,
 
   rc = wait_for_boot_done(bd);
   if (rc) {
-    RSHIM_ERR("boot_write: wait for boot failed, err %d\n", rc);
+    RSHIM_ERR("rshim%d boot write fail (boot not done %d)\n", bd->index, rc);
     pthread_mutex_unlock(&bd->mutex);
     return rc;
   }
@@ -917,7 +919,7 @@ void rshim_boot_release(rshim_backend_t *bd)
                            RSH_BOOT_CONTROL__BOOT_MODE_VAL_EMMC,
                            RSHIM_REG_SIZE_8B);
   if (rc)
-    RSHIM_ERR("couldn't set boot_control, err %d\n", rc);
+    RSHIM_ERR("rshim%d failed to write boot control(%d)\n", bd->index, rc);
 
   /* Flush the leftover data with zeros padded. */
   if (bd->boot_rem_cnt) {
@@ -964,7 +966,7 @@ static int rshim_fifo_tx_avail(rshim_backend_t *bd)
   /* Calculate available size. */
   rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->tm_htt_sts, &word, RSHIM_REG_SIZE_8B);
   if (rc < 0 || RSHIM_BAD_CTRL_REG(word)) {
-    RSHIM_ERR("rshim%d read_rshim error %d\n", bd->index, rc);
+    RSHIM_ERR("rshim%d failed to read htt sts(%d)\n", bd->index, rc);
     usleep(10000);
     return -1;
   }
@@ -1183,7 +1185,7 @@ again:
       if (bd->read_buf_next + sizeof(*hdr) > bd->read_buf_bytes)
         break;
 
-      RSHIM_DBG("read_buf_next %d\n", bd->read_buf_next);
+      RSHIM_DBG("rshim%d read_buf_next %d\n", bd->index, bd->read_buf_next);
 
       hdr = (rshim_tmfifo_msg_hdr_t *)&bd->read_buf[bd->read_buf_next];
 
@@ -1207,7 +1209,7 @@ again:
         if (bd->read_buf_pkt_rem == 0)
           continue;
       } else {
-        RSHIM_DBG("bad type %d, drop it\n", hdr->type);
+        RSHIM_DBG("rshim%d bad type %d, drop it\n", bd->index, hdr->type);
         bd->read_buf_pkt_rem = 0;
         bd->read_buf_pkt_padding = 0;
         if (hdr->len == 0) {
@@ -1215,13 +1217,13 @@ again:
           rshim_fifo_ctrl_rx(bd, hdr);
           continue;
         } else {
-          RSHIM_DBG("bad type %d, drop it", hdr->type);
+          RSHIM_DBG("rshim%d bad type %d, drop it", bd->index, hdr->type);
           bd->read_buf_next = bd->read_buf_bytes;
           break;
         }
       }
 
-      RSHIM_DBG("drain: hdr, nxt %d rem %d chn %d\n",
+      RSHIM_DBG("rshim%d drain: hdr, nxt %d rem %d chn %d\n", bd->index,
                 bd->read_buf_next, bd->read_buf_pkt_rem, bd->rx_chan);
       bd->drop_pkt = 0;
     }
@@ -1248,8 +1250,8 @@ again:
                    bd->read_buf_bytes - bd->read_buf_next);
     copysize = MIN(copysize, read_space_to_end(bd, bd->rx_chan));
 
-    RSHIM_DBG("drain: copysize %d, head %d, tail %d, remaining %d\n",
-              copysize,
+    RSHIM_DBG("rshim%d drain: copysize %d, head %d, tail %d, remaining %d\n",
+              bd->index, copysize,
               bd->read_fifo[bd->rx_chan].head,
               bd->read_fifo[bd->rx_chan].tail,
               bd->read_buf_pkt_rem);
@@ -1290,7 +1292,7 @@ again:
   if (bd->read_buf_next < bd->read_buf_bytes ||
       (bd->spin_flags & RSH_SFLG_READING)) {
     /* We're doing nothing. */
-    RSHIM_DBG("fifo_input: no new read: %s\n",
+    RSHIM_DBG("rshim%d fifo_input: no new read: %s\n", bd->index,
               (bd->read_buf_next < bd->read_buf_bytes) ?
               "have data" : "already reading");
   } else {
@@ -1335,7 +1337,8 @@ ssize_t rshim_fifo_read(rshim_backend_t *bd, char *buffer, size_t count,
     int pass1;
     int pass2;
 
-    RSHIM_DBG("fifo_read, top of loop, remaining count %zd\n", count);
+    RSHIM_DBG("rshim%d(fifo_read) top of loop, remaining count %zd\n",
+              bd->index, count);
 
     /*
      * We check this each time through the loop since the
@@ -1344,18 +1347,19 @@ ssize_t rshim_fifo_read(rshim_backend_t *bd, char *buffer, size_t count,
      */
     if (!bd->has_tm) {
       pthread_mutex_unlock(&bd->mutex);
-      RSHIM_DBG("fifo_read: returning %zd/ENODEV\n", rd_cnt);
+      RSHIM_DBG("rshim%d(fifo_read) returning %zd/ENODEV\n", bd->index, rd_cnt);
       return rd_cnt ? rd_cnt : -ENODEV;
     }
 
     if (bd->tmfifo_error) {
       pthread_mutex_unlock(&bd->mutex);
-      RSHIM_DBG("fifo_read: returning %zd/%d\n", rd_cnt, bd->tmfifo_error);
+      RSHIM_DBG("rshim%d(fifo_read) returning %zd/%d\n", bd->index, rd_cnt,
+                bd->tmfifo_error);
       return rd_cnt ? rd_cnt : bd->tmfifo_error;
     }
 
     if (read_empty(bd, chan)) {
-      RSHIM_DBG("fifo_read: fifo empty\n");
+      RSHIM_DBG("rshim%d(fifo_read) fifo empty\n", bd->index);
       if (rd_cnt || nonblock) {
         if (rd_cnt == 0) {
           pthread_mutex_lock(&bd->ringlock);
@@ -1363,17 +1367,19 @@ ssize_t rshim_fifo_read(rshim_backend_t *bd, char *buffer, size_t count,
           pthread_mutex_unlock(&bd->ringlock);
         }
         pthread_mutex_unlock(&bd->mutex);
-        RSHIM_DBG("fifo_read: returning %zd/EAGAIN\n", rd_cnt);
+        RSHIM_DBG("rshim%d(fifo_read) returning %zd/EAGAIN\n",
+                  bd->index, rd_cnt);
         return rd_cnt ? rd_cnt : -EAGAIN;
       }
 
-      RSHIM_DBG("fifo_read: waiting for readable chan %d\n", chan);
+      RSHIM_DBG("rshim%d(fifo_read) waiting for readable chan %d\n",
+                bd->index, chan);
       while (read_empty(bd, chan)) {
         clock_gettime(CLOCK_REALTIME, &ts);
         ts.tv_sec += 1;
         if (pthread_cond_timedwait(&bd->read_fifo[chan].operable,
             &bd->mutex, &ts)) {
-          RSHIM_DBG("fifo_read: returning ERESTARTSYS\n");
+          RSHIM_DBG("rshim%d(fifo_read) returning ERESTARTSYS\n", bd->index);
           pthread_mutex_unlock(&bd->mutex);
           return -EINTR;
         }
@@ -1397,8 +1403,8 @@ ssize_t rshim_fifo_read(rshim_backend_t *bd, char *buffer, size_t count,
     pass1 = MIN(readsize, (size_t)read_cnt_to_end(bd, chan));
     pass2 = readsize - pass1;
 
-    RSHIM_DBG("fifo_read: readsize %zd, head %d, tail %d\n",
-              readsize, bd->read_fifo[chan].head,
+    RSHIM_DBG("rshim%d(fifo_read) readsize %zd, head %d, tail %d\n",
+              bd->index, readsize, bd->read_fifo[chan].head,
               bd->read_fifo[chan].tail);
 
     memcpy(buffer, read_data_ptr(bd, chan), pass1);
@@ -1414,12 +1420,13 @@ ssize_t rshim_fifo_read(rshim_backend_t *bd, char *buffer, size_t count,
     count -= readsize;
     buffer += readsize;
     rd_cnt += readsize;
-    RSHIM_DBG("fifo_read: transferred %zd bytes\n", readsize);
+    RSHIM_DBG("rshim%d(fifo_read) transferred %zd bytes\n",
+              bd->index, readsize);
   }
 
   pthread_mutex_unlock(&bd->mutex);
 
-  RSHIM_DBG("fifo_read: returning %zd\n", rd_cnt);
+  RSHIM_DBG("rshim%d(fifo_read) returning %zd\n", bd->index, rd_cnt);
   return rd_cnt;
 }
 
@@ -1538,9 +1545,9 @@ static void rshim_fifo_output(rshim_backend_t *bd)
       pass1 = MIN(writesize, (int)write_cnt_to_end(bd, chan));
       pass2 = writesize - pass1;
 
-      RSHIM_DBG("fifo_output: chan %d, writesize %d, next %d,"
+      RSHIM_DBG("rshim%d(fifo_output) chan %d, writesize %d, next %d,"
                  " head %d, tail %d\n",
-                 chan, writesize, write_buf_next,
+                 bd->index, chan, writesize, write_buf_next,
                  bd->write_fifo[chan].head,
                  bd->write_fifo[chan].tail);
 
@@ -1557,7 +1564,8 @@ static void rshim_fifo_output(rshim_backend_t *bd)
       write_avail = fifo_avail - write_buf_next;
 
       pthread_cond_broadcast(&bd->write_fifo[chan].operable);
-      RSHIM_DBG("fifo_output: woke up writable chan %d\n", chan);
+      RSHIM_DBG("rshim%d(fifo_output) woke up writable chan %d\n",
+                bd->index, chan);
     }
   }
 
@@ -1639,32 +1647,37 @@ ssize_t rshim_fifo_write(rshim_backend_t *bd, const char *buffer,
      */
     if (!bd->has_tm) {
       pthread_mutex_unlock(&bd->mutex);
-      RSHIM_DBG("fifo_write: returning %zd/ENODEV\n", wr_cnt);
+      RSHIM_DBG("rshim%d(fifo_write) returning %zd/ENODEV\n",
+                bd->index, wr_cnt);
       return wr_cnt ? wr_cnt : -ENODEV;
     }
 
     if (bd->tmfifo_error) {
       pthread_mutex_unlock(&bd->mutex);
-      RSHIM_DBG("fifo_write: returning %zd/%d\n", wr_cnt, bd->tmfifo_error);
+      RSHIM_DBG("rshim%d(fifo_write) returning %zd/%d\n",
+                bd->index, wr_cnt, bd->tmfifo_error);
       return wr_cnt ? wr_cnt : bd->tmfifo_error;
     }
 
     if (write_full(bd, chan)) {
-      RSHIM_DBG("fifo_write: fifo full\n");
+      RSHIM_DBG("rshim%d(fifo_write) fifo full\n", bd->index);
       /* Try to send more data. */
       pthread_mutex_lock(&bd->ringlock);
       rshim_fifo_output(bd);
       pthread_mutex_unlock(&bd->ringlock);
       if (nonblock) {
         pthread_mutex_unlock(&bd->mutex);
-        RSHIM_DBG("fifo_write: returning %zd/EAGAIN\n", wr_cnt);
+        RSHIM_DBG("rshim%d(fifo_write) returning %zd/EAGAIN\n",
+                  bd->index, wr_cnt);
         return wr_cnt ? wr_cnt : -EAGAIN;
       }
 
-      RSHIM_DBG("fifo_write: waiting for writable chan %d\n", chan);
+      RSHIM_DBG("rshim%d(fifo_write) waiting for writable chan %d\n",
+                bd->index, chan);
       while (write_full(bd, chan)) {
         if (pthread_cond_wait(&bd->write_fifo[chan].operable, &bd->mutex)) {
-          RSHIM_DBG("fifo_write: returning %zd/ERESTARTSYS\n", wr_cnt);
+          RSHIM_DBG("rshim%d(fifo_write) returning %zd/ERESTARTSYS\n",
+                    bd->index, wr_cnt);
           pthread_mutex_unlock(&bd->mutex);
           return wr_cnt ? wr_cnt : -EAGAIN;
         }
@@ -1688,8 +1701,8 @@ ssize_t rshim_fifo_write(rshim_backend_t *bd, const char *buffer,
     pass2 = writesize - pass1;
     pthread_mutex_unlock(&bd->ringlock);
 
-    RSHIM_DBG("fifo_write: writesize %zd, head %d, tail %d\n",
-              writesize, bd->write_fifo[chan].head,
+    RSHIM_DBG("rshim%d(fifo_write) writesize %zd, head %d, tail %d\n",
+              bd->index, writesize, bd->write_fifo[chan].head,
               bd->write_fifo[chan].tail);
 
     memcpy(write_space_ptr(bd, chan), buffer, pass1);
@@ -1705,12 +1718,14 @@ ssize_t rshim_fifo_write(rshim_backend_t *bd, const char *buffer,
     count -= writesize;
     buffer += writesize;
     wr_cnt += writesize;
-    RSHIM_DBG("fifo_write: transferred %zd bytes this pass\n", writesize);
+    RSHIM_DBG("rshim%d(fifo_write) transferred %zd bytes this pass\n",
+              bd->index, writesize);
   }
 
   pthread_mutex_unlock(&bd->mutex);
 
-  RSHIM_DBG("fifo_write: returning %zd\n", wr_cnt);
+  RSHIM_DBG("rshim%d(fifo_write) returning %zd\n",
+            bd->index, wr_cnt);
   return wr_cnt;
 }
 
@@ -1770,7 +1785,8 @@ static void rshim_work_handler(rshim_backend_t *bd)
       pthread_cond_broadcast(&bd->fifo_write_complete_cond);
       rshim_fifo_output(bd);
     } else {
-      RSHIM_DBG("fifo_write: completed abnormally (%d)\n", len);
+      RSHIM_DBG("rshim%d(fifo_write) completed abnormally (%d)\n",
+                bd->index, len);
     }
     pthread_mutex_unlock(&bd->ringlock);
   }
@@ -1818,14 +1834,14 @@ static int rshim_boot_done(rshim_backend_t *bd)
     if (bd->is_booting) {
         bd->is_booting = 0;
 
-        RSHIM_DBG("signaling booting complete\n");
+        RSHIM_DBG("rshim%d signaling booting complete\n", bd->index);
         pthread_cond_broadcast(&bd->boot_complete_cond);
     };
 
     /* If the console device is open, start the worker. */
     if (bd->is_cons_open && !bd->has_cons_work) {
       bd->has_cons_work = 1;
-      RSHIM_DBG("probe: console_work submitted\n");
+      RSHIM_DBG("rshim%d console_work submitted\n", bd->index);
       rshim_work_signal(bd);
     }
 
@@ -1983,7 +1999,7 @@ int rshim_console_open(rshim_backend_t *bd)
   }
 
   if (bd->locked_mode) {
-    RSHIM_ERR("rshim is in locked mode\n");
+    RSHIM_ERR("rshim%d failed to open console(locked mode)\n", bd->index);
     pthread_mutex_unlock(&bd->mutex);
     return -EPERM;
   }
@@ -2076,7 +2092,7 @@ static int rshim_find_index(char *dev_name)
   /* First look for a match with a previous device name. */
   for (i = 0; i < RSHIM_MAX_DEV; i++) {
     if (rshim_dev_names[i] && !strcmp(dev_name, rshim_dev_names[i])) {
-      RSHIM_DBG("found match with previous at index %d\n", i);
+      RSHIM_DBG("Found match with previous at index %d\n", i);
       return i;
     }
   }
@@ -2090,7 +2106,7 @@ static int rshim_find_index(char *dev_name)
   /* Finally look for a currently-unused slot. */
   for (i = 0; i < RSHIM_MAX_DEV; i++) {
     if (!rshim_devs[i]) {
-      RSHIM_DBG("found unused slot %d\n", i);
+      RSHIM_DBG("Found unused slot %d\n", i);
       return i;
     }
   }
@@ -2104,7 +2120,7 @@ rshim_backend_t *rshim_find_by_name(char *dev_name)
 
   /* If none of that worked, we fail. */
   if (index < 0) {
-    RSHIM_ERR("couldn't find slot for new device %s\n", dev_name);
+    RSHIM_ERR("No slot for new device %s\n", dev_name);
     return NULL;
   }
 
@@ -2183,7 +2199,7 @@ static int rshim_check_locked_mode(rshim_backend_t *bd)
     rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad1, &value,
                         RSHIM_REG_SIZE_8B);
     if (rc < 0 || RSHIM_BAD_CTRL_REG(value)) {
-        RSHIM_DBG("RSHIM %d SCRATCHPAD1 register read error\n", bd->index);
+        RSHIM_DBG("rshim%d failed to read SP1\n", bd->index);
         return -EIO;
     }
 
@@ -2252,7 +2268,7 @@ static int rshim_check_sp1_magic(rshim_backend_t *bd, uint64_t magic,
 
   rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad1, &sp1, RSHIM_REG_SIZE_8B);
   if (rc || RSHIM_BAD_CTRL_REG(sp1)) {
-    RSHIM_ERR("rshim%d failed to read sp1: %d\n", bd->index, rc);
+    RSHIM_ERR("rshim%d failed to read sp1(%d)\n", bd->index, rc);
     *result = false;
     return rc;
   }
@@ -2272,7 +2288,7 @@ static int rshim_write_sp1_magic(rshim_backend_t *bd, uint64_t magic)
   rc = bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad1, magic,
       RSHIM_REG_SIZE_8B);
   if (rc) {
-    RSHIM_ERR("rshim%d failed to write sp1: %s\n", bd->index, strerror(-rc));
+    RSHIM_ERR("rshim%d failed to write sp1(%s)\n", bd->index, strerror(-rc));
     return -ENODEV;
   }
 
@@ -2334,8 +2350,8 @@ static int rshim_handle_ownership_transfer(rshim_backend_t *bd)
     }
   } else {
     if (rshim_force_cmd_pending[bd->index]) {
-      RSHIM_INFO("Skipping Force command for rshim%d (already attached)\n",
-          bd->index);
+      RSHIM_INFO("rshim%d skipping Force command (already attached)\n",
+                 bd->index);
       rshim_force_cmd_pending[bd->index] = 0;
     }
 
@@ -2345,7 +2361,7 @@ static int rshim_handle_ownership_transfer(rshim_backend_t *bd)
     if (!rt && has_req) {
       RSHIM_INFO("rshim%d received ownership transfer request\n", bd->index);
 
-      RSHIM_INFO("Notifying the requester with ACK\n");
+      RSHIM_INFO("rshim%d notifying the requester with ACK\n", bd->index);
       for (i = 0; i < 10; i++) {
         rt = rshim_write_sp1_magic(bd, RSHIM_OSP_ACK_MAGIC_NUM);
         usleep(RSHIM_OSP_TO_REQ_MS * 1000 / 10);
@@ -2473,6 +2489,7 @@ static void rshim_boot_workaround_check(rshim_backend_t *bd)
                          RSHIM_REG_SIZE_8B);
     if (!rc) {
       /* SW reset. */
+      RSHIM_INFO("rshim%d boot/wa reset\n", bd->index);
       rc = rshim_reset_control(bd);
       if (!rc)
         usleep(100000);
@@ -2501,7 +2518,7 @@ int rshim_access_check(rshim_backend_t *bd)
     usleep(100000);
   }
   if (RSHIM_BAD_CTRL_REG(value)) {
-    RSHIM_ERR("Unable to read from rshim\n");
+    RSHIM_ERR("rshim%d unable to read from rshim\n", bd->index);
     bd->in_access_check = 0;
     return -ETIMEDOUT;
   }
@@ -2511,7 +2528,7 @@ int rshim_access_check(rshim_backend_t *bd)
   /* Write value 0 to RSH_SCRATCHPAD1. */
   rc = bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad1, 0, RSHIM_REG_SIZE_8B);
   if (rc < 0) {
-    RSHIM_ERR("failed to write rshim rc=%d\n", rc);
+    RSHIM_ERR("rshim%d failed to write sp1(%d)\n", bd->index, rc);
     bd->in_access_check = 0;
     return -ENODEV;
   }
@@ -2548,7 +2565,7 @@ int rshim_access_check(rshim_backend_t *bd)
   /* One more read to make sure it's ready. */
   rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad1, &value, RSHIM_REG_SIZE_8B);
   if (rc < 0 || RSHIM_BAD_CTRL_REG(value)) {
-    RSHIM_ERR("access_check: failed to read rshim\n");
+    RSHIM_ERR("rshim%d access check failed(not able to read sp1)\n", bd->index);
     bd->in_access_check = 0;
     return -ENODEV;
   }
@@ -2570,7 +2587,7 @@ int rshim_register(rshim_backend_t *bd)
     return -ENODEV;
 
   if (!bd->read_rshim || !bd->write_rshim) {
-    RSHIM_ERR("read_rshim/write_rshim missing\n");
+    RSHIM_ERR("rshim%d read_rshim/write_rshim missing\n", bd->index);
     return -EINVAL;
   }
 
@@ -2805,14 +2822,14 @@ static void rshim_main(int argc, char *argv[])
     exit(-1);
   }
   if (fcntl(rshim_work_fd[0], F_SETFL, O_NONBLOCK) < 0) {
-    RSHIM_ERR("failed to set nonblock pipe");
+    RSHIM_ERR("Failed to set nonblock pipe");
     exit(-1);
   }
   event.data.fd = rshim_work_fd[0];
   event.events = EPOLLIN;
   rc = epoll_ctl(epoll_fd, EPOLL_CTL_ADD, rshim_work_fd[0], &event);
   if (rc == -1) {
-    RSHIM_ERR("epoll_ctl failed: %m\n");
+    RSHIM_ERR("epoll_ctl failed\n");
     exit(-1);
   }
 
@@ -2853,7 +2870,7 @@ static void rshim_main(int argc, char *argv[])
       rc = rshim_pcie_init();
   }
   if (rc) {
-    RSHIM_ERR("failed to initialize rshim backend\n");
+    RSHIM_ERR("Failed to initialize rshim backend\n");
     exit(-1);
   }
 
@@ -3274,11 +3291,10 @@ int main(int argc, char *argv[])
   /* In force mode, we will send a one-time ownership request command for each
    * rshim backend if they are found to be detached (aka. in drop mode) */
   if (rshim_force_mode) {
-    for (i = 0; i < RSHIM_MAX_DEV; i++) {
-        rshim_force_cmd_pending[i] = 1;
-    }
+    for (i = 0; i < RSHIM_MAX_DEV; i++)
+      rshim_force_cmd_pending[i] = 1;
   }
-  
+
   set_signals();
 
   rshim_main(argc, argv);
