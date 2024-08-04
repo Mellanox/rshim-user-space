@@ -307,9 +307,10 @@ int rshim_log_show(rshim_backend_t *bd, char *buf, int size)
   /* Take the semaphore. */
   time(&t0);
   while (true) {
-    rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->semaphore0, &data, RSHIM_REG_SIZE_8B);
+    rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->semaphore0, &data,
+                        RSHIM_REG_SIZE_8B);
     if (rc) {
-      RSHIM_ERR("couldn't read RSH_SEMAPHORE0\n");
+      RSHIM_ERR("rshim%d failed to read RSH_SEMAPHORE0(%d)\n", bd->index, rc);
       return p - buf;
     }
 
@@ -323,9 +324,11 @@ int rshim_log_show(rshim_backend_t *bd, char *buf, int size)
   }
 
   /* Read the current index. */
-  rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->scratch_buf_ctl, &idx, RSHIM_REG_SIZE_8B);
+  rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->scratch_buf_ctl, &idx,
+                      RSHIM_REG_SIZE_8B);
   if (rc) {
-    RSHIM_ERR("couldn't read RSH_SCRATCH_BUF_CTL\n");
+    RSHIM_ERR("rshim%d failed to read RSH_SCRATCH_BUF_CTL(%d)\n",
+              bd->index, rc);
     goto done;
   }
   idx = (idx >> RSH_SCRATCH_BUF_CTL__IDX_SHIFT) & RSH_SCRATCH_BUF_CTL__IDX_MASK;
@@ -333,17 +336,21 @@ int rshim_log_show(rshim_backend_t *bd, char *buf, int size)
     goto done;
 
   /* Reset the index to 0. */
-  rc = bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->scratch_buf_ctl, 0, RSHIM_REG_SIZE_8B);
+  rc = bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->scratch_buf_ctl, 0,
+                       RSHIM_REG_SIZE_8B);
   if (rc) {
-    RSHIM_ERR("couldn't write RSH_SCRATCH_BUF_CTL\n");
+    RSHIM_ERR("rshim%d failed to write RSH_SCRATCH_BUF_CTL(%d)\n",
+              bd->index, rc);
     goto done;
   }
 
   i = 0;
   while (i < idx) {
-    rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->scratch_buf_dat, &hdr, RSHIM_REG_SIZE_8B);
+    rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->scratch_buf_dat, &hdr,
+                        RSHIM_REG_SIZE_8B);
     if (rc) {
-      RSHIM_ERR("couldn't read RSH_SCRATCH_BUF_DAT\n");
+      RSHIM_ERR("rshim%d failed to read RSH_SCRATCH_BUF_DAT(%d)\n",
+                bd->index, rc);
       goto done;
     }
     hdr = le64toh(hdr);

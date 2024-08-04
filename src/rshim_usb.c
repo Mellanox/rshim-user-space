@@ -266,7 +266,7 @@ static ssize_t rshim_usb_bf3_boot_write(rshim_backend_t *bd, const char *buf,
 
       rc = bd->read_rshim(bd, RSHIM_CHANNEL, size_addr, &reg, RSHIM_REG_SIZE_8B);
       if (rc < 0) {
-        RSHIM_ERR("read_rshim error %d\n", rc);
+        RSHIM_ERR("rshim%d read_rshim error %d\n", bd->index, rc);
         return rc;
       }
 
@@ -288,7 +288,8 @@ static ssize_t rshim_usb_bf3_boot_write(rshim_backend_t *bd, const char *buf,
                                 &tmp_tsfr, RSHIM_USB_TIMEOUT);
 
       if (rc && (rc != LIBUSB_ERROR_TIMEOUT)) {
-        RSHIM_ERR("Boot fifo bulk transfer failed\n");
+        RSHIM_ERR("rshim%d Boot fifo bulk transfer failed(%d)\n",
+                  bd->index, rc);
         return rc;
       }
 
@@ -297,7 +298,7 @@ static ssize_t rshim_usb_bf3_boot_write(rshim_backend_t *bd, const char *buf,
       transferred += tmp_tsfr;
 
     } else {
-      RSHIM_ERR("Timeout boot fifo count\n");
+      RSHIM_ERR("rshim%d timeout boot fifo count\n", bd->index);
       return transferred;
     }
   }
@@ -339,9 +340,9 @@ static void rshim_usb_fifo_read_callback(struct libusb_transfer *urb)
   rshim_backend_t *bd = &dev->bd;
   bool lock;
 
-  RSHIM_DBG("fifo_read_callback: %s urb completed, status %d, "
+  RSHIM_DBG("rshim%d(fifo_read_callback) %s urb completed, status %d, "
             "actual length %d, intr buf 0x%x\n",
-            dev->read_urb_is_intr ? "interrupt" : "read",
+            bd->index, dev->read_urb_is_intr ? "interrupt" : "read",
             urb->status, urb->actual_length, (int)*dev->intr_buf);
 
   lock = (pthread_mutex_trylock(&bd->ringlock) == 0) ? true : false;
@@ -391,7 +392,8 @@ static void rshim_usb_fifo_read_callback(struct libusb_transfer *urb)
       dev->read_or_intr_retries++;
       rc = libusb_submit_transfer(urb);
       if (rc) {
-        RSHIM_DBG("fifo_read_callback: resubmitted urb but got error %d\n", rc);
+        RSHIM_DBG("rshim%d(fifo_read_callback) failed to resubmit urb(%d)\n",
+                  bd->index, rc);
         /*
          * In this case, we won't try again; signal the
          * error to upper layers.
@@ -412,8 +414,8 @@ static void rshim_usb_fifo_read_callback(struct libusb_transfer *urb)
      * too many errors.  Either way we don't retry any more,
      * but we signal the error to upper layers.
      */
-    RSHIM_DBG("fifo_read_callback: %s urb completed abnormally, "
-              "error %d\n", dev->read_urb_is_intr ? "interrupt" : "read",
+    RSHIM_DBG("rshim%d(fifo_read_callback) %s urb completed abnormally(%d)\n",
+              bd->index, dev->read_urb_is_intr ? "interrupt" : "read",
               urb->status);
     rshim_notify(bd, RSH_EVENT_FIFO_ERR,
                  urb->status > 0 ? -urb->status : urb->status);
@@ -468,9 +470,10 @@ static void rshim_usb_fifo_read(rshim_usb_t *dev, char *buffer, size_t count)
     rc = libusb_submit_transfer(urb);
     if (rc) {
       dev->bd.spin_flags &= ~RSH_SFLG_READING;
-      RSHIM_ERR("usb_fifo_read: failed to submit read urb, error %d\n", rc);
+      RSHIM_ERR("rshim%d(usb_fifo_read) failed to submit read urb(%d)\n",
+                bd->index, rc);
     }
-    RSHIM_DBG("usb_fifo_read: submit read urb\n");
+    RSHIM_DBG("rshim%d(usb_fifo_read) submit read urb\n", bd->index);
   } else {
     /* We're doing an interrupt. */
     urb = dev->read_or_intr_urb;
@@ -496,9 +499,10 @@ static void rshim_usb_fifo_read(rshim_usb_t *dev, char *buffer, size_t count)
     rc = libusb_submit_transfer(urb);
     if (rc) {
       dev->bd.spin_flags &= ~RSH_SFLG_READING;
-      RSHIM_DBG("usb_fifo_read: failed submitting interrupt urb %d\n", rc);
+      RSHIM_DBG("rshim%d(usb_fifo_read) failed submitting interrupt urb(%d)\n",
+                bd->index, rc);
     }
-    RSHIM_DBG("usb_fifo_read: submit interrupt urb\n");
+    RSHIM_DBG("rshim%d(usb_fifo_read) submit interrupt urb\n", bd->index);
   }
 }
 
@@ -507,9 +511,9 @@ static void rshim_usb_fifo_write_callback(struct libusb_transfer *urb)
   rshim_usb_t *dev = urb->user_data;
   rshim_backend_t *bd = &dev->bd;
 
-  RSHIM_DBG("usb_fifo_write_callback: urb completed, status %d, "
+  RSHIM_DBG("rshim%d(usb_fifo_write_callback) urb completed, status %d, "
             "actual length %d, intr buf %d\n",
-            urb->status, urb->actual_length, (int) *dev->intr_buf);
+            bd->index, urb->status, urb->actual_length, (int) *dev->intr_buf);
 
   pthread_mutex_lock(&bd->ringlock);
 
@@ -546,8 +550,8 @@ static void rshim_usb_fifo_write_callback(struct libusb_transfer *urb)
       dev->write_retries++;
       rc = libusb_submit_transfer(urb);
       if (rc) {
-        RSHIM_ERR("usb_fifo_write_callback: resubmitted urb but "
-                  "got error %d\n", rc);
+        RSHIM_ERR("rshim%d(fifo_write_callback) failed to resubmit urb(%d)\n",
+                  bd->index, rc);
         /*
          * In this case, we won't try again; signal the
          * error to upper layers.
@@ -568,8 +572,8 @@ static void rshim_usb_fifo_write_callback(struct libusb_transfer *urb)
      * too many errors.  Either way we don't retry any more,
      * but we signal the error to upper layers.
      */
-    RSHIM_ERR("usb_fifo_write_callback: urb completed abnormally %d\n",
-              urb->status);
+    RSHIM_ERR("rshim%d(fifo_write_callback): urb completed abnormally %d\n",
+              bd->index, urb->status);
     rshim_notify(bd, RSH_EVENT_FIFO_ERR,
                  urb->status > 0 ? -urb->status : urb->status);
     break;
@@ -604,7 +608,8 @@ static int rshim_usb_fifo_write(rshim_usb_t *dev, const char *buffer,
   rc = libusb_submit_transfer(dev->write_urb);
   if (rc) {
     bd->spin_flags &= ~RSH_SFLG_WRITING;
-    RSHIM_DBG("usb_fifo_write: failed submitting write urb, error %d\n", rc);
+    RSHIM_DBG("rshim%d(usb_fifo_write) failed submitting write urb(%d)\n",
+              bd->index, rc);
     return -1;
   }
 
@@ -637,7 +642,7 @@ static ssize_t rshim_usb_backend_read(rshim_backend_t *bd, int devtype,
     return 0;
 
   default:
-    RSHIM_ERR("bad devtype %d\n", devtype);
+    RSHIM_ERR("rshim%d bad devtype %d\n", bd->index, devtype);
     return -EINVAL;
   }
 }
@@ -655,7 +660,7 @@ static ssize_t rshim_usb_backend_write(rshim_backend_t *bd, int devtype,
     return rshim_usb_boot_write(bd, buf, count);
 
   default:
-    RSHIM_ERR("bad devtype %d\n", devtype);
+    RSHIM_ERR("rshim%d bad devtype %d\n", bd->index, devtype);
     return -EINVAL;
   }
 }
@@ -680,7 +685,7 @@ static void rshim_usb_backend_cancel_req(rshim_backend_t *bd, int devtype,
     break;
 
   default:
-    RSHIM_ERR("bad devtype %d\n", devtype);
+    RSHIM_ERR("rshim%d bad devtype %d\n", bd->index, devtype);
     break;
   }
 }

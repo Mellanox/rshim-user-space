@@ -411,7 +411,7 @@ static int rshim_pcie_mmap_direct(rshim_pcie_t *dev)
 
   dev->device_fd = open(path, O_RDWR | O_SYNC);
   if (dev->device_fd < 0) {
-    RSHIM_ERR("Failed to open %s\n", path);
+    RSHIM_ERR("rshim%d failed to open %s\n", dev->bd.index, path);
     return -ENODEV;
   }
   dev->rshim_regs = mmap(NULL, dev->bar_size,
@@ -421,7 +421,7 @@ static int rshim_pcie_mmap_direct(rshim_pcie_t *dev)
                          0);
   if (dev->rshim_regs == MAP_FAILED) {
     dev->rshim_regs = NULL;
-    RSHIM_ERR("Failed to map RShim registers\n");
+    RSHIM_ERR("rshim%d failed to map RShim registers\n", dev->bd.index);
     return -ENOMEM;
   }
 
@@ -474,7 +474,7 @@ static int rshim_pcie_enable_irq(rshim_pcie_t *dev, bool enable)
 
     ret = ioctl(dev->device_fd, VFIO_DEVICE_SET_IRQS, irq_set);
     if (ret) {
-      RSHIM_ERR("Failed to mask INTx\n");
+      RSHIM_ERR("rshim%d failed to mask INTx\n", dev->bd.index);
       return -1;
     }
   }
@@ -490,7 +490,7 @@ static int rshim_pcie_enable_irq(rshim_pcie_t *dev, bool enable)
 
   ret = ioctl(dev->device_fd, VFIO_DEVICE_SET_IRQS, irq_set);
   if (ret) {
-    RSHIM_ERR("Failed to enable INTx\n");
+    RSHIM_ERR("rshim%d failed to enable INTx\n", dev->bd.index);
     return -1;
   }
 
@@ -506,7 +506,7 @@ static int rshim_pcie_enable_irq(rshim_pcie_t *dev, bool enable)
 
     ret = ioctl(dev->device_fd, VFIO_DEVICE_SET_IRQS, irq_set);
     if (ret) {
-      RSHIM_ERR("Failed to unmask INTx\n");
+      RSHIM_ERR("rshim%d failed to unmask INTx\n", dev->bd.index);
       return -1;
     }
   }
@@ -559,13 +559,13 @@ static int rshim_pcie_mmap_vfio(rshim_pcie_t *dev)
            dev->dev, dev->func);
   rc = readlink(path, name, sizeof(name));
   if (rc < 0 || !name[0] || rc >= sizeof(name)) {
-    RSHIM_ERR("%s: failed to read iommu link\n", path);
+    RSHIM_ERR("rshim%d failed to read iommu link %s\n", dev->bd.index, path);
     goto fail;
   }
   name[rc] = 0;
   p = strrchr(name, '/');
   if (!p) {
-    RSHIM_ERR("Failed to find vfio group\n");
+    RSHIM_ERR("rshim%d failed to find vfio group\n", dev->bd.index);
     rc = -ENOENT;
     goto fail;
   }
@@ -582,7 +582,7 @@ static int rshim_pcie_mmap_vfio(rshim_pcie_t *dev)
 
   rc = ioctl(group_fd, VFIO_GROUP_GET_STATUS, &group_status);
   if (rc) {
-    RSHIM_ERR("VFIO_GROUP_GET_STATUS failed\n");
+    RSHIM_ERR("rshim%d VFIO_GROUP_GET_STATUS failed\n", dev->bd.index);
     goto fail;
   }
 
@@ -601,14 +601,14 @@ static int rshim_pcie_mmap_vfio(rshim_pcie_t *dev)
            dev->bus, dev->dev, dev->func);
   device_fd = ioctl(group_fd, VFIO_GROUP_GET_DEVICE_FD, path);
   if (device_fd < 0) {
-    RSHIM_ERR("Failed to get vfio device %s\n", path);
+    RSHIM_ERR("rshim%d: failed to get vfio device %s\n", dev->bd.index, path);
     rc = device_fd;
     goto fail;
   }
 
   rc = ioctl(device_fd, VFIO_DEVICE_GET_INFO, &device_info);
   if (rc) {
-    RSHIM_ERR("Failed to get vfio device info\n");
+    RSHIM_ERR("rshim%d failed to get vfio device info\n", dev->bd.index);
     goto fail;
   }
 
@@ -620,7 +620,7 @@ static int rshim_pcie_mmap_vfio(rshim_pcie_t *dev)
   region_info.index = 0;
   rc = ioctl(device_fd, VFIO_DEVICE_GET_REGION_INFO, &region_info);
   if (rc) {
-    RSHIM_ERR("Failed to get vfio region info\n");
+    RSHIM_ERR("rshim%d failed to get vfio region info\n", dev->bd.index);
     goto fail;
   }
 
@@ -631,7 +631,7 @@ static int rshim_pcie_mmap_vfio(rshim_pcie_t *dev)
                      device_fd,
                      (off_t)region_info.offset);
     if (map == MAP_FAILED) {
-      RSHIM_ERR("Vfio mmap failed %m\n");
+      RSHIM_ERR("rshim%d vfio mmap failed\n", dev->bd.index);
       rc = -1;
       goto fail;
     } else {
@@ -642,7 +642,8 @@ static int rshim_pcie_mmap_vfio(rshim_pcie_t *dev)
                  VFIO_GET_REGION_ADDR(VFIO_PCI_CONFIG_REGION_INDEX) +
                  PCI_COMMAND);
       if (rc != sizeof(reg)) {
-        RSHIM_ERR("Failed to read command from PCI config space!\n");
+        RSHIM_ERR("rshim%d failed to read command from PCI config space!\n",
+                  dev->bd.index);
         rc = -1;
         goto fail;
       }
@@ -651,7 +652,7 @@ static int rshim_pcie_mmap_vfio(rshim_pcie_t *dev)
                   VFIO_GET_REGION_ADDR(VFIO_PCI_CONFIG_REGION_INDEX) +
                   PCI_COMMAND);
       if (rc != sizeof(reg)) {
-        RSHIM_ERR("Failed to set PCI bus mastering!\n");
+        RSHIM_ERR("rshim%d failed to set PCI bus mastering!\n", dev->bd.index);
         rc = -1;
         goto fail;
       }
@@ -811,7 +812,7 @@ static void rshim_pcie_intr(rshim_pcie_t *dev)
                       &info.word, RSHIM_REG_SIZE_8B);
   if (rc || RSHIM_BAD_CTRL_REG(info.word)) {
     if (!bd->drop_mode)
-      RSHIM_WARN("Failed to read irq request\n");
+      RSHIM_WARN("rshim%d failed to read irq request\n", bd->index);
     goto intr_done;
   }
 
@@ -821,13 +822,13 @@ static void rshim_pcie_intr(rshim_pcie_t *dev)
     goto intr_done;
   }
 
-  RSHIM_INFO("Receive interrupt for %s reset\n",
+  RSHIM_INFO("rshim%d receive interrupt for %s reset\n", bd->index,
     (info.rst_type == RSHIM_PCIE_RST_TYPE_NIC_RESET) ? "NIC" :
     ((info.rst_type == RSHIM_PCIE_RST_TYPE_DPU_RESET) ? "DPU" : ""));
 
   switch (info.rst_state) {
   case RSHIM_PCIE_RST_STATE_REQUEST:
-    RSHIM_INFO("NIC reset ACK\n");
+    RSHIM_INFO("rshim%d NIC reset ACK\n", bd->index);
     info.pcie = 1;
     info.rst_reply = RSHIM_PCIE_RST_REPLY_ACK;
     __sync_synchronize();
@@ -836,7 +837,7 @@ static void rshim_pcie_intr(rshim_pcie_t *dev)
     break;
 
   case RSHIM_PCIE_RST_STATE_ABORT:
-    RSHIM_INFO("NIC reset ABORT\n");
+    RSHIM_INFO("rshim%d NIC reset ABORT\n", bd->index);
     info.pcie = 1;
     info.word &= 0xFFFFFFFFUL;
     bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad6,
@@ -844,7 +845,7 @@ static void rshim_pcie_intr(rshim_pcie_t *dev)
     break;
 
   case RSHIM_PCIE_RST_STATE_START:
-    RSHIM_INFO("NIC reset START\n");
+    RSHIM_INFO("rshim%d NIC reset START\n", bd->index);
 
     info.rst_reply = RSHIM_PCIE_RST_START_ACK;
     info.pcie = 1;
@@ -958,12 +959,12 @@ static int rshim_pcie_mmap(rshim_pcie_t *dev, bool enable)
 
   dev->device_fd = open("/dev/pci", O_RDWR, 0);
   if (dev->device_fd < 0) {
-    RSHIM_ERR("Failed to open /dev/pci\n");
+    RSHIM_ERR("rshim%d failed to open /dev/pci\n", dev->bd.index);
     return -ENODEV;
   }
 
   if (ioctl(dev->device_fd, PCIOCBARMMAP, &pbm) < 0) {
-    RSHIM_ERR("PCIOCBARMMAP IOCTL failed\n");
+    RSHIM_ERR("rshim%d PCIOCBARMMAP IOCTL failed\n", dev->bd.index);
     rc = -ENODEV;
     goto rshim_map_failed;
   }
@@ -972,7 +973,7 @@ static int rshim_pcie_mmap(rshim_pcie_t *dev, bool enable)
       (uintptr_t)pbm.pbm_bar_off);
   if (pbm.pbm_bar_length < dev->bar_size) {
     dev->rshim_regs = NULL;
-    RSHIM_ERR("BAR length is too small\n");
+    RSHIM_ERR("rshim%d BAR length is too small\n", dev->bd.index);
     rc = -ENOMEM;
     goto rshim_map_failed;
   }
@@ -1136,7 +1137,7 @@ static int rshim_pcie_enable(rshim_backend_t *bd, bool enable)
     /* Fall-back to uio if failed. */
     if (rc < 0 && dev->mmap_mode == RSHIM_PCIE_MMAP_VFIO &&
         rshim_pcie_has_uio()) {
-      RSHIM_INFO("Fall-back to uio\n");
+      RSHIM_INFO("rshim%d fall-back to uio\n", bd->index);
       rshim_pcie_bind(dev, false);
       dev->pci_path = SYS_UIO_PCI_PATH;
       dev->mmap_mode = RSHIM_PCIE_MMAP_UIO;
@@ -1146,7 +1147,7 @@ static int rshim_pcie_enable(rshim_backend_t *bd, bool enable)
 
     /* Fall-back to direct map if failed. */
     if (rc < 0 && dev->mmap_mode != RSHIM_PCIE_MMAP_DIRECT) {
-      RSHIM_INFO("Fall-back to direct io\n");
+      RSHIM_INFO("rshim%d fall-back to direct io\n", bd->index);
       rshim_pcie_bind(dev, false);
       dev->pci_path = NULL;
       dev->mmap_mode = RSHIM_PCIE_MMAP_DIRECT;
@@ -1162,7 +1163,7 @@ static int rshim_pcie_enable(rshim_backend_t *bd, bool enable)
     rc = rshim_pcie_mmap(dev, true);
 #endif /* __linux__ */
 
-  RSHIM_INFO("rshim %s %s\n", bd->dev_name, enable ? "enable" : "disable");
+  RSHIM_INFO("%s %s\n", bd->dev_name, enable ? "enable" : "disable");
 
   return rc;
 }
@@ -1284,7 +1285,7 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
   if (pci_dev->device_id != BLUEFIELD1_DEVICE_ID) {
     rc = pthread_create(&dev->intr_thread, NULL, rshim_pcie_intr_thread, dev);
     if (rc)
-      RSHIM_ERR("Failed to create intr thread\n");
+      RSHIM_ERR("rshim%d failed to create intr thread\n", bd->index);
   }
 #endif
 

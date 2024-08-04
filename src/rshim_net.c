@@ -60,7 +60,7 @@ static int rshim_if_open(char *ifname, int index)
 
     fd = open("/dev/net/tun", O_RDWR);
     if (fd < 0) {
-      RSHIM_ERR("Can't open %s: %m\n", ifname);
+      RSHIM_ERR("rshim%d can't open %s\n", index, ifname);
       return -1;
     }
   }
@@ -71,7 +71,7 @@ static int rshim_if_open(char *ifname, int index)
 
   rc = ioctl(fd, TUNSETIFF, (void *) &ifr);
   if (rc < 0) {
-    RSHIM_ERR("ioctl failed: errno=%d\n", errno);
+    RSHIM_ERR("rshim%d ioctl failed(%d)\n", index, errno);
     close(fd);
     return -1;
   }
@@ -80,14 +80,14 @@ static int rshim_if_open(char *ifname, int index)
   ifr.ifr_hwaddr.sa_family = ARPHRD_ETHER;
   ifr.ifr_hwaddr.sa_data[5] += index * 2;
   if (ioctl(fd, SIOCSIFHWADDR, &ifr)) {
-    RSHIM_ERR("ioctl SIOCSIFHWADDR failed");
+    RSHIM_ERR("rshim%d ioctl SIOCSIFHWADDR failed", index);
     close(fd);
     return -1;
   }
 
   s = socket(AF_INET, SOCK_DGRAM, 0);
   if (s < 0) {
-    RSHIM_ERR("socket failed: %m\n");
+    RSHIM_ERR("rshim%d socket failed\n", index);
     close(fd);
     return -1;
   }
@@ -102,7 +102,7 @@ static int rshim_if_open(char *ifname, int index)
 
   sprintf(cmd, "ifup %s 2>/dev/null&", ifname);
   if (system(cmd) == -1)
-    RSHIM_DBG("Failed to call ifup\n");
+    RSHIM_DBG("rshim%d failed to call ifup\n", index);
 
   return fd;
 }
@@ -115,7 +115,7 @@ static int rshim_if_open(char *ifname, int index)
 
   s = socket(AF_INET, SOCK_DGRAM, 0);
   if (s < 0) {
-    RSHIM_ERR("socket failed: %m\n");
+    RSHIM_ERR("rshim%d socket failed\n", index);
     return -1;
   }
 
@@ -124,7 +124,7 @@ static int rshim_if_open(char *ifname, int index)
     system("kldload -qn if_tap");
     fd = open("/dev/tap", O_RDWR);
     if (fd < 0) {
-      RSHIM_ERR("Can't open %s: %m\n", ifname);
+      RSHIM_ERR("rshim%d failed to open %s\n", index, ifname);
       close(s);
       return -1;
     }
@@ -132,7 +132,7 @@ static int rshim_if_open(char *ifname, int index)
 
   memset(&ifr, 0, sizeof(ifr));
   if (ioctl(fd, TAPGIFNAME, &ifr) < 0) {
-    RSHIM_ERR("ioctl TAPGIFNAME failed");
+    RSHIM_ERR("rshim%d ioctl TAPGIFNAME failed", index);
     close(fd);
     close(s);
     return -1;
@@ -147,7 +147,7 @@ static int rshim_if_open(char *ifname, int index)
 
     /* cleanup old device */
     if (ioctl(s, SIOCIFDESTROY, &ifr) < 0) {
-      RSHIM_ERR("SIOCIFDESTROY failed: %m\n");
+      RSHIM_ERR("rshim%d SIOCIFDESTROY failed\n", index);
       close(s);
       close(fd);
       return -1;
@@ -157,7 +157,7 @@ static int rshim_if_open(char *ifname, int index)
 
     /* try to rename device again */
     if (ioctl(s, SIOCSIFNAME, &ifr) < 0) {
-      RSHIM_ERR("SIOCIFNAME failed: %m\n");
+      RSHIM_ERR("rshim%d SIOCIFNAME failed\n", index);
       close(s);
       close(fd);
       return -1;
@@ -168,7 +168,7 @@ static int rshim_if_open(char *ifname, int index)
 
   ifr.ifr_mtu = ETHERMTU;
   if (ioctl(s, SIOCSIFMTU, &ifr) < 0) {
-    RSHIM_ERR("ioctl SIOCSIMTU failed");
+    RSHIM_ERR("rshim%d ioctl SIOCSIMTU failed", index);
     close(s);
     close(fd);
     return -1;
@@ -179,7 +179,7 @@ static int rshim_if_open(char *ifname, int index)
   ifr.ifr_addr.sa_len = 6;
   ifr.ifr_addr.sa_data[5] += index * 2;
   if (ioctl(s, SIOCSIFLLADDR, &ifr) < 0) {
-    RSHIM_ERR("ioctl SIOCSIFLLADDR failed");
+    RSHIM_ERR("rshim%d ioctl SIOCSIFLLADDR failed", index);
     close(s);
     close(fd);
     return -1;
@@ -275,13 +275,14 @@ int rshim_net_init(rshim_backend_t *bd)
   event.events = EPOLLIN;
   rc = epoll_ctl(rshim_epoll_fd, EPOLL_CTL_ADD, bd->net_fd, &event);
   if (rc == -1) {
-    RSHIM_ERR("epoll_ctl failed: %d %d\n", rshim_epoll_fd, bd->net_fd);
+    RSHIM_ERR("rshim%d epoll_ctl failed: %d %d\n", bd->index,
+              rshim_epoll_fd, bd->net_fd);
     goto fail;
   }
 
   rc = pipe(fd);
   if (rc == -1) {
-    RSHIM_ERR("Failed to create net pipe");
+    RSHIM_ERR("rshim%d failed to create net pipe", bd->index);
     goto fail;
   }
 
@@ -289,7 +290,8 @@ int rshim_net_init(rshim_backend_t *bd)
   event.events = EPOLLIN;
   rc = epoll_ctl(rshim_epoll_fd, EPOLL_CTL_ADD, fd[0], &event);
   if (rc == -1) {
-    RSHIM_ERR("epoll_ctl failed: %d %d\n", rshim_epoll_fd, fd[0]);
+    RSHIM_ERR("rshim%d epoll_ctl failed: %d %d\n", bd->index,
+              rshim_epoll_fd, fd[0]);
     goto fail;
   }
   bd->net_notify_fd[0] = fd[0];
