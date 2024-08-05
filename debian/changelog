@@ -1,3 +1,9 @@
+rshim (2.0.40) UNRELEASED; urgency=high
+
+  * Fix rshim deb package for DOCA build on Ubuntu
+
+ -- Penghe Geng <pgeng@nvidia.com>  Mon, 05 Aug 2024 10:21:05 -0400
+
 rshim (2.0.39) UNRELEASED; urgency=low
 
   * Fix rshim masking issue on Ubuntu
