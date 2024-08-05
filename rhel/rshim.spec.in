@@ -54,6 +54,9 @@ via the virtual console or network interface.
 %{_mandir}/man8/rshim.8.gz
 
 %changelog
+* Mon Aug 05 2024 Penghe Geng <pgeng@nvidia.com> - 2.0.40
+- Fix rshim deb package for DOCA build on Ubuntu
+
 * Fri Aug 02 2024 Penghe Geng <pgeng@nvidia.com> - 2.0.39
 - Fix rshim masking issue on Ubuntu
 - bfb-install: Fix NIC_MODE installation for BlueField-2
