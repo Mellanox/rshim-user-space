@@ -706,8 +706,17 @@ int rshim_reset_control(rshim_backend_t *bd)
 int rshim_boot_open(rshim_backend_t *bd)
 {
   int rc;
+  time_t t;
 
   pthread_mutex_lock(&bd->mutex);
+
+  /* Add a small delay. */
+  time(&t);
+  if (!bd->register_time || difftime(t, bd->register_time) < 2) {
+    RSHIM_INFO("rshim%d: boot not ready\n", bd->index);
+    pthread_mutex_unlock(&bd->mutex);
+    return -EBUSY;
+  }
 
   if (bd->drop_mode) {
     RSHIM_INFO("rshim is in drop mode\n");
@@ -2637,6 +2646,7 @@ int rshim_register(rshim_backend_t *bd)
 #endif
 
   rshim_dev_bitmask |= (1ULL << index);
+  time(&bd->register_time);
 
   return 0;
 }
