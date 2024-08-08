@@ -54,6 +54,10 @@ via the virtual console or network interface.
 %{_mandir}/man8/rshim.8.gz
 
 %changelog
+* Thu Aug 08 2024 Liming Sun <limings@nvidia.com> - 2.0.41
+- Add a small delay to access the boot file
+- Fix a valgrind warning
+
 * Mon Aug 05 2024 Penghe Geng <pgeng@nvidia.com> - 2.0.40
 - Fix rshim deb package for DOCA build on Ubuntu
 
