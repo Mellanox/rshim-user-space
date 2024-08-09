@@ -750,7 +750,7 @@ static int rshim_usb_probe_one(libusb_context *ctx, libusb_device *usb_dev,
     return rc;
   }
 
-  for (i = 0; i < config->bNumInterfaces; i++) {
+  for (i = 0; i < config->bNumInterfaces && !rshim_cmdmode; i++) {
     rc = libusb_claim_interface(handle, i);
     if (rc < 0) {
       if (libusb_kernel_driver_active(handle, i) == 1) {
@@ -1172,6 +1172,12 @@ int rshim_usb_init(int epoll_fd)
 
   rshim_usb_ctx = ctx;
   rshim_usb_epoll_fd = epoll_fd;
+
+  /* Actively probe USB in command mode. */
+  if (rshim_cmdmode) {
+    rshim_usb_probe();
+    return 0;
+  }
 
 #if LIBUSB_API_VERSION >= 0x01000102
   num = sizeof(rshim_usb_product_ids) / sizeof(rshim_usb_product_ids[0]);

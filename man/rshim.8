@@ -87,6 +87,17 @@ cat /dev/rshim0/misc
 Specify the backend to attach, which can be one of usb, pcie or pcie_lf. If not specified, the driver will scan all rshim backends unless the '-d' option is given with a device name specified.
 .in
 
+-c, --cmdmode
+.in +4n
+Run rshim as command line rather than as driver. The following sub-commands are supported (only for USB backend).
+
+    -g, --get-debug
+    Get the current debug setting.
+
+    -s, set-debug <0 | 1>
+    Set the debug setting.
+.in
+
 -d, --device
 .in +4n
 Specify the device name to attach with the format below. The backend driver can be deduced from the device name, thus the '-b' option is not needed.

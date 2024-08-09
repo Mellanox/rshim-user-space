@@ -40,7 +40,7 @@
 extern int rshim_log_level;
 extern bool rshim_daemon_mode;
 extern int rshim_drop_mode;
-extern int rshim_force_mode;
+extern bool rshim_force_mode;
 extern int rshim_usb_reset_delay;
 extern bool rshim_has_usb_reset_delay;
 extern int rshim_pcie_reset_delay;
@@ -49,6 +49,8 @@ extern int rshim_pcie_intr_poll_interval;
 extern int rshim_pcie_enable_vfio;
 extern int rshim_pcie_enable_uio;
 extern bool rshim_force_cmd_pending[];
+extern bool rshim_cmdmode;
+extern int rshim_static_index;
 
 #ifndef offsetof
 #define offsetof(TYPE, MEMBER)	((size_t)&((TYPE *)0)->MEMBER)
@@ -512,6 +514,9 @@ rshim_backend_t *rshim_find_by_name(char *dev_name);
 /* Find backend by device. */
 rshim_backend_t *rshim_find_by_dev(void *dev);
 
+/* Find backend by index. */
+rshim_backend_t *rshim_find_by_index(int index);
+
 /* RShim global lock. */
 void rshim_lock(void);
 int rshim_trylock(void);
@@ -646,5 +651,8 @@ int rshim_fifo_sync(rshim_backend_t *bd, bool drop_rx);
 
 /* Enable or disable drop mode */
 int rshim_set_drop_mode(rshim_backend_t *bd, int value);
+
+/* Run rshim command mode. */
+int rshim_cmdmode_run(int argc, char *argv[]);
 
 #endif /* _RSHIM_H */

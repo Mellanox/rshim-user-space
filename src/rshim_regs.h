@@ -165,6 +165,9 @@
 
 #define RSH_FABRIC_DIM 0x0110
 
+#define RSH_BREADCRUMB1 0x0518
+#define RSH_BREADCRUMB1_DBG_ENABLE_MASK (0x1ULL << 30)
+
 // Mustang-specific registers' addresses, masks, shifts
 #define BF3_RSH_ADDR_MASK 0x10000000
 #define BF3_RSH_BASE_ADDR 0x13000000
