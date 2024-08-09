@@ -211,7 +211,7 @@ char *rshim_static_dev_name;
 
 /* Default configuration file. */
 const char *rshim_cfg_file = DEFAULT_RSHIM_CONFIG_FILE;
-static int rshim_display_level = 0;
+static int rshim_display_level;
 static int rshim_boot_timeout = 150;
 int rshim_drop_mode = -1;
 int rshim_usb_reset_delay = 1;
@@ -221,7 +221,8 @@ bool rshim_has_pcie_reset_delay;
 int rshim_pcie_enable_vfio = 1;
 int rshim_pcie_enable_uio = 1;
 int rshim_pcie_intr_poll_interval = 10;  /* Interrupt polling in milliseconds */
-int rshim_force_mode = 0;  /* always keep /dev/rshim<N> & send a force cmd */
+bool rshim_force_mode;                   /* Keep /dev/rshim<N> & send a force cmd */
+bool rshim_cmdmode;                      /* Command mode */
 
 /* Array of devices and device names. */
 rshim_backend_t *rshim_devs[RSHIM_MAX_DEV];
@@ -2145,6 +2146,12 @@ rshim_backend_t *rshim_find_by_name(char *dev_name)
   return rshim_devs[index];
 }
 
+rshim_backend_t *rshim_find_by_index(int index)
+{
+  return (index >= 0 && index < RSHIM_MAX_DEV) ?
+    rshim_devs[index] : NULL;
+}
+
 rshim_backend_t *rshim_find_by_dev(void *dev)
 {
   rshim_backend_t *bd;
@@ -2524,6 +2531,13 @@ int rshim_access_check(rshim_backend_t *bd)
   uint64_t value = 0;
   int i, rc;
 
+  /*
+   * Command mode could start even when the rshim driver is running,
+   * thus no need for access check.
+   */
+  if (rshim_cmdmode)
+    return 0;
+
   bd->in_access_check = 1;  /* must be cleared before return */
 
   /*
@@ -2678,12 +2692,14 @@ int rshim_register(rshim_backend_t *bd)
   bd->last_keepalive = rshim_timer_ticks;
   bd->timer = rshim_timer_ticks + 1;
 
-  /* create character devices. */
+  /* Create character devices (except for command mode). */
 #ifdef HAVE_RSHIM_FUSE
-  rc = rshim_fuse_init(bd);
-  if (rc) {
-    rshim_deregister(bd);
-    return rc;
+  if (!rshim_cmdmode) {
+    rc = rshim_fuse_init(bd);
+    if (rc) {
+      rshim_deregister(bd);
+      return rc;
+    }
   }
 #endif
 
@@ -2884,19 +2900,26 @@ static void rshim_main(int argc, char *argv[])
       rshim_backend_name = "pcie";
   }
   if (!rshim_backend_name) {
-    rshim_pcie_init();
+    if (!rshim_cmdmode)
+      rshim_pcie_init();
     rshim_usb_init(epoll_fd);
   } else {
     if (!strcmp(rshim_backend_name, "usb"))
       rc = rshim_usb_init(epoll_fd);
-    else if (!strcmp(rshim_backend_name, "pcie-lf"))
+    else if (!strcmp(rshim_backend_name, "pcie-lf") && !rshim_cmdmode)
       rc = rshim_pcie_lf_init();
-    else if (!strcmp(rshim_backend_name, "pcie"))
+    else if (!strcmp(rshim_backend_name, "pcie") && !rshim_cmdmode)
       rc = rshim_pcie_init();
   }
   if (rc) {
     RSHIM_ERR("Failed to initialize rshim backend\n");
     exit(-1);
+  }
+
+  /* Run command mode if specified. */
+  if (rshim_cmdmode) {
+    rshim_cmdmode_run(argc, argv);
+    return;
   }
 
   time(&t0);
@@ -2955,7 +2978,7 @@ static void rshim_main(int argc, char *argv[])
     }
 
     /* Delayed initialization for livefish probe. */
-    if (!rshim_pcie_lf_init_done) {
+    if (!rshim_pcie_lf_init_done && !rshim_cmdmode) {
       time(&t1);
       if (difftime(t1, t0) > 3) {
         if (!rshim_backend_name)
@@ -3101,7 +3124,7 @@ static int rshim_load_cfg(void)
       rshim_drop_mode = (atoi(value) > 0) ? 1 : 0;
       continue;
     } else if (!strcmp(key, "FORCE_MODE")) {
-      rshim_force_mode = (atoi(value) > 0) ? 1 : 0;
+      rshim_force_mode = (atoi(value) > 0) ? true : false;
       continue;
     } else if (!strcmp(key, "USB_RESET_DELAY")) {
       rshim_usb_reset_delay = atoi(value);
@@ -3203,34 +3226,39 @@ static void print_help(void)
   printf("Usage: rshim [options]\n");
   printf("\n");
   printf("OPTIONS:\n");
-  printf("  -b, --backend     backend name (usb, pcie or pcie-lf)\n");
-  printf("  -d, --device      device to attach\n");
-  printf("  -f, --foreground  run in foreground\n");
-  printf("  -F, --force       run in force mode\n");
-  printf("  -i, --index       use device path /dev/rshim<i>/\n");
-  printf("  -l, --log-level   log level");
+  printf("  -b, --backend             backend name (usb, pcie or pcie-lf)\n");
+  printf("  -c, --cmdmode             run in command line mode\n");
+  printf("    -g, --get-debug         get debug mode\n");
+  printf("    -s, --set-debug <0 | 1> set debug mode\n");
+  printf("  -d, --device              device to attach\n");
+  printf("  -f, --foreground          run in foreground\n");
+  printf("  -F, --force               run in force mode\n");
+  printf("  -i, --index               use device path /dev/rshim<i>/\n");
+  printf("  -l, --log-level           log level");
   printf("(0:none, 1:error, 2:warning, 3:notice, 4:debug)\n");
-  printf("  -n, --nonet       no network interface\n");
-  printf("  -v, --version     version\n");
+  printf("  -n, --nonet               no network interface\n");
+  printf("  -v, --version             version\n");
 }
 
 int main(int argc, char *argv[])
 {
-  static const char short_options[] = "b:d:fFhi:l:nv";
+  static const char short_options[] = "b:cd:fgFhi:l:nsv";
   static struct option long_options[] = {
     { "backend", required_argument, NULL, 'b' },
+    { "cmdmode", no_argument, NULL, 'c' },
     { "device", required_argument, NULL, 'd' },
     { "foreground", no_argument, NULL, 'f' },
     { "force", no_argument, NULL, 'F' },
+    { "get-debug", no_argument, NULL, 'g' },
     { "help", no_argument, NULL, 'h' },
     { "index", required_argument, NULL, 'i' },
     { "log-level", required_argument, NULL, 'l' },
     { "nonet", no_argument, NULL, 'n' },
+    { "set-debug", required_argument, NULL, 's' },
     { "version", no_argument, NULL, 'v' },
     { NULL, 0, NULL, 0 }
   };
   int c;
-  int i;
 
   /* Parse arguments. */
   while ((c = getopt_long(argc, argv, short_options, long_options, NULL))
@@ -3238,6 +3266,12 @@ int main(int argc, char *argv[])
     switch (c) {
     case 'b':
       rshim_backend_name = optarg;
+      break;
+    case 'c':
+      rshim_cmdmode = true;
+      rshim_no_net = true;
+      rshim_daemon_mode = false;
+      rshim_log_level = LOG_ERR;
       break;
     case 'd':
       rshim_static_dev_name = optarg;
@@ -3278,13 +3312,15 @@ int main(int argc, char *argv[])
       return 0;
     case 'h':
     default:
-      print_help();
-      return 0;
+      if (!rshim_cmdmode) {
+        print_help();
+        return 0;
+      }
     }
   }
 
   /* Put into daemon mode. */
-  if (rshim_daemon_mode) {
+  if (rshim_daemon_mode && !rshim_cmdmode) {
     int pid = fork();
 
     if (pid < 0) {
@@ -3316,6 +3352,8 @@ int main(int argc, char *argv[])
   /* In force mode, we will send a one-time ownership request command for each
    * rshim backend if they are found to be detached (aka. in drop mode) */
   if (rshim_force_mode) {
+    int i;
+
     for (i = 0; i < RSHIM_MAX_DEV; i++)
       rshim_force_cmd_pending[i] = 1;
   }

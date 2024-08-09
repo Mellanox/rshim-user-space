@@ -712,7 +712,7 @@ static int rshim_fuse_misc_read(struct cuse_dev *cdev, int fflags,
     rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->uptime,
                         &value, RSHIM_REG_SIZE_8B);
     if (!rc) {
-      n = snprintf(p, len, "%-16s%ld(s)\n", "UP_TIME", value/BF3_REF_CLK_IN_HZ);
+      n = snprintf(p, len, "%-16s%lld(s)\n", "UP_TIME", value/BF3_REF_CLK_IN_HZ);
       p += n;
       len -= n;
     }
@@ -942,7 +942,7 @@ static int rshim_fuse_misc_write(struct cuse_dev *cdev, int fflags,
       goto invalid;
     rshim_set_opn(bd, opn, RSHIM_YU_BOOT_RECORD_OPN_SIZE);
   } else if (!strcmp(key, "DEBUG_CODE")) {
-    if (sscanf(p, " 0x%lx", &val64) != 1)
+    if (sscanf(p, " 0x%llx", &val64) != 1)
       goto invalid;
     pthread_mutex_lock(&bd->mutex);
     rc = bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad1,
