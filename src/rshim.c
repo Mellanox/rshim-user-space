@@ -56,16 +56,17 @@ static int rshim_keepalive_ticks = RSHIM_KEEPALIVE_PERIOD / RSHIM_TIMER_INTERVAL
 #define RSHIM_OSP_REQ_MAGIC_NUM 0x4F53505F524551ULL /* OSP_REQ */
 #define RSHIM_OSP_ACK_MAGIC_NUM 0x4F53505F41434BULL /* OSP_ACK */
 
-const char* magic_to_str(uint64_t magic){
+const char *magic_to_str(uint64_t magic)
+{
   switch(magic){
-    case RSHIM_KEEPALIVE_MAGIC_NUM:
-      return "MAGIC_KEEPALIVE";
-    case RSHIM_OSP_REQ_MAGIC_NUM:
-      return "MAGIC_OSP_REQ";
-    case RSHIM_OSP_ACK_MAGIC_NUM:
-      return "MAGIC_OSP_ACK";
-    default:
-      return "UNKNOWN";
+  case RSHIM_KEEPALIVE_MAGIC_NUM:
+    return "MAGIC_KEEPALIVE";
+  case RSHIM_OSP_REQ_MAGIC_NUM:
+    return "MAGIC_OSP_REQ";
+  case RSHIM_OSP_ACK_MAGIC_NUM:
+    return "MAGIC_OSP_ACK";
+  default:
+    return "UNKNOWN";
   }
 }
 
@@ -214,9 +215,9 @@ static int rshim_display_level = 0;
 static int rshim_boot_timeout = 150;
 int rshim_drop_mode = -1;
 int rshim_usb_reset_delay = 1;
-bool rshim_has_usb_reset_delay = false;
+bool rshim_has_usb_reset_delay;
 int rshim_pcie_reset_delay = 5;
-bool rshim_has_pcie_reset_delay = false;
+bool rshim_has_pcie_reset_delay;
 int rshim_pcie_enable_vfio = 1;
 int rshim_pcie_enable_uio = 1;
 int rshim_pcie_intr_poll_interval = 10;  /* Interrupt polling in milliseconds */
@@ -236,7 +237,7 @@ bool rshim_force_cmd_pending[RSHIM_MAX_DEV];
 #endif
 uint64_t rshim_dev_bitmask;
 
-bool rshim_no_net = false;
+bool rshim_no_net;
 int rshim_log_level = LOG_NOTICE;
 bool rshim_daemon_mode = true;
 volatile bool rshim_run = true;
@@ -297,8 +298,8 @@ static int rshim_fd_full_read(int fd, void *data, int len)
 
 static int rshim_fd_full_write(int fd, void *data, int len)
 {
-  int total = 0;
   char *buf = (char *)data;
+  int total = 0;
 
   pthread_mutex_lock(&rshim_fd_mutex);
 
@@ -362,14 +363,16 @@ static ssize_t rshim_read_default(rshim_backend_t *bd, int devtype,
   while (total < count) {
     if (avail == 0) {
       reg = 0;
-      rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->tm_tth_sts, &reg, RSHIM_REG_SIZE_8B);
+      rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->tm_tth_sts, &reg,
+                          RSHIM_REG_SIZE_8B);
       if (rc < 0 || RSHIM_BAD_CTRL_REG(reg))
         break;
       avail = reg & RSH_TM_TILE_TO_HOST_STS__COUNT_MASK;
       if (avail == 0)
         break;
     }
-    rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->tm_tth_data, &reg, RSHIM_REG_SIZE_8B);
+    rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->tm_tth_data, &reg,
+                        RSHIM_REG_SIZE_8B);
     if (rc < 0)
       break;
 
@@ -446,7 +449,8 @@ static ssize_t rshim_write_delayed(rshim_backend_t *bd, int devtype,
     time(&t0);
     while (avail <= 0) {
       /* Calculate available space in words. */
-      rc = bd->read_rshim(bd, RSHIM_CHANNEL, size_addr, &reg, RSHIM_REG_SIZE_8B);
+      rc = bd->read_rshim(bd, RSHIM_CHANNEL, size_addr, &reg,
+                          RSHIM_REG_SIZE_8B);
       if (rc < 0 || RSHIM_BAD_CTRL_REG(reg)) {
         RSHIM_ERR("rshim%d read_rshim error addr=0x%x, reg=0x%lx, rc=%d\n",
                   bd->index, size_addr, (long unsigned int)reg, rc);
@@ -590,7 +594,8 @@ static int rshim_reg_indirect_wait(rshim_backend_t *bd, uint64_t resp_count)
   uint64_t count;
 
   while (retries--) {
-    rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->mem_acc_rsp_cnt, &count, RSHIM_REG_SIZE_8B);
+    rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->mem_acc_rsp_cnt, &count,
+                        RSHIM_REG_SIZE_8B);
     if (rc)
       return rc;
     if (count != resp_count)
@@ -605,19 +610,24 @@ static int rshim_mmio_write_common(rshim_backend_t *bd, uintptr_t pa,
 {
   uint64_t reg, resp_count;
 
-  bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->device_mstr_priv_lvl, &reg, RSHIM_REG_SIZE_8B);
+  bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->device_mstr_priv_lvl, &reg,
+                 RSHIM_REG_SIZE_8B);
   reg |= 0x1ULL << bd->regs->device_mstr_priv_lvl_shift;
-  bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->device_mstr_priv_lvl, reg, RSHIM_REG_SIZE_8B);
+  bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->device_mstr_priv_lvl, reg,
+                  RSHIM_REG_SIZE_8B);
 
-  bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->mem_acc_rsp_cnt, &resp_count, RSHIM_REG_SIZE_8B);
-  bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->mem_acc_data_first_word, data, RSHIM_REG_SIZE_8B);
+  bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->mem_acc_rsp_cnt, &resp_count,
+                 RSHIM_REG_SIZE_8B);
+  bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->mem_acc_data_first_word, data,
+                  RSHIM_REG_SIZE_8B);
   reg = (((uint64_t)pa & RSH_MEM_ACC_CTL__ADDRESS_RMASK) <<
            RSH_MEM_ACC_CTL__ADDRESS_SHIFT) |
         (((uint64_t)size & RSH_MEM_ACC_CTL__SIZE_RMASK) <<
           RSH_MEM_ACC_CTL__SIZE_SHIFT) |
         (1ULL << RSH_MEM_ACC_CTL__WRITE_SHIFT) |
         (1ULL << RSH_MEM_ACC_CTL__SEND_SHIFT);
-  bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->mem_acc_ctl, reg, RSHIM_REG_SIZE_8B);
+  bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->mem_acc_ctl, reg,
+                  RSHIM_REG_SIZE_8B);
   return rshim_reg_indirect_wait(bd, resp_count);
 }
 
@@ -626,23 +636,28 @@ static int rshim_mmio_read_common(rshim_backend_t *bd, uintptr_t pa,
 {
   uint64_t reg, resp_count;
 
-  bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->device_mstr_priv_lvl, &reg, RSHIM_REG_SIZE_8B);
+  bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->device_mstr_priv_lvl, &reg,
+                 RSHIM_REG_SIZE_8B);
   reg |= 0x1ULL << bd->regs->device_mstr_priv_lvl_shift;
-  bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->device_mstr_priv_lvl, reg, RSHIM_REG_SIZE_8B);
+  bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->device_mstr_priv_lvl, reg,
+                  RSHIM_REG_SIZE_8B);
 
-  bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->mem_acc_rsp_cnt, &resp_count, RSHIM_REG_SIZE_8B);
+  bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->mem_acc_rsp_cnt, &resp_count,
+                 RSHIM_REG_SIZE_8B);
 
   reg = (((uint64_t)pa & RSH_MEM_ACC_CTL__ADDRESS_RMASK) <<
            RSH_MEM_ACC_CTL__ADDRESS_SHIFT) |
         (((uint64_t)size & RSH_MEM_ACC_CTL__SIZE_RMASK) <<
           RSH_MEM_ACC_CTL__SIZE_SHIFT) |
         (1ULL << RSH_MEM_ACC_CTL__SEND_SHIFT);
-  bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->mem_acc_ctl, reg, RSHIM_REG_SIZE_8B);
+  bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->mem_acc_ctl, reg,
+                  RSHIM_REG_SIZE_8B);
 
   if (rshim_reg_indirect_wait(bd, resp_count))
     return -1;
 
-  bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->mem_acc_data_first_word, &reg, RSHIM_REG_SIZE_8B);
+  bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->mem_acc_data_first_word, &reg,
+                 RSHIM_REG_SIZE_8B);
   *data = reg;
 
   return 0;
@@ -915,9 +930,9 @@ void rshim_boot_release(rshim_backend_t *bd)
 
   /* Restore the boot mode register. */
   rc = bd->write_rshim(bd, RSHIM_CHANNEL,
-                           bd->regs->boot_control,
-                           RSH_BOOT_CONTROL__BOOT_MODE_VAL_EMMC,
-                           RSHIM_REG_SIZE_8B);
+                       bd->regs->boot_control,
+                       RSH_BOOT_CONTROL__BOOT_MODE_VAL_EMMC,
+                       RSHIM_REG_SIZE_8B);
   if (rc)
     RSHIM_ERR("rshim%d failed to write boot control(%d)\n", bd->index, rc);
 
@@ -957,14 +972,15 @@ static void rshim_fifo_err(rshim_backend_t *bd, int err)
 
 static int rshim_fifo_tx_avail(rshim_backend_t *bd)
 {
-  uint64_t word;
   int rc, max_size, avail;
+  uint64_t word;
 
   /* Get FIFO max size. */
   max_size = RSH_TM_FIFO_SIZE;
 
   /* Calculate available size. */
-  rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->tm_htt_sts, &word, RSHIM_REG_SIZE_8B);
+  rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->tm_htt_sts, &word,
+                      RSHIM_REG_SIZE_8B);
   if (rc < 0 || RSHIM_BAD_CTRL_REG(word)) {
     RSHIM_ERR("rshim%d failed to read htt sts(%d)\n", bd->index, rc);
     usleep(10000);
@@ -1011,7 +1027,8 @@ int rshim_fifo_sync(rshim_backend_t *bd, bool drop_rx)
 
     do {
       reg = 0;
-      rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->tm_tth_sts, &reg, RSHIM_REG_SIZE_8B);
+      rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->tm_tth_sts, &reg,
+                          RSHIM_REG_SIZE_8B);
       if (rc < 0 || RSHIM_BAD_CTRL_REG(reg))
         break;
 
@@ -1024,7 +1041,8 @@ int rshim_fifo_sync(rshim_backend_t *bd, bool drop_rx)
       }
 
       while (avail > 0) {
-        bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->tm_tth_data, &reg, RSHIM_REG_SIZE_8B);
+        bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->tm_tth_data, &reg,
+                       RSHIM_REG_SIZE_8B);
         avail--;
       }
 
@@ -1433,8 +1451,8 @@ ssize_t rshim_fifo_read(rshim_backend_t *bd, char *buffer, size_t count,
 static void rshim_fifo_output(rshim_backend_t *bd)
 {
   int writesize, write_buf_next = 0, write_avail;
-  int numchan = TMFIFO_MAX_CHAN;
   int chan, chan_offset, fifo_avail;
+  int numchan = TMFIFO_MAX_CHAN;
 
   /* If we're already writing, we have nowhere to put data. */
   if (bd->spin_flags & RSH_SFLG_WRITING)
@@ -2143,9 +2161,9 @@ rshim_backend_t *rshim_find_by_dev(void *dev)
 
 int rshim_set_drop_mode(rshim_backend_t *bd, int value)
 {
+  int has_bd_lock;
   int old_value;
   int rt = 0;
-  int has_bd_lock;
 
   has_bd_lock = !pthread_mutex_trylock(&bd->mutex);
 
@@ -2193,8 +2211,8 @@ int rshim_set_drop_mode(rshim_backend_t *bd, int value)
 
 static int rshim_check_locked_mode(rshim_backend_t *bd)
 {
-    int rc;
     uint64_t value = 0;
+    int rc;
 
     rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad1, &value,
                         RSHIM_REG_SIZE_8B);
@@ -2263,10 +2281,11 @@ static int rshim_update_locked_mode(rshim_backend_t *bd)
 static int rshim_check_sp1_magic(rshim_backend_t *bd, uint64_t magic,
     bool* result)
 {
-  int rc;
   uint64_t sp1;
+  int rc;
 
-  rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad1, &sp1, RSHIM_REG_SIZE_8B);
+  rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad1, &sp1,
+                      RSHIM_REG_SIZE_8B);
   if (rc || RSHIM_BAD_CTRL_REG(sp1)) {
     RSHIM_ERR("rshim%d failed to read sp1(%d)\n", bd->index, rc);
     *result = false;
@@ -2297,9 +2316,8 @@ static int rshim_write_sp1_magic(rshim_backend_t *bd, uint64_t magic)
 
 static int rshim_handle_ownership_transfer(rshim_backend_t *bd)
 {
+  bool has_ack, has_req;
   int i, rt;
-  bool has_ack;
-  bool has_req;
 
   if (bd->drop_mode) {
     if (rshim_force_cmd_pending[bd->index]) {
@@ -2453,15 +2471,16 @@ static void rshim_timer_run(void)
  */
 static void rshim_boot_workaround_check(rshim_backend_t *bd)
 {
-  int rc;
   uint64_t value, uptime_sw, uptime_hw;
+  int rc;
 
   /* This issue is only seen on BF-1 card. */
   if (bd->ver_id != RSHIM_BLUEFIELD_1)
     return;
 
   /* Check boot mode 0, which supposes to be set externally. */
-  rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->boot_control, &value, RSHIM_REG_SIZE_8B);
+  rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->boot_control, &value,
+                      RSHIM_REG_SIZE_8B);
   if (rc || value != RSH_BOOT_CONTROL__BOOT_MODE_VAL_NONE)
     return;
 
@@ -2475,11 +2494,13 @@ static void rshim_boot_workaround_check(rshim_backend_t *bd)
    * If boot mode is 0 after hard-reset, we update the boot mode and
    * initiate sw reset so the chip could boot up.
    */
-  rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->uptime_por, &uptime_hw, RSHIM_REG_SIZE_8B);
+  rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->uptime_por, &uptime_hw,
+                      RSHIM_REG_SIZE_8B);
   if (rc)
     return;
 
-  rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->uptime, &uptime_sw, RSHIM_REG_SIZE_8B);
+  rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->uptime, &uptime_sw,
+                      RSHIM_REG_SIZE_8B);
   if (rc)
     return;
 
@@ -2512,7 +2533,8 @@ int rshim_access_check(rshim_backend_t *bd)
    * rshim device.
    */
   for (i = 0; i < 10; i++) {
-    rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->fabric_dim, &value, RSHIM_REG_SIZE_8B);
+    rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->fabric_dim, &value,
+                        RSHIM_REG_SIZE_8B);
     if (!rc && value && !RSHIM_BAD_CTRL_REG(value))
       break;
     usleep(100000);
@@ -2526,7 +2548,8 @@ int rshim_access_check(rshim_backend_t *bd)
   rshim_boot_workaround_check(bd);
 
   /* Write value 0 to RSH_SCRATCHPAD1. */
-  rc = bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad1, 0, RSHIM_REG_SIZE_8B);
+  rc = bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad1, 0,
+                       RSHIM_REG_SIZE_8B);
   if (rc < 0) {
     RSHIM_ERR("rshim%d failed to write sp1(%d)\n", bd->index, rc);
     bd->in_access_check = 0;
@@ -2551,7 +2574,8 @@ int rshim_access_check(rshim_backend_t *bd)
    */
   value = 0;
   for (i = 0; i < 10; i++) {
-    rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad1, &value, RSHIM_REG_SIZE_8B);
+    rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad1, &value,
+                        RSHIM_REG_SIZE_8B);
 
     if (!rc && value == RSHIM_KEEPALIVE_MAGIC_NUM) {
       RSHIM_INFO("another backend already attached\n");
@@ -2563,7 +2587,8 @@ int rshim_access_check(rshim_backend_t *bd)
   }
 
   /* One more read to make sure it's ready. */
-  rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad1, &value, RSHIM_REG_SIZE_8B);
+  rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad1, &value,
+                      RSHIM_REG_SIZE_8B);
   if (rc < 0 || RSHIM_BAD_CTRL_REG(value)) {
     RSHIM_ERR("rshim%d access check failed(not able to read sp1)\n", bd->index);
     bd->in_access_check = 0;
