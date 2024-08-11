@@ -248,8 +248,8 @@ static ssize_t rshim_usb_bf3_boot_write(rshim_backend_t *bd, const char *buf,
   int transferred = 0;
   int rc, tmp_tsfr;
   int size_addr;
-  uint64_t reg;
   time_t t0, t1;
+  uint64_t reg;
   int i = 0;
 
   size_addr = bd->regs->boot_fifo_count;
@@ -264,7 +264,8 @@ static ssize_t rshim_usb_bf3_boot_write(rshim_backend_t *bd, const char *buf,
     do {
       time(&t0);
 
-      rc = bd->read_rshim(bd, RSHIM_CHANNEL, size_addr, &reg, RSHIM_REG_SIZE_8B);
+      rc = bd->read_rshim(bd, RSHIM_CHANNEL, size_addr, &reg,
+                          RSHIM_REG_SIZE_8B);
       if (rc < 0) {
         RSHIM_ERR("rshim%d read_rshim error %d\n", bd->index, rc);
         return rc;

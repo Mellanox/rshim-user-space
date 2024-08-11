@@ -207,11 +207,13 @@ static int rshim_log_show_crash(rshim_backend_t *bd, uint64_t hdr, char *buf,
   size -= n;
 
   for (i = 0; i < len/2; i++) {
-    rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->scratch_buf_dat, &opcode, RSHIM_REG_SIZE_8B);
+    rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->scratch_buf_dat, &opcode,
+                        RSHIM_REG_SIZE_8B);
     if (rc)
       break;
 
-    rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->scratch_buf_dat, &data, RSHIM_REG_SIZE_8B);
+    rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->scratch_buf_dat, &data,
+                        RSHIM_REG_SIZE_8B);
     if (rc)
       break;
 
@@ -263,7 +265,8 @@ static int rshim_log_show_msg(rshim_backend_t *bd, uint64_t hdr, char *buf,
   p = msg;
 
   while (len--) {
-    rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->scratch_buf_dat, &data, RSHIM_REG_SIZE_8B);
+    rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->scratch_buf_dat, &data,
+                        RSHIM_REG_SIZE_8B);
     if (rc) {
       free(msg);
       return 0;
@@ -376,7 +379,8 @@ int rshim_log_show(rshim_backend_t *bd, char *buf, int size)
     default:
       /* Drain this message. */
       while (len--)
-        bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->scratch_buf_dat, &data, RSHIM_REG_SIZE_8B);
+        bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->scratch_buf_dat, &data,
+                       RSHIM_REG_SIZE_8B);
       break;
     }
   }
@@ -387,7 +391,8 @@ int rshim_log_show(rshim_backend_t *bd, char *buf, int size)
 
 done:
   /* Release the semaphore. */
-  bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->semaphore0, 0, RSHIM_REG_SIZE_8B);
+  bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->semaphore0, 0,
+                  RSHIM_REG_SIZE_8B);
 
   return p - buf;
 }

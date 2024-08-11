@@ -652,7 +652,8 @@ static int rshim_fuse_misc_read(struct cuse_dev *cdev, int fflags,
   pthread_mutex_lock(&bd->mutex);
 
   /* Boot mode. */
-  rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->boot_control, &value, RSHIM_REG_SIZE_8B);
+  rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->boot_control, &value,
+                      RSHIM_REG_SIZE_8B);
   if (rc) {
     RSHIM_ERR("rshim%d failed to read BOOT_CONTROL(%d)\n", bd->index, rc);
     value = 0;
