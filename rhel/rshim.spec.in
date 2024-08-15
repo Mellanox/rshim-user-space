@@ -54,6 +54,11 @@ via the virtual console or network interface.
 %{_mandir}/man8/rshim.8.gz
 
 %changelog
+* Thu Aug 15 2024 Liming Sun <limings@nvidia.com> - 2.1.1
+- Add support for command mode
+- Fix some coding style issues
+- Cleanup rshim debug/syslog messages
+
 * Thu Aug 08 2024 Liming Sun <limings@nvidia.com> - 2.0.41
 - Add a small delay to access the boot file
 - Fix a valgrind warning

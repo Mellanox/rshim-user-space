@@ -1,3 +1,11 @@
+rshim (2.1.1) UNRELEASED; urgency=low
+
+  * Add support for command mode
+  * Fix some coding style issues
+  * Cleanup rshim debug/syslog messages
+
+ -- Liming Sun <limings@nvidia.com>  Thu, 15 Aug 2024 12:55:10 -0400
+
 rshim (2.0.41) UNRELEASED; urgency=low
 
   * Add a small delay to access the boot file
