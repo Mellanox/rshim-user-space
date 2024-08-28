@@ -318,9 +318,6 @@ struct rshim_backend {
   /* Last boot write time. */
   time_t boot_write_time;
 
-  /* Register time. */
-  time_t register_time;
-
   /* State flag bits from RSH_SFLG_xxx (see above). */
   int spin_flags;
 
