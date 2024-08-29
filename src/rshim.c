@@ -2578,7 +2578,8 @@ int rshim_access_check(rshim_backend_t *bd)
    * already attached to this target.
    */
   value = 0;
-  for (i = 0; i < 10; i++) {
+  for (i = 0; i < 1000; i++) {
+    usleep(1000);
     rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad1, &value,
                         RSHIM_REG_SIZE_8B);
 
@@ -2587,8 +2588,17 @@ int rshim_access_check(rshim_backend_t *bd)
       bd->in_access_check = 0;
       return -EEXIST;
     }
+  }
 
-    usleep(100000);
+  // Write RSHIM_KEEPALIVE_MAGIC_NUM to SP1 in case the other backend is also
+  // running the previous checking loop. This magic number isn't otherwise
+  // written during this function by the timer handler due to in_access_check.
+  rc = bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad1,
+                       RSHIM_KEEPALIVE_MAGIC_NUM, RSHIM_REG_SIZE_8B);
+  if (rc < 0 || RSHIM_BAD_CTRL_REG(value)) {
+    RSHIM_ERR("rshim%d access check failed (unable to write sp1)\n", bd->index);
+    bd->in_access_check = 0;
+    return -ENODEV;
   }
 
   /* One more read to make sure it's ready. */
