@@ -101,6 +101,10 @@ fi
 %{_mandir}/man8/bf-reg.8.gz
 
 %changelog
+* Fri Aug 30 2024 Liming Sun <limings@nvidia.com> - 2.1.2
+- Improve access_check() to reduce likelihood of race condition
+- Revert the 2-second delay
+
 * Thu Aug 15 2024 Liming Sun <limings@nvidia.com> - 2.1.1
 - Add support for command mode
 - Fix some coding style issues
