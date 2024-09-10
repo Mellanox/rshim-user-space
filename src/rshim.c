@@ -2578,8 +2578,8 @@ int rshim_access_check(rshim_backend_t *bd)
    * already attached to this target.
    */
   value = 0;
-  for (i = 0; i < 1000; i++) {
-    usleep(1000);
+  for (i = 0; i < 100; i++) {
+    usleep(10000);
     rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad1, &value,
                         RSHIM_REG_SIZE_8B);
 
