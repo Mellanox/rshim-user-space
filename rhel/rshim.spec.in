@@ -54,6 +54,9 @@ via the virtual console or network interface.
 %{_mandir}/man8/rshim.8.gz
 
 %changelog
+* Tue Sep 10 2024 Penghe Geng <pgeng@nvidia.com> - 2.1.3
+- Reduce the access_check() wait time
+
 * Fri Aug 30 2024 Liming Sun <limings@nvidia.com> - 2.1.2
 - Improve access_check() to reduce likelihood of race condition
 - Revert the 2-second delay

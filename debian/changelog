@@ -1,3 +1,9 @@
+rshim (2.1.3) UNRELEASED; urgency=low
+
+  * Reduce the access_check() wait time
+
+ -- Penghe Geng <pgeng@nvidia.com>  Tue, 10 Sep 2024 15:40:42 -0400
+
 rshim (2.1.2) UNRELEASED; urgency=low
 
   * Improve access_check() to reduce likelihood of race condition
