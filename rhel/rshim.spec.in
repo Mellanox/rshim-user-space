@@ -18,7 +18,6 @@ BuildRequires: systemd
 BuildRequires: systemd-rpm-macros
 
 Requires: kmod(cuse.ko)
-Suggests: kernel-modules-extra
 
 %description
 This is the user-space driver to access the BlueField SoC via the rshim

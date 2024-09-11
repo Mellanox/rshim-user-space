@@ -15,9 +15,7 @@ Source0: https://github.com/mellanox/rshim-user-space/archive/%{name}-%{version}
 BuildRequires: gcc, autoconf, automake, pkgconfig, make
 BuildRequires: pkgconfig(libpci), pkgconfig(libusb-1.0)
 
-%if (0%{?rhel} >= 8 || 0%{?fedora} > 0) && "0%{?ctyunos}" == "0"
-Requires: kernel-modules-extra
-%endif
+Requires: kmod(cuse.ko)
 
 %global with_systemd %(if (test -d "%{_unitdir}" > /dev/null); then echo -n '1'; else echo -n '0'; fi)
 %global debug_package %{nil}
