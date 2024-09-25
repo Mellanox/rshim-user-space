@@ -212,7 +212,7 @@ char *rshim_static_dev_name;
 /* Default configuration file. */
 const char *rshim_cfg_file = DEFAULT_RSHIM_CONFIG_FILE;
 static int rshim_display_level;
-static int rshim_boot_timeout = 200;
+static int rshim_boot_timeout = 300;
 int rshim_drop_mode = -1;
 int rshim_usb_reset_delay = 1;
 bool rshim_has_usb_reset_delay;
