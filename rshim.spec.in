@@ -15,10 +15,6 @@ Source0: https://github.com/mellanox/rshim-user-space/archive/%{name}-%{version}
 BuildRequires: gcc, autoconf, automake, pkgconfig, make
 BuildRequires: pkgconfig(libpci), pkgconfig(libusb-1.0)
 
-%if (0%{?rhel} >= 8 || 0%{?fedora} > 0) && "0%{?ctyunos}" == "0"
-Requires: kernel-modules-extra
-%endif
-
 %global with_systemd %(if (test -d "%{_unitdir}" > /dev/null); then echo -n '1'; else echo -n '0'; fi)
 %global debug_package %{nil}
 
@@ -59,6 +55,14 @@ make
 %{__install} -m 0755 scripts/bf-reg %{buildroot}%{_sbindir}
 
 %pre
+if ! modprobe cuse; then
+  echo "Error: cuse.ko module is not available. You need to either manually"
+  echo "build and install cuse.ko module or install a package that has cuse.ko,"
+  echo "like kernel-modules-extra-$(uname -r)"
+  echo "Warning: Installing just kernel-modules-extra may cause a kernel"
+  echo "version change on your system!"
+  exit 1
+fi
 %if "%{with_systemd}" == "1"
   if systemctl is-active --quiet rshim ; then
       systemctl stop rshim
