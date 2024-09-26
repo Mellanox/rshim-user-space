@@ -17,9 +17,6 @@ BuildRequires: pkgconfig(libpci), pkgconfig(libusb-1.0), pkgconfig(fuse)
 BuildRequires: systemd
 BuildRequires: systemd-rpm-macros
 
-Requires: kmod(cuse.ko)
-Suggests: kernel-modules-extra
-
 %description
 This is the user-space driver to access the BlueField SoC via the rshim
 interface. It provides ways to push boot stream, debug the target or login
@@ -35,6 +32,16 @@ via the virtual console or network interface.
 
 %install
 %make_install
+
+%pre
+if ! modprobe cuse; then
+  echo "Error: cuse.ko module is not available. You need to either manually"
+  echo "build and install cuse.ko module or install a package that has cuse.ko,"
+  echo "like kernel-modules-extra-$(uname -r)"
+  echo "Warning: Installing just kernel-modules-extra may cause a kernel"
+  echo "version change on your system!"
+  exit 1
+fi
 
 %post
 %systemd_post rshim.service
