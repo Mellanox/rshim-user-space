@@ -11,6 +11,7 @@
 #include <signal.h>
 #include <stdio.h>
 #include <sys/epoll.h>
+#include <sys/file.h>
 #include <sys/mount.h>
 #include <sys/param.h>
 #include <sys/poll.h>
@@ -22,6 +23,8 @@
 #include <unistd.h>
 
 #include "rshim.h"
+
+#define PID_FILE "/var/run/rshim.pid"
 
 /* Maximum number of devices supported (currently it's limited to 64). */
 #define RSHIM_MAX_DEV 64
@@ -3221,6 +3224,47 @@ static void set_signals(void)
   sigaction(SIGPIPE, &sa, NULL);
 }
 
+int create_pid_file(const char *pidfile)
+{
+  int fd;
+  char buf[16];
+
+  fd = open(pidfile, O_RDWR | O_CREAT, 0600);
+  if (fd < 0) {
+    RSHIM_ERR("Failed to open PID file\n");
+    return -1;
+  }
+
+  if (flock(fd, LOCK_EX | LOCK_NB) < 0) {
+    if (errno == EWOULDBLOCK) {
+      RSHIM_ERR("Another rshim instance is already running\n");
+      close(fd);
+      return -1;
+    } else {
+      RSHIM_ERR("Failed to lock PID file\n");
+      close(fd);
+      return -1;
+    }
+  }
+
+  snprintf(buf, sizeof(buf), "%d\n", getpid());
+  if (ftruncate(fd, 0) < 0 || write(fd, buf, strlen(buf)) < 0) {
+    RSHIM_ERR("Failed to write to PID file\n");
+    close(fd);
+    return -1;
+  }
+
+  RSHIM_INFO("Created PID file: %s\n", pidfile);
+
+  return fd;
+}
+
+void cleanup_pid_file(const char *pidfile, int fd)
+{
+    close(fd);
+    unlink(pidfile);
+}
+
 static void print_help(void)
 {
   printf("Usage: rshim [options]\n");
@@ -3259,6 +3303,7 @@ int main(int argc, char *argv[])
     { NULL, 0, NULL, 0 }
   };
   int c;
+  int pid_fd = -1;
 
   /* Parse arguments. */
   while ((c = getopt_long(argc, argv, short_options, long_options, NULL))
@@ -3347,6 +3392,14 @@ int main(int argc, char *argv[])
   openlog("rshim", LOG_CONS, LOG_USER);
 #endif
 
+  if (!rshim_cmdmode) {
+    // Ensure single instance
+    pid_fd = create_pid_file(PID_FILE);
+    if (pid_fd < 0) {
+      exit(EXIT_FAILURE);
+    }
+  }
+
   rshim_load_cfg();
 
   /* In force mode, we will send a one-time ownership request command for each
@@ -3361,6 +3414,10 @@ int main(int argc, char *argv[])
   set_signals();
 
   rshim_main(argc, argv);
+
+  if (!rshim_cmdmode) {
+    cleanup_pid_file(PID_FILE, pid_fd);
+  }
 
   closelog();
 
