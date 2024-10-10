@@ -1,3 +1,12 @@
+rshim (2.1.4) UNRELEASED; urgency=low
+
+  * Make rshim run in single instance
+  * Abort rshim rpm installation if no cuse.ko found
+  * Increase default boot timeout to 300s
+  * bfb-install: Fix premature bfb-install exit when rebooting BMC
+
+ -- Penghe Geng <pgeng@nvidia.com>  Thu, 10 Oct 2024 17:57:01 -0400
+
 rshim (2.1.3) UNRELEASED; urgency=low
 
   * Reduce the access_check() wait time
