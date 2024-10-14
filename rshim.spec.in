@@ -101,6 +101,9 @@ fi
 %{_mandir}/man8/bf-reg.8.gz
 
 %changelog
+* Mon Oct 14 2024 Penghe Geng <pgeng@nvidia.com> - 2.1.5
+- Revert "Abort rshim rpm installation if no cuse.ko found"
+
 * Thu Oct 10 2024 Penghe Geng <pgeng@nvidia.com> - 2.1.4
 - Make rshim run in single instance
 - Abort rshim rpm installation if no cuse.ko found
