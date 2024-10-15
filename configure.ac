@@ -86,12 +86,12 @@ AS_IF([test "x$build_fuse" = "xyes"], [
     AC_CHECK_LIB(cuse, cuse_dev_create)
   else
     PKG_CHECK_MODULES(fuse, fuse, [], PKG_CHECK_MODULES(fuse, fuse3, [use_fuse3=yes], [AC_MSG_ERROR([Can't find fuse])]))
-  if test $use_fuse3 = yes; then
+  fi
+  if test "x$use_fuse3" = "xyes"; then
     AC_SUBST(CPPFLAGS, "$CPPFLAGS -DFUSE_USE_VERSION=30")
   else
     AC_SUBST(CPPFLAGS, "$CPPFLAGS -DFUSE_USE_VERSION=29")
   fi
-fi
 ])
 
 if test $backend = freebsd; then
