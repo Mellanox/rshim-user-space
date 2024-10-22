@@ -5,7 +5,15 @@ bfb-install \- BFB installing script for BlueField SoC over rshim driver
 
 .SH SYNOPSIS
 .B bfb-install
--b, --bfb <bfb_file> -r, --rshim [<ip:>[:port]:]rshim<N> [-m, --remote-mode <scp|nc|ncpipe>] [-R, --reverse-nc] [-c, --config <config_file>] [-f, --rootfs <rootfs_file>] [-h, --help] [-v, --verbose]
+-b, --bfb <bfb_file> -r, --rshim [<ip:>[:port]:]rshim<N>
+[-c, --config <config_file>]
+[-f, --rootfs <rootfs_file>]
+[-h, --help]
+[-k, --keep-log]
+[-m, --remote-mode <scp|nc|ncpipe>]
+[-R, --reverse-nc]
+[-u, --runtime]
+[-v, --verbose]
 
 
 .SH DESCRIPTION
@@ -51,7 +59,13 @@ Yocto.
 
 .TP
 -h, --help
+
 Show the help message.
+
+.TP
+-k, --keep-log
+
+Do not clear rshim log buffer after reading during bfb install.
 
 .TP
 -m , --remote-mode
@@ -74,6 +88,11 @@ usually 0 or 1.
 
 Enables a reverse connection for "nc" and "ncpipe" modes, allowing the local
 host to initiate a connection to a netcat server running on the remote.
+
+.TP
+-u, --runtime
+
+Run upgrade in runtime mode (BF3 + local rshim only).
 
 .TP
 -v, --verbose

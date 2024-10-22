@@ -43,6 +43,7 @@ usage ()
   echo "  -c, --config <config_file>     Optional configuration file."
   echo "  -f, --rootfs <rootfs_file>     Optional rootfs file."
   echo "  -h, --help                     Show help message."
+  echo "  -k, --keep-log                 Do not clear the log after reading during bfb install."
   echo "  -m, --remote-mode <mode>       Remote mode to use (scp, nc, ncpipe)."
   echo "  -r, --rshim <device>           Rshim device, format [<ip>:<port>:]rshim<N>."
   echo "  -R, --reverse-nc               Reverse netcat mode."
@@ -431,7 +432,9 @@ wait_for_update_to_finish()
   echo "Collecting BlueField booting status. Press Ctrl+C to stop…"
 
   # Enable CLEAR_ON_READ, so rshim log will be cleared after read.
-  run_cmd_exit $mode "echo 'CLEAR_ON_READ 1' > ${rshim_node}/misc"
+  if [ $clear_on_read -eq 1 ]; then
+    run_cmd_exit $mode "echo 'CLEAR_ON_READ 1' > ${rshim_node}/misc"
+  fi
 
   # Set display level to 2 to show more information
   run_cmd_exit $mode "echo 'DISPLAY_LEVEL 2' > ${rshim_node}/misc"
@@ -555,6 +558,7 @@ rshim=            # rshim device string, format [<ip>:<port>:]rshim<N>
 runtime=0         # Values can be 0 or 1.
 verbose=0         # Values can be 0 or 1.
 reverse_nc=0      # Values can be 0 or 1.
+clear_on_read=1   # Values can be 0 or 1.
 
 rshim_node=       # rshim device identifier, e.g. rshim0
 ip=               # IP address for remote host
@@ -566,8 +570,8 @@ trap cleanup EXIT INT TERM
 is_nic_mode=0     # Flag to indicate whether DPU in NIC mod or not
 pcie_bdf=""       # PCIE BDF
 
-options=`getopt -n bfb-install -o b:c:f:hm:r:Ruv \
-        -l bfb:,config:,rootfs:,help,remote-mode:,rshim:,reverse-nc,runtime,verbose \
+options=`getopt -n bfb-install -o b:c:f:hkm:r:Ruv \
+        -l bfb:,config:,rootfs:,help,keep-log,remote-mode:,reverse-nc,rshim:,runtime,verbose \
         -- "$@"`
 if [ $? != 0 ]; then echo "Command line error" >&2; exit 1; fi
 eval set -- $options
@@ -577,6 +581,7 @@ while [ "$1" != -- ]; do
     --config|-c) shift; cfg=$1 ;;
     --rootfs|-f) shift; rootfs=$1 ;;
     --help|-h) usage; exit 0 ;;
+    --keep-log|-k) clear_on_read=0 ;;
     --remote-mode|-m) shift; remote_mode=$1 ;;
     --rshim|-r) shift; rshim=$1 ;;
     --reverse-nc|-R) reverse_nc=1 ;;
