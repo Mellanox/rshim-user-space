@@ -769,14 +769,16 @@ int rshim_boot_open(rshim_backend_t *bd)
   /* Reset the TmFifo. */
   rshim_fifo_reset(bd);
 
-  /* Set RShim (external) boot mode. */
-  rc = bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->boot_control,
-                       RSH_BOOT_CONTROL__BOOT_MODE_VAL_NONE, RSHIM_REG_SIZE_8B);
-  if (rc) {
-    RSHIM_ERR("rshim%d boot failed to write boot control(%d)\n", bd->index, rc);
-    bd->is_booting = 0;
-    pthread_mutex_unlock(&bd->mutex);
-    return rc;
+  if (!bd->skip_boot_reset) {
+    /* Set RShim (external) boot mode. */
+    rc = bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->boot_control,
+                         RSH_BOOT_CONTROL__BOOT_MODE_VAL_NONE, RSHIM_REG_SIZE_8B);
+    if (rc) {
+      RSHIM_ERR("rshim%d boot failed to write boot control(%d)\n", bd->index, rc);
+      bd->is_booting = 0;
+      pthread_mutex_unlock(&bd->mutex);
+      return rc;
+    }
   }
 
   bd->is_boot_open = 1;
