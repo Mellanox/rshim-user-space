@@ -197,7 +197,11 @@ push_boot_stream_via_local_rshim()
     ${BF_REG} $(basename ${rshim_node}) 0x13000318.64 0x4 >/dev/null
   fi
 
-  $sudo_prefix sh -c "cat ${bfb} ${cfg:+$cfg} ${rootfs:+${rootfs}} ${pv:+| ${pv} | cat -} > ${rshim_node}/boot"
+  if ! $sudo_prefix sh -c "cat ${bfb} ${cfg:+$cfg} ${rootfs:+${rootfs}} ${pv:+| ${pv} | cat -} > ${rshim_node}/boot"; then
+    echo "Error: Failed to push boot stream via local rshim"
+    exit 1
+  fi
+
 
   if [ $runtime -eq 1 ]; then
     echo "BOOT_RESET_SKIP 0" > ${rshim_node}/misc
@@ -212,7 +216,10 @@ push_boot_stream_via_remote_rshim_scp()
 {
   # Push the boot stream to remote rshim via ssh copy
   echo "Pushing bfb${cfg:+ + cfg}${rootfs:+ + rootfs} to ${ip} via scp"
-  sh -c "cat ${bfb} ${cfg:+$cfg} ${rootfs:+${rootfs}} ${pv:+| ${pv} | cat -} | ssh root@$ip \"cat > ${rshim_node}/boot\""
+  if ! sh -c "cat ${bfb} ${cfg:+$cfg} ${rootfs:+${rootfs}} ${pv:+| ${pv} | cat -} | ssh root@$ip \"cat > ${rshim_node}/boot\""; then
+    echo "Error: Failed to push boot stream via remote rshim with scp"
+    exit 1
+  fi
 }
 
 # Push the boot stream to rshim via remote rshim with netcat
@@ -408,7 +415,7 @@ wait_for_update_to_finish()
   # the exit condition of the bfb-install script.
   local filter0 filter
 
-  filter0="Rebooting\.\.\.|finished|DPU is ready|Linux up"
+  filter0="Rebooting\.\.\.|finished|DPU is ready|Linux up|CRITICAL ERROR"
   if [ $runtime -eq 0 ]; then
     filter0="$filter0|In Enhanced NIC mode"
   else
