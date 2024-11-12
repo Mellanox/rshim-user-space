@@ -3131,6 +3131,9 @@ static int rshim_load_cfg(void)
     } else if (!strcmp(key, "FORCE_MODE")) {
       rshim_force_mode = (atoi(value) > 0) ? true : false;
       continue;
+    } else if (!strcmp(key, "USB_TIMEOUT")) {
+      rshim_usb_timeout = atoi(value);
+      continue;
     } else if (!strcmp(key, "USB_RESET_DELAY")) {
       rshim_usb_reset_delay = atoi(value);
       rshim_has_usb_reset_delay = true;
