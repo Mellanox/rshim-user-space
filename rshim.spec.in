@@ -101,6 +101,12 @@ fi
 %{_mandir}/man8/bf-reg.8.gz
 
 %changelog
+* Tue Nov 12 2024 Penghe Geng <pgeng@nvidia.com> - 2.1.6
+- Add USB_TIMEOUT to rshim misc and conf settings
+- bfb-install: Add -k/--keep-log option
+- bfb-install: exit when pushing bfb error
+- Use BOOT_RESET_SKIP command to simulate eMMC boot
+
 * Mon Oct 14 2024 Penghe Geng <pgeng@nvidia.com> - 2.1.5
 - Revert "Abort rshim rpm installation if no cuse.ko found"
 
