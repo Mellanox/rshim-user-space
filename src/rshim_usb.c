@@ -20,7 +20,9 @@
 
 #define READ_RETRIES       5
 #define WRITE_RETRIES      5
-#define RSHIM_USB_TIMEOUT  20000
+
+/* Timeout for libusb operations in seconds. */
+#define RSHIM_USB_TIMEOUT  20
 
 #define BF_MMIO_BASE 0x1000
 
@@ -59,6 +61,9 @@ typedef struct {
 static libusb_context *rshim_usb_ctx;
 static int rshim_usb_epoll_fd;
 static bool rshim_usb_need_probe;
+
+int rshim_usb_timeout = RSHIM_USB_TIMEOUT;
+#define RSHIM_USB_TIMEOUT_MS (rshim_usb_timeout * 1000)
 
 static int rshim_usb_product_ids[] = {
   USB_BLUEFIELD_1_PRODUCT_ID,
@@ -183,7 +188,7 @@ static int rshim_usb_read_rshim(rshim_backend_t *bd, uint32_t chan,
                                LIBUSB_RECIPIENT_ENDPOINT,
                                0, rsh_usb_addr.wvalue, rsh_usb_addr.windex,
                                (unsigned char *)&dev->ctrl_data, size,
-                               RSHIM_USB_TIMEOUT);
+                               RSHIM_USB_TIMEOUT_MS);
 
   /*
    * The RShim HW puts bytes on the wire in little-endian order
@@ -227,7 +232,7 @@ static int rshim_usb_write_rshim(rshim_backend_t *bd, uint32_t chan,
                                LIBUSB_RECIPIENT_ENDPOINT,
                                0, rsh_usb_addr.wvalue, rsh_usb_addr.windex,
                                (unsigned char *)&dev->ctrl_data, size,
-                               RSHIM_USB_TIMEOUT);
+                               RSHIM_USB_TIMEOUT_MS);
 
   if (rc == size)
     return 0;
@@ -286,7 +291,7 @@ static ssize_t rshim_usb_bf3_boot_write(rshim_backend_t *bd, const char *buf,
       rc = libusb_bulk_transfer(dev->handle,
                                 dev->boot_fifo_ep,
                                 (void *)(buf + i), avail_fifo_bytes,
-                                &tmp_tsfr, RSHIM_USB_TIMEOUT);
+                                &tmp_tsfr, RSHIM_USB_TIMEOUT_MS);
 
       if (rc && (rc != LIBUSB_ERROR_TIMEOUT)) {
         RSHIM_ERR("rshim%d Boot fifo bulk transfer failed(%d)\n",
@@ -325,7 +330,7 @@ static ssize_t rshim_usb_boot_write(rshim_backend_t *bd, const char *buf,
   rc = libusb_bulk_transfer(dev->handle,
                             dev->boot_fifo_ep,
                             (void *)buf, count,
-                            &transferred, RSHIM_USB_TIMEOUT);
+                            &transferred, RSHIM_USB_TIMEOUT_MS);
 
   if (!rc || rc == LIBUSB_ERROR_TIMEOUT)
     return transferred;
@@ -461,7 +466,7 @@ static void rshim_usb_fifo_read(rshim_usb_t *dev, char *buffer, size_t count)
     libusb_fill_bulk_transfer(urb, dev->handle, dev->tm_fifo_in_ep,
                               (uint8_t *)buffer, count,
                               rshim_usb_fifo_read_callback,
-                              dev, RSHIM_USB_TIMEOUT);
+                              dev, RSHIM_USB_TIMEOUT_MS);
 
     dev->bd.spin_flags |= RSH_SFLG_READING;
     dev->read_urb_is_intr = 0;
@@ -602,7 +607,7 @@ static int rshim_usb_fifo_write(rshim_usb_t *dev, const char *buffer,
   libusb_fill_bulk_transfer(dev->write_urb,  dev->handle,
                             dev->tm_fifo_out_ep, (uint8_t *)buffer,
                             count, rshim_usb_fifo_write_callback,
-                            dev, RSHIM_USB_TIMEOUT);
+                            dev, RSHIM_USB_TIMEOUT_MS);
   dev->write_retries = 0;
 
   /* Send the data out the bulk port. */

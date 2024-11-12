@@ -677,6 +677,11 @@ static int rshim_fuse_misc_read(struct cuse_dev *cdev, int fflags,
   p += n;
   len -= n;
 
+  n = snprintf(p, len, "%-16s%d (seconds)\n", "USB_TIMEOUT",
+               rshim_usb_timeout);
+  p += n;
+  len -= n;
+
   n = snprintf(p, len, "%-16s%d (0:normal, 1:drop)\n", "DROP_MODE",
                bd->drop_mode);
   p += n;
@@ -856,6 +861,12 @@ static int rshim_fuse_misc_write(struct cuse_dev *cdev, int fflags,
     if (sscanf(p, "%d", &value) != 1)
       goto invalid;
     bd->boot_timeout = value;
+  } else if (strcmp(key, "USB_TIMEOUT") == 0) {
+    if (sscanf(p, "%d", &value) != 1)
+      goto invalid;
+    if (value < 1 || value > 300)
+      goto invalid;
+    rshim_usb_timeout = value;
   } else if (strcmp(key, "DROP_MODE") == 0) {
     if (sscanf(p, "%d", &value) != 1)
       goto invalid;
