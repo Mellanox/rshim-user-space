@@ -864,9 +864,14 @@ static int rshim_fuse_misc_write(struct cuse_dev *cdev, int fflags,
   } else if (strcmp(key, "USB_TIMEOUT") == 0) {
     if (sscanf(p, "%d", &value) != 1)
       goto invalid;
-    if (value < 1 || value > 300)
+    if (value < 0 || value > 300)
       goto invalid;
-    rshim_usb_timeout = value;
+    if (value == 0) {
+      // restore default value
+      rshim_usb_timeout = RSHIM_USB_TIMEOUT;
+    } else {
+      rshim_usb_timeout = value;
+    }
   } else if (strcmp(key, "DROP_MODE") == 0) {
     if (sscanf(p, "%d", &value) != 1)
       goto invalid;
