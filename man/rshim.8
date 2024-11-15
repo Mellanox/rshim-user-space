@@ -35,6 +35,7 @@ Display the output
 .nf
 cat /dev/rshim0/misc
     DISPLAY_LEVEL   0 (0:basic, 1:advanced, 2:log)
+    BF_MODE         DPU mode
     BOOT_MODE       1 (0:rshim, 1:emmc, 2:emmc-boot-swap)
     BOOT_TIMEOUT    150 (seconds)
     USB_TIMEOUT     20 (seconds)
@@ -45,6 +46,9 @@ cat /dev/rshim0/misc
     OPN_STR         N/A
     FORCE_CMD       0 (1: send Force command)
 .fi
+
+Values for BF_MODE could be "Unknown", "DPU mode", "NIC mode", or, "Reserved"
+
 .in
 
 Initiate SW reset
@@ -72,6 +76,7 @@ echo "DISPLAY_LEVEL 1" > /dev/rshim<N>/misc
 
 cat /dev/rshim0/misc
     DISPLAY_LEVEL   1 (0:basic, 1:advanced, 2:log)
+    BF_MODE         DPU mode
     BOOT_MODE       1 (0:rshim, 1:emmc, 2:emmc-boot-swap)
     BOOT_TIMEOUT    100 (seconds)
     SW_RESET        0 (1: reset)

@@ -606,6 +606,25 @@ static int rshim_fuse_misc_open(struct cuse_dev *cdev, int fflags)
 }
 #endif
 
+const char* bf3_bf_mode_str[] = {
+  "Unknown",
+  "DPU mode",
+  "NIC mode",
+  "Reserved"
+};
+
+const char* bf3_get_bf_mode(rshim_backend_t* bd) {
+  uint64_t value;
+
+  int rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad2, &value,
+                          RSHIM_REG_SIZE_8B);
+  if (rc || RSHIM_BAD_CTRL_REG(value)) {
+    RSHIM_ERR("rshim%d failed to read SCRATCHPAD2 (%d)\n", bd->index, rc);
+    return bf3_bf_mode_str[0];
+  }
+  return bf3_bf_mode_str[BF3_RSH_SCRATCHPAD2__BF_MODE(value)];
+}
+
 #ifdef __linux__
 static void rshim_fuse_misc_read(fuse_req_t req, size_t size, off_t off,
                                  struct fuse_file_info *fi)
@@ -665,6 +684,14 @@ static int rshim_fuse_misc_read(struct cuse_dev *cdev, int fflags,
                "DISPLAY_LEVEL", bd->display_level);
   p += n;
   len -= n;
+
+  if (bd->ver_id == RSHIM_BLUEFIELD_3) {
+    n = snprintf(p, len, "%-16s%s\n",
+        "BF_MODE",
+        bf3_get_bf_mode(bd));
+    p += n;
+    len -= n;
+  }
 
   n = snprintf(p, len, "%-16s%lld (0:rshim, 1:emmc, 2:emmc-boot-swap)\n",
                "BOOT_MODE",
