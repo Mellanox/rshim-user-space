@@ -54,6 +54,13 @@ via the virtual console or network interface.
 %{_mandir}/man8/rshim.8.gz
 
 %changelog
+* Mon Nov 18 2024 Liming Sun <limings@nvidia.com> - 2.1.7
+- Update default USB timeout
+- Update license file to be dual-license
+- Add BF_MODE misc output to show DPU or NIC mode
+- Fix a compiling warning
+- Allow 0 to restore USB_TIMEOUT default value
+
 * Tue Nov 12 2024 Penghe Geng <pgeng@nvidia.com> - 2.1.6
 - Add USB_TIMEOUT to rshim misc and conf settings
 - bfb-install: Add -k/--keep-log option

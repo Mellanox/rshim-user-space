@@ -1,3 +1,13 @@
+rshim (2.1.7) UNRELEASED; urgency=low
+
+  * Update default USB timeout
+  * Update license file to be dual-license
+  * Add BF_MODE misc output to show DPU or NIC mode
+  * Fix a compiling warning
+  * Allow 0 to restore USB_TIMEOUT default value
+
+ -- Liming Sun <limings@nvidia.com>  Mon, 18 Nov 2024 14:25:20 -0400
+
 rshim (2.1.6) UNRELEASED; urgency=low
 
   * Add USB_TIMEOUT to rshim misc and conf settings
