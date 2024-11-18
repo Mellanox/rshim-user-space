@@ -248,7 +248,7 @@ typedef struct {
 #define BLUEFIELD_REV1 1
 
 /* Timeout for libusb operations in seconds. */
-#define RSHIM_USB_TIMEOUT  20
+#define RSHIM_USB_TIMEOUT  40
 
 /* RShim backend. */
 typedef struct rshim_backend rshim_backend_t;
