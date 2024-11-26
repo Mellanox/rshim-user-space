@@ -101,6 +101,10 @@ fi
 %{_mandir}/man8/bf-reg.8.gz
 
 %changelog
+* Tue Nov 26 2024 Liming Sun <limings@nvidia.com> - 2.1.8
+- Allow multi rshim processes for dev attachment
+- configure: fix fuse errors
+
 * Mon Nov 18 2024 Liming Sun <limings@nvidia.com> - 2.1.7
 - Update default USB timeout
 - Update license file to be dual-license
