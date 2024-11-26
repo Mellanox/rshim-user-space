@@ -2905,9 +2905,13 @@ static void rshim_main(int argc, char *argv[])
       rshim_backend_name = "pcie";
   }
   if (!rshim_backend_name) {
-    if (!rshim_cmdmode)
-      rshim_pcie_init();
-    rshim_usb_init(epoll_fd);
+    if (!rshim_cmdmode) {
+      rc = rshim_pcie_init();
+    }
+    if (rc || rshim_cmdmode) {
+      /* Only try USB if PCIe failed. */
+      rc = rshim_usb_init(epoll_fd);
+    }
   } else {
     if (!strcmp(rshim_backend_name, "usb"))
       rc = rshim_usb_init(epoll_fd);

@@ -1150,8 +1150,12 @@ static bool rshim_usb_probe(void)
   }
 
   rc = rshim_usb_add_poll(ctx);
-  if (rc)
-    return false;
+  if (rc) {
+    /* Exit rshim service when USB probe failed. Note USB probing only happens
+     * when PCIe probing failed. */
+    RSHIM_ERR("Exiting as USB probe failed.\n");
+    exit(-1);
+  }
 
   return true;
 }
