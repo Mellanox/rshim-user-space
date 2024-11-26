@@ -3397,8 +3397,13 @@ int main(int argc, char *argv[])
   openlog("rshim", LOG_CONS, LOG_USER);
 #endif
 
-  if (!rshim_cmdmode) {
-    // Ensure single instance
+  /* Allow multiple instances in the following cases:
+   *
+   * 1. Command mode
+   * 2. Direct device attachment ('-d')
+   */
+  if (!rshim_cmdmode && !rshim_static_dev_name) {
+    // Single instance otherwise
     pid_fd = create_pid_file(PID_FILE);
     if (pid_fd < 0) {
       exit(EXIT_FAILURE);
