@@ -58,9 +58,12 @@ static void rshim_fuse_boot_open(fuse_req_t req, struct fuse_file_info *fi)
   if (bd)
     rc = rshim_boot_open(bd);
 
-  if (rc)
+  if (rc) {
     fuse_reply_err(req, -rc);
-  else
+    RSHIM_ERR("rshim%d failed to open boot device (%d)\n", bd->index, rc);
+    if (rshim_exit_on_error)
+      exit(-rc);
+  } else
     fuse_reply_open(req, fi);
 }
 #elif defined(__FreeBSD__)
@@ -103,8 +106,12 @@ static void rshim_fuse_boot_write(fuse_req_t req, const char *user_buffer,
 
   if (rc >= 0)
     fuse_reply_write(req, rc);
-  else
+  else {
     fuse_reply_err(req, -rc);
+    RSHIM_ERR("rshim%d failed to write to boot device (%d)\n", bd->index, rc);
+    if (rshim_exit_on_error)
+      exit(-rc);
+  }
 }
 #elif defined(__FreeBSD__)
 static int rshim_fuse_copy_in(void *dest, const void *src, int count)

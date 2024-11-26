@@ -3,7 +3,17 @@
 .SH NAME
 rshim \- user-space rshim driver for BlueField SoC
 .SH SYNOPSIS
-rshim [options]
+rshim
+    [-b, --backend <usb|pcie|pcie_lf>]
+    [-c, --cmdmode <-g, --get-debug | -s, --set-debug <0|1>>]
+    [-d, --device <device>]
+    [-e, --exit-on-error]
+    [-f, --foreground]
+    [-F, --force]
+    [-i, --index <index>]
+    [-l, --log-level <log_level>]
+    [-v, --version]
+
 .SH DESCRIPTION
 rshim is the user-space rshim driver for BlueField SoC. It provides ways to access the rshim resources on the BlueField target via USB or PCIe from external host machine. The current version implements virtual console, virtual network interface, boot stream push, register access and some utility commands.
 
@@ -121,9 +131,18 @@ Specify the device name to attach with the format below. The backend driver can 
         Devices can be found under /sys/bus/usb/devices/.
 .in
 
+-e,--exit-on-error
+.in +4n
+Exit on error. By default, the driver will continue to run even if an error occurs.
+
+The following error cases will cause the driver to exit:
+
+* When running `rshim -d` from host and when rshim encounters errors that could cause client bfb push failures, like rshim failing to attach to the PCIe backend
+.in
+
 -f, --foreground
 .in +4n
-Run in forground.
+Run in foreground.
 .in
 
 -F, --force

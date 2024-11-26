@@ -250,6 +250,7 @@ bool rshim_no_net;
 int rshim_log_level = LOG_NOTICE;
 bool rshim_daemon_mode = true;
 volatile bool rshim_run = true;
+bool rshim_exit_on_error = false;
 
 /* rshim stop semaphore. */
 sem_t rshim_stop_sem;
@@ -2939,7 +2940,7 @@ static void rshim_main(int argc, char *argv[])
   }
   if (rc) {
     RSHIM_ERR("Failed to initialize rshim backend\n");
-    exit(-1);
+    exit(ENODEV);
   }
 
   /* Run command mode if specified. */
@@ -3316,11 +3317,12 @@ static void print_help(void)
 
 int main(int argc, char *argv[])
 {
-  static const char short_options[] = "b:cd:fgFhi:l:nsv";
+  static const char short_options[] = "b:cd:efgFhi:l:nsv";
   static struct option long_options[] = {
     { "backend", required_argument, NULL, 'b' },
     { "cmdmode", no_argument, NULL, 'c' },
     { "device", required_argument, NULL, 'd' },
+    { "exit-on-error", no_argument, NULL, 'e' },
     { "foreground", no_argument, NULL, 'f' },
     { "force", no_argument, NULL, 'F' },
     { "get-debug", no_argument, NULL, 'g' },
@@ -3350,6 +3352,9 @@ int main(int argc, char *argv[])
       break;
     case 'd':
       rshim_static_dev_name = optarg;
+      break;
+    case 'e':
+      rshim_exit_on_error = true;
       break;
     case 'f':
       rshim_daemon_mode = false;
