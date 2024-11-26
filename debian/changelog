@@ -1,3 +1,10 @@
+rshim (2.1.8) UNRELEASED; urgency=low
+
+  * Allow multi rshim processes for dev attachment
+  * configure: fix fuse errors
+
+ -- Liming Sun <limings@nvidia.com>  Tue, 26 Nov 2024 11:51:20 -0400
+
 rshim (2.1.7) UNRELEASED; urgency=low
 
   * Update default USB timeout
