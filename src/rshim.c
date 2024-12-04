@@ -8,6 +8,7 @@
 #include <getopt.h>
 #include <netinet/in.h>
 #include <pthread.h>
+#include <semaphore.h>
 #include <signal.h>
 #include <stdio.h>
 #include <sys/epoll.h>
@@ -245,6 +246,9 @@ bool rshim_no_net;
 int rshim_log_level = LOG_NOTICE;
 bool rshim_daemon_mode = true;
 volatile bool rshim_run = true;
+
+/* rshim stop semaphore. */
+sem_t rshim_stop_sem;
 
 static uint32_t rshim_timer_interval = RSHIM_TIMER_INTERVAL;
 
@@ -2773,11 +2777,20 @@ bool rshim_allow_device(const char *devname)
   return true;
 }
 
-static void *rshim_stop_thread(void *arg)
+/* Force to kill if not able to cleanup in time. */
+static void *rshim_force_stop(void *arg)
 {
-  /* Force to kill if not able to cleanup in time. */
   sleep(3);
   kill(0, SIGKILL);
+  return NULL;
+}
+
+/* Thread waiting for stop signal. */
+static void *rshim_stop_thread(void *arg)
+{
+  sem_wait(&rshim_stop_sem);
+  sleep(3);
+  rshim_force_stop(NULL);
   return NULL;
 }
 
@@ -2787,7 +2800,7 @@ static void rshim_stop(void)
   pthread_t thread;
   int i, rc;
 
-  rc = pthread_create(&thread, NULL, rshim_stop_thread, NULL);
+  rc = pthread_create(&thread, NULL, rshim_force_stop, NULL);
   if (rc) {
     kill(0, SIGKILL);
     return;
@@ -2836,6 +2849,8 @@ static void rshim_main(int argc, char *argv[])
   rshim_backend_t *bd;
   time_t t0, t1;
   uint8_t tmp;
+
+  sem_init(&rshim_stop_sem, 0, 0);
 
   memset(&event, 0, sizeof(event));
   memset(events, 0, sizeof(events));
@@ -3212,7 +3227,11 @@ static void rshim_sig_handler(int sig)
 
   case SIGTERM:
     rshim_run = false;
+    __sync_synchronize();
     rshim_work_signal(NULL);
+
+    /* Wake up the thread to force to stop if stuck. */
+    sem_post(&rshim_stop_sem);
     break;
   }
 }
@@ -3307,8 +3326,8 @@ int main(int argc, char *argv[])
     { "version", no_argument, NULL, 'v' },
     { NULL, 0, NULL, 0 }
   };
-  int c;
-  int pid_fd = -1;
+  int c, rc, pid_fd = -1;
+  pthread_t thread;
 
   /* Parse arguments. */
   while ((c = getopt_long(argc, argv, short_options, long_options, NULL))
@@ -3422,6 +3441,11 @@ int main(int argc, char *argv[])
   }
 
   set_signals();
+
+  rc = pthread_create(&thread, NULL, rshim_stop_thread, NULL);
+  if (rc) {
+      RSHIM_ERR("Fail to create stop thread\n");
+  }
 
   rshim_main(argc, argv);
 

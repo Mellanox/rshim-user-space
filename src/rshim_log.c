@@ -310,9 +310,10 @@ int rshim_log_show(rshim_backend_t *bd, char *buf, int size)
   /* Take the semaphore. */
   time(&t0);
   while (true) {
+    data = 0x1;
     rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->semaphore0, &data,
                         RSHIM_REG_SIZE_8B);
-    if (rc) {
+    if (rc || RSHIM_BAD_CTRL_REG(data)) {
       RSHIM_ERR("rshim%d failed to read RSH_SEMAPHORE0(%d)\n", bd->index, rc);
       return p - buf;
     }
@@ -322,8 +323,8 @@ int rshim_log_show(rshim_backend_t *bd, char *buf, int size)
 
     /* Add a timeout in case the semaphore is stuck. */
     time(&t1);
-    if (difftime(t1, t0) > 1)
-      break;
+    if (difftime(t1, t0) > 3)
+      return 0;
   }
 
   /* Read the current index. */
