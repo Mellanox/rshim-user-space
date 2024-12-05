@@ -44,6 +44,10 @@
 /* Cycles to poll the network initialization before timeout. */
 #define RSHIM_NET_INIT_DELAY (60000 / RSHIM_TIMER_INTERVAL)
 
+/* Console polling minimum interval in ms */
+#define RSHIM_CONSOLE_POLL_MS 100
+#define RSHIM_CONSOLE_POLL_TICKS (RSHIM_CONSOLE_POLL_MS / RSHIM_TIMER_INTERVAL)
+
 /* Reserve some space to indicate full. */
 #define RSHIM_FIFO_SPACE_RESERV  3
 
@@ -1823,8 +1827,8 @@ static void rshim_work_handler(rshim_backend_t *bd)
 
   if (!bd->has_reprobe && bd->is_cons_open) {
     bd->has_cons_work = 1;
-    if (bd->timer - rshim_timer_ticks > 100)
-      bd->timer = rshim_timer_ticks + 100;
+    if (bd->timer - rshim_timer_ticks > RSHIM_CONSOLE_POLL_TICKS)
+      bd->timer = rshim_timer_ticks + RSHIM_CONSOLE_POLL_TICKS;
   }
 
   if (bd->has_locked_work) {
@@ -2452,8 +2456,10 @@ static void rshim_timer_run(void)
         rshim_timer_func(bd);
 
       if (rshim_timer_ticks % RSHIM_CHECK_LOCKED_MODE_TICKS == 0) {
-        bd->has_locked_work = 1;
-        rshim_work_signal(bd);
+        if (bd->type == RSH_BACKEND_PCIE) {
+          bd->has_locked_work = 1;
+          rshim_work_signal(bd);
+        }
       }
 
       if (rshim_timer_ticks % RSHIM_OSP_MGT_INTERVAL_TICKS == 0) {
