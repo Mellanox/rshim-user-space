@@ -1058,7 +1058,6 @@ static int rshim_usb_add_poll(libusb_context *ctx)
 } while (0)
 
   RSHIM_CONVERT(POLLIN);
-  RSHIM_CONVERT(POLLOUT);
 #ifdef __linux__
   RSHIM_CONVERT(POLLRDNORM);
   RSHIM_CONVERT(POLLRDBAND);
