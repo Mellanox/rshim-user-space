@@ -52,6 +52,7 @@ extern int rshim_pcie_enable_uio;
 extern bool rshim_force_cmd_pending[];
 extern bool rshim_cmdmode;
 extern int rshim_static_index;
+extern bool rshim_exit_on_error;
 
 #ifndef offsetof
 #define offsetof(TYPE, MEMBER)	((size_t)&((TYPE *)0)->MEMBER)
