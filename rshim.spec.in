@@ -101,6 +101,10 @@ fi
 %{_mandir}/man8/bf-reg.8.gz
 
 %changelog
+* Fri Dec 06 2024 Liming Sun <limings@nvidia.com> - 2.2.1
+- USB: removes the unnecessary POLLOUT polling
+- Force to stop if stuck during systemd service stop
+
 * Tue Nov 26 2024 Liming Sun <limings@nvidia.com> - 2.1.8
 - Allow multi rshim processes for dev attachment
 - configure: fix fuse errors
