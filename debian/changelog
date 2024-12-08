@@ -1,3 +1,10 @@
+rshim (2.1.9) UNRELEASED; urgency=low
+
+  * USB: removes the unnecessary POLLOUT polling
+  * Force to stop if stuck during systemd service stop
+
+ -- Liming Sun <limings@nvidia.com>  Sun, 08 Dec 2024 15:13:10 -0400
+
 rshim (2.1.8) UNRELEASED; urgency=low
 
   * Allow multi rshim processes for dev attachment

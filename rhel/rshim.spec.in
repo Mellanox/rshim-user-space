@@ -54,6 +54,10 @@ via the virtual console or network interface.
 %{_mandir}/man8/rshim.8.gz
 
 %changelog
+* Sun Dec 08 2024 Liming Sun <limings@nvidia.com> - 2.1.9
+- USB: removes the unnecessary POLLOUT polling
+- Force to stop if stuck during systemd service stop
+
 * Tue Nov 26 2024 Liming Sun <limings@nvidia.com> - 2.1.8
 - Allow multi rshim processes for dev attachment
 - configure: fix fuse errors
