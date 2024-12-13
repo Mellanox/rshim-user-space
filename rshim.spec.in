@@ -57,6 +57,8 @@ make
 %{__install} -m 0644 etc/rshim.conf %{buildroot}%{_sysconfdir}
 %{__install} -m 0755 scripts/bfb-install %{buildroot}%{_sbindir}
 %{__install} -m 0755 scripts/bf-reg %{buildroot}%{_sbindir}
+%{__install} -d %{buildroot}%{_datadir}/selinux/packages
+%{__install} -m 0644 scripts/rshim-fix.te %{buildroot}%{_datadir}/selinux/packages/rshim-fix.te
 
 %pre
 %if "%{with_systemd}" == "1"
@@ -66,6 +68,24 @@ make
 %endif
 
 %post
+if [ -f /etc/os-release ]; then
+    . /etc/os-release
+    RHEL_MAJOR=$(echo $VERSION_ID | cut -d '.' -f 1)
+    RHEL_MINOR=$(echo $VERSION_ID | cut -d '.' -f 2)
+    if [ "$RHEL_MAJOR" -eq 9 ] && [ "$RHEL_MINOR" -eq 5 ]; then
+      polver=$(grep "^module" %{_datadir}/selinux/packages/rshim-fix.te | sed 's/;//' | awk '{print $3}')
+      echo "Applying SELinux rshim policy fix $polver for RHEL 9.5..."
+      if [ -x /usr/bin/checkmodule ] && [ -x /usr/bin/semodule_package ]; then
+        mkdir -p /tmp/rshim-selinux
+        checkmodule -M -m -o /tmp/rshim-selinux/rshim-fix.mod %{_datadir}/selinux/packages/rshim-fix.te
+        semodule_package -o /tmp/rshim-selinux/rshim-fix.pp -m /tmp/rshim-selinux/rshim-fix.mod
+        semodule -i /tmp/rshim-selinux/rshim-fix.pp || :
+        rm -rf /tmp/rshim-selinux
+      else
+        echo "SELinux policy tools are not available. rshim policy update failed."
+      fi
+    fi
+fi
 %if "%{with_systemd}" == "1"
   echo "Installation complete. To enable and start the rshim service, run:"
   echo "  systemctl daemon-reload"
@@ -84,6 +104,12 @@ if [ "$1" = "0" ]; then
 %endif
 fi
 
+%postun
+if [ $1 -eq 0 ] && [ -x /usr/sbin/semodule ] && semodule -l | grep -q '^rshim-fix\b'; then
+  echo "Removing SELinux rshim-fix policy..."
+  semodule -r rshim-fix >/dev/null 2>&1 || true
+fi
+
 %files
 %{!?_licensedir:%global license %%doc}
 %license LICENSE
@@ -99,6 +125,7 @@ fi
 %{_mandir}/man8/rshim.8.gz
 %{_mandir}/man8/bfb-install.8.gz
 %{_mandir}/man8/bf-reg.8.gz
+%{_datadir}/selinux/packages/rshim-fix.te
 
 %changelog
 * Sun Dec 08 2024 Liming Sun <limings@nvidia.com> - 2.1.9
