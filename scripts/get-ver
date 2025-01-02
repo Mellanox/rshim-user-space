@@ -1,0 +1,46 @@
+#!/bin/bash
+#
+# Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+#
+# This script generates a version string based on the latest Git tag and branch.
+#
+# Usage:
+#   ./get-ver         Outputs a simplified version for a release when on a tag.
+#   ./get-ver -v      Outputs the full version string with commit count and hash.
+# Output formats:
+#   Simplified: "X.Y.Z" (when the commit matches a tag and no options are passed)
+#   Full: "X.Y.Z-N-g<commit-hash>" (always, or with -v option)
+
+# Function to generate the version string
+generate_version() {
+  local current_branch
+  current_branch=$(git rev-parse --abbrev-ref HEAD)
+
+  # Find the latest tag matching "rshim-X.Y.Z" merged into the current branch
+  local latest_tag
+  latest_tag=$(git tag --list "rshim-[0-9]*.[0-9]*.[0-9]*" --merged "$current_branch" | sort -V | tail -n 1)
+
+  # Generate the full version string
+  local version
+  version=$(git describe --always --tags --match "$latest_tag" --long)
+  version=${version#rshim-} # Remove the "rshim-" prefix
+
+  # Extract components of the version string
+  local base_version commit_count commit_hash
+  base_version=$(echo "$version" | cut -d- -f1)      # "X.Y.Z"
+  commit_count=$(echo "$version" | cut -d- -f2)      # "N"
+  commit_hash=$(echo "$version" | cut -d- -f3)       # "g<commit-hash>"
+
+  # Simplified version output when commit is at the tag
+  if [[ "$commit_count" == "0" ]] && [[ "$1" != "-v" ]]; then
+    echo "$base_version"
+  else
+    echo "$base_version-$commit_count-$commit_hash"
+  fi
+}
+
+if [[ "$1" == "-v" ]]; then
+  generate_version -v
+else
+  generate_version
+fi
