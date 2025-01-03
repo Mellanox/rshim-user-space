@@ -1,0 +1,54 @@
+#!/bin/sh -e
+#
+# Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+#
+#
+# Build rpm package for rshim driver for x86_64 and aarch64.
+# The script generates source rpm, then builds x86_64 or aarch64 rpm depending
+# on the CPU platform it's running on.
+#
+# Must run from the root of the rshim source tree.
+#
+# Usage:
+#   ./script/build-rpm
+#
+
+topdir=$(pwd)/rpmbuild
+[ -d $topdir ] && rm -rf $topdir
+mkdir -p $topdir/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS}
+
+# Generate rshim.spec
+./bootstrap.sh
+./configure
+make
+cp rshim.spec $topdir/SPECS/
+
+# Generate source tarball
+rm -f *.tar.gz
+ver_tag=$(grep "^Version:" rshim.spec | cut -d' ' -f2)
+tarball="rshim-${ver_tag}.tar.gz"
+git archive --prefix="rshim-${ver_tag}/" --format=tar.gz -o "$tarball" HEAD
+mv $tarball $topdir/SOURCES/
+
+#
+# Generate source RPM
+#
+rpmbuild --define "_topdir ${topdir}" -bs $topdir/SPECS/rshim.spec
+src_rpm=$(echo $topdir/SRPMS/rshim-*.src.rpm)
+if [ ! -e "${src_rpm}" ]; then
+  echo "${src_rpm} not found"
+  exit 1
+fi
+
+#
+# Build rshim RPM
+#
+rpmbuild --define "_topdir ${topdir}" --rebuild ${src_rpm}
+version="$(./scripts/get-ver)"
+arch=$(uname -m)
+arch_rpm=$(echo ${topdir}/RPMS/${arch}/rshim*.rpm)
+if [ -f "$arch_rpm" ]; then
+  rpm_file=rshim-${version}_${arch}.rpm
+  mv $arch_rpm ${topdir}/RPMS/${arch}/$rpm_file
+  echo "${arch} RPM: $rpm_file"
+fi

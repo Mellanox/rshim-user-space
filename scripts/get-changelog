@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+#
+# Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+#
+# Parse the top entry of debian/changelog and build a release note.
+#
+# Usage:
+#   ./make_release_body.sh debian/changelog
+#
+# Output:
+#   Prints the release body to stdout.
+
+CHANGELOG_FILE="$1"
+[ -z "$CHANGELOG_FILE" ] && {
+  echo "Usage: $0 debian/changelog"
+  exit 1
+}
+
+awk '
+  BEGIN {
+    top_version = ""
+    second_version = ""
+    in_top_entry = 0
+  }
+
+  # Match lines like: rshim (2.2.1) ...
+  # Extract the version inside parentheses.
+  # The first occurrence is top_version, the second is second_version.
+  /^rshim \(/ {
+    # Extract version from: rshim (X.Y.Z) ...
+    match($0, /^rshim \(([^)]+)\)/, arr)
+    this_version = arr[1]
+
+    if (top_version == "") {
+      top_version = this_version
+      in_top_entry = 1
+      next
+    } else if (second_version == "") {
+      second_version = this_version
+      # As soon as we see the second version, we can stop collecting.
+      # Because that means the top entry ends right before this line.
+      exit
+    }
+  }
+
+  # While we are in the top entry, collect the bullet points until we see -- or the next version.
+  in_top_entry == 1 {
+    # If we see a line starting with --, it means the top entry ended.
+    if ($0 ~ /^ -- /) {
+      in_top_entry = 0
+      next
+    }
+    # Otherwise, collect the lines (these are the bullet points).
+    top_entry_text = top_entry_text $0 "\n"
+  }
+
+  END {
+    # If we never found a second_version, set it to something to avoid blank output.
+    if (second_version == "") {
+      second_version = "previous"
+    }
+
+    print "## Changelog (" top_version " compared to " second_version "):\n" top_entry_text
+  }
+' "$CHANGELOG_FILE"
