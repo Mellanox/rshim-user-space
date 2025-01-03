@@ -128,6 +128,10 @@ fi
 %{_datadir}/selinux/packages/rshim-fix.te
 
 %changelog
+* Fri Jan 03 2025 Penghe Geng <pgeng@nvidia.com> - 2.2.2
+- Add GitHub pipeline to create deb/rpm packages
+- Fix SELinux policy in enforcing mode
+
 * Fri Dec 06 2024 Liming Sun <limings@nvidia.com> - 2.2.1
 - USB: removes the unnecessary POLLOUT polling
 - Force to stop if stuck during systemd service stop
