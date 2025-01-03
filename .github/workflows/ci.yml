@@ -156,13 +156,12 @@ jobs:
 
       - name: Create GitHub Release
         if: startsWith(github.ref_name, 'rshim-')
-        uses: ncipollo/release-action@v1
+        uses: softprops/action-gh-release@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          tag: ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}
           body: ${{ steps.changelog.outputs.body }}
           draft: false
           prerelease: false
-          artifacts: |
-            dist/*
+          files: dist/*
