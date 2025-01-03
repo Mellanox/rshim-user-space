@@ -1,3 +1,10 @@
+rshim (2.2.2) UNRELEASED; urgency=low
+
+  * Add GitHub pipeline to create deb/rpm packages
+  * Fix SELinux policy in enforcing mode
+
+ -- Penghe Geng <pgeng@nvidia.com>  Fri, 03 Jan 2025 16:22:59 -0500
+
 rshim (2.2.1) UNRELEASED; urgency=low
 
   * USB: removes the unnecessary POLLOUT polling
