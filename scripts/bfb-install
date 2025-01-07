@@ -392,12 +392,17 @@ check_nic_mode()
   # Get PCIE BDF
   str=`cat ${rshim_node}/misc | grep DEV_NAME | awk '{print $2}'`
   str=${str:5}
-  str=${str/.*/.0}
-  pcie_bdf="$str"
+  str=${str/.*/}
+  pcie_bd="$str"
+  num_ports=$(lspci -nn -s $pcie_bd | grep -v '\[0801\]' | wc -l || { echo "Failed to query PCIe ports for $pcie_bd"; echo 0; })
+  if [ "$num_ports" -eq 2 ]; then
+    [ $verbose -eq 1 ] && echo "Detected dual-port device: ${pcie_bd}.0 and ${pcie_bd}.1"
+  fi
 
   # Check NIC mode
-  str=`mlxconfig -d $pcie_bdf -e q INTERNAL_CPU_OFFLOAD_ENGINE 2>/dev/null | grep INTERNAL_CPU_OFFLOAD_ENGINE | awk '{print $(NF-1)}'`
-  if [ ."$str" = ."DISABLED(1)" ]; then
+  str=`mlxconfig -d ${pcie_bd}.0 -e q INTERNAL_CPU_OFFLOAD_ENGINE 2>/dev/null | grep INTERNAL_CPU_OFFLOAD_ENGINE | awk '{print $(NF-1)}'`
+  if [ ."$str" = ."DISABLED(1)" ] || grep -q "NIC mode" ${rshim_node}/misc; then
+    echo "${rshim_node} (${pcie_bd}) is in NIC mode"
     is_nic_mode=1
   else
     is_nic_mode=0
@@ -537,12 +542,20 @@ cleanup() {
     run_cmd_exit remote "echo 'CLEAR_ON_READ 0' > ${rshim_node}/misc"
   fi
 
-  # Bind driver back for NIC mode.
-  if [ $is_nic_mode -eq 1 -a -n "$pcie_bdf" ]; then
-    echo "$pcie_bdf" > /sys/bus/pci/drivers/mlx5_core/bind
+  # Restore the original binding states for PF0 and PF1
+  if [ $is_nic_mode -eq 1 -a -n "${pcie_bd}" ]; then
+    for i in 0 1; do
+      if eval "[ \${pf${i}_bound} -eq 0 ]"; then
+        [ $verbose -eq 1 ] && echo "Re-binding: skipping originally unbound pf${i} (${pcie_bd}.${i})"
+        continue
+      fi
+      if [ ! -e /sys/bus/pci/drivers/mlx5_core/${pcie_bd}.${i} ]; then
+        echo "Binding pf${i} (${pcie_bd}.${i})"
+        run_cmd_exit local "echo ${pcie_bd}.${i} > /sys/bus/pci/drivers/mlx5_core/bind"
+      fi
+    done
   fi
 }
-
 
 # Main
 
@@ -568,7 +581,9 @@ cleanup_started=0
 trap cleanup EXIT INT TERM
 
 is_nic_mode=0     # Flag to indicate whether DPU in NIC mod or not
-pcie_bdf=""       # PCIE BDF
+pcie_bd=""        # PCIE Bus-Device
+pf0_bound=0       # PF0 is bound prior to the script run
+pf1_bound=0       # PF1 is bound prior to the script run
 
 options=`getopt -n bfb-install -o b:c:f:hkm:r:Ruv \
         -l bfb:,config:,rootfs:,help,keep-log,remote-mode:,reverse-nc,rshim:,runtime,verbose \
@@ -797,9 +812,19 @@ fi
 
 # Check NIC mode and unbind mlx5_core driver in NIC mode.
 check_nic_mode
-if [ $is_nic_mode -eq 1 -a -n "$pcie_bdf" ]; then
-  echo "$pcie_bdf" > /sys/bus/pci/drivers/mlx5_core/unbind 2>/dev/null
+
+if [ ${is_nic_mode} -eq 1 -a -n "${pcie_bd}" ]; then
+  for i in 0 1; do
+    if [[ ! -e /sys/bus/pci/drivers/mlx5_core/${pcie_bd}.${i} ]]; then
+      [ ${verbose} -eq 1 ] && echo "Unbinding: Skipping originally unbound pf${i} (${pcie_bd}.${i})"
+      continue
+    fi
+    eval "pf${i}_bound=1"
+    echo "Unbinding pf${i} (${pcie_bd}.${i})"
+    run_cmd_exit local "echo ${pcie_bd}.${i} > /sys/bus/pci/drivers/mlx5_core/unbind"
+  done
 fi
+
 push_boot_stream
 
 wait_for_update_to_finish
