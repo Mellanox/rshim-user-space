@@ -132,6 +132,10 @@ fi
 %{_datadir}/selinux/packages/rshim-fix.te
 
 %changelog
+* Fri Jan 10 2025 Liming Sun <limings@nvidia.com> - 2.2.3
+- bfb-install: Handle PF1 bind/unbind in NIC mode
+- Fix RPM installation dependency on Oracle Linux
+
 * Fri Jan 03 2025 Penghe Geng <pgeng@nvidia.com> - 2.2.2
 - Add GitHub pipeline to create deb/rpm packages
 - Fix SELinux policy in enforcing mode
