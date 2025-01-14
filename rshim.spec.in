@@ -15,7 +15,7 @@ Source0: https://github.com/mellanox/rshim-user-space/archive/%{name}-%{version}
 BuildRequires: gcc, autoconf, automake, pkgconfig, make
 BuildRequires: pkgconfig(libpci), pkgconfig(libusb-1.0)
 
-%if (0%{?oraclelinux} >= 8)
+%if (0%{?oraclelinux} >= 9)
 Requires: kernel-uek-core
 %else
 %if (0%{?rhel} >= 8 || 0%{?fedora} > 0) && "0%{?ctyunos}" == "0"
