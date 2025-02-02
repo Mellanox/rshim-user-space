@@ -1,3 +1,10 @@
+rshim (2.1.10) UNRELEASED; urgency=low
+
+  * Fix SELinux policy in enforcing mode
+  * bfb-install: Handle PF1 bind/unbind in NIC mode
+
+ -- Liming Sun <limings@nvidia.com>  Sun, 02 Feb 2025 08:53:20 -0400
+
 rshim (2.1.9) UNRELEASED; urgency=low
 
   * USB: removes the unnecessary POLLOUT polling
