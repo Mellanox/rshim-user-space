@@ -50,6 +50,8 @@ via the virtual console or network interface.
 %doc README.md
 %config(noreplace) %{_sysconfdir}/rshim.conf
 %{_sbindir}/rshim
+%{_sbindir}/mlx-mkbfb
+%{_mandir}/man1/mlx-mkbfb.1.gz
 %{_unitdir}/rshim.service
 %{_mandir}/man8/rshim.8.gz
 
