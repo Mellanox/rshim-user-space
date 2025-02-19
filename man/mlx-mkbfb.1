@@ -1,0 +1,126 @@
+.TH MLX-MKBFB 1 "June 2020"
+.SH NAME
+mlx-mkbfb \- Create, dump, check, and update BlueField BFB files
+.SH SYNOPSIS
+.B mlx-mkbfb
+.RB [ \-\-help | \-h ]
+.PP
+.B mlx-mkbfb
+[options...]
+.RI [ INFILE(S)... ]
+.I OUTFILE
+.PP
+.B mlx-mkbfb
+.RB -[ x | d | c ]
+[options...]
+.I INFILE
+.PP
+.B mlx-mkbfb
+.B -f
+.I VERSION
+[options...]
+.I INFILE
+.I OUTFILE
+.SH DESCRIPTION
+BFB (BlueField Bootstream) files are used to boot BlueField SoCs. These files
+consist of firmware images, kernel images, kernel arguments, and sometimes
+an entire initramfs. These files are used to boot the system, either getting
+pushed over the rshim device, or installed directly to one of two eMMC boot
+partitions. To install to or dump BFB files from the eMMC, use
+.BR mlxbf\-bootctl (8).
+.PP
+When not using \-x, \-d, \-c, or \-f,
+.B mlx-mkbfb
+will use each INFILE and images specified by
+.B Image Options
+to build a new BFB, and write it to OUTFILE. Later images will replace
+preceding ones. Take the following example:
+.PP
+.RS
+.B mlx-mkbfb
+.I infile1.bfb
+.I infile2.bfb
+.BI \-\-bl2= bl2.bin
+.I outfile.bfb
+.PP
+.RE
+If the image bl31 exists in
+.I infile1.bfb
+and
+.IR infile2.bfb ,
+then the bl31 image contained in
+.I infile2.bfb
+will be emitted to
+.IR outfile.bfb.
+On the other hand, since the argument
+.B \-\-bl2
+is specified,
+.I bl2.bin
+will replace any bl2 image contained in either
+.I infile1.bfb
+or
+.IR infile2.bfb .
+.SH OPTIONS
+.IP "-d | --dump"
+Print a listing of images inside INFILE.
+.IP "-x | --extract"
+Extract all images from INFILE and write to files in the current directory.
+.IP "-c | --check"
+Check the integrity of INFILE.
+.IP "-p | --prefix PREFIX"
+Prefix for files extracted by \-x, default is "dump\-".
+.IP "-f | --filter VERSION"
+Filter away all images from INFILE that are not needed to boot VERSION.
+This will remove images with versions higher than VERSION, and also remove any
+images that are overridden with a later version. By default this is done
+carefully, so that at least one compatible image is present in OUTFILE per ID
+in INFILE.
+.IP "-s | --strip VERSION"
+Modifies -f. Instead of filtering out everything unneeded, only filter out the
+version specified by VERSION. Note that -s and -f may be different versions.
+.IP "--no-careful"
+Modifies -f. Disables "careful" image preservation, so that everything matching
+the -s/-f filter is removed. Resulting images will likely not boot on their
+own.
+.IP "-v | --verbose"
+Provide more verbose output.
+.IP "-e | --expert"
+Expert mode. Orders images within OUTFILE to match the order they are specified
+on the command line by
+.BR "Image Options" .
+This option cannot be used with -x, -d, or -c.
+.PP
+.B Image Options
+.PP
+When running without options \-d, \-x, or \-c, image options control which images
+are added to OUTFILE. All image options are of one of the following forms:
+.PP
+.RS
+.BI \-\-image-name= IMAGE
+.br
+.BI \-\-image-name-v0= IMAGE
+.br
+.BI \-\-image-name-v1= IMAGE
+.PP
+.RE
+If no version (v0/v1) is specified, 0 is the default. The versions reflect
+which platform the image is meant for, v0 for BlueField 1 and v1 for BlueField
+2. IMAGE is the path to the desired image. If IMAGE begins with "=", IMAGE will
+be taken as a literal string and inserted directly into the BFB file, minus the
+leading "=". For example,
+.PP
+.RS
+.BR \-\-boot\-args= "'=debug isolcpus=10'"
+.PP
+.RE
+will insert those arguments into the BFB, and use them to boot the
+kernel image.
+.PP
+The list of image options is quite large. To see an up-to-date list of images
+supported by the BFB format, run
+.PP
+.RS
+mlx-mkbfb
+.B \-\-help
+.SH SEE ALSO
+.BR mlxbf-bootctl (8)
