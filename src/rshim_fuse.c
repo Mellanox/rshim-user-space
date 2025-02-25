@@ -1003,6 +1003,32 @@ static int rshim_fuse_misc_write(struct cuse_dev *cdev, int fflags,
       else
         rshim_force_cmd_pending[bd->index] = 1;
     }
+  } else if (strcmp(key, "DEV_NAME") == 0) {
+    if (bd->type != RSH_BACKEND_PCIE) {
+      rc = -EINVAL;
+      goto invalid;
+    }
+
+    if (strncmp(bd->dev_name, "pcie-", 5)) {
+      RSHIM_ERR("rshim%d device name %s doesn't match expected PCIe format\n",
+                bd->index, bd->dev_name);
+      rc = -EINVAL;
+      goto invalid;
+    }
+
+    RSHIM_INFO("rshim%d starting device refresh (current: %s)\n", bd->index,
+               bd->dev_name);
+
+    pthread_mutex_lock(&bd->mutex);
+    rc = bd->pcie_refresh_dev(bd);
+    pthread_mutex_unlock(&bd->mutex);
+    if (rc) {
+      RSHIM_ERR("rshim%d failed to refresh PCIe device name for %s\n", 
+                bd->index, bd->dev_name);
+    } else {
+      RSHIM_INFO("rshim%d device refresh success (new: %s)\n",
+                 bd->index, bd->dev_name);
+    }
   } else {
 invalid:
 #ifdef __linux__

@@ -1168,6 +1168,77 @@ static int rshim_pcie_enable(rshim_backend_t *bd, bool enable)
   return rc;
 }
 
+static int rshim_pcie_refresh_dev(rshim_backend_t *bd)
+{
+  rshim_pcie_t *dev = container_of(bd, rshim_pcie_t, bd);
+  struct pci_access *pci;
+  struct pci_dev *pci_dev;
+  char dev_path[RSHIM_PATH_MAX];
+  int rc = -ENODEV;
+  bool found = false;
+
+  pci = pci_alloc();
+  if (!pci)
+    return -ENOMEM;
+
+  pci_init(pci);
+  pci_scan_bus(pci);
+
+  /*
+   * Iterate over all PCI devices to find the matching device that has the same
+   * PCIe base name "pcie-<domain>:<bus>:<device>". The only expected change
+   * is the <function> part of the device name.
+   */
+  for (pci_dev = pci->devices; pci_dev; pci_dev = pci_dev->next) {
+    pci_fill_info(pci_dev, PCI_FILL_IDENT | PCI_FILL_BASES | PCI_FILL_CLASS);
+
+    if (pci_dev->vendor_id != TILERA_VENDOR_ID ||
+        (!rshim_is_bluefield1(pci_dev->device_id) &&
+         !rshim_is_bluefield2(pci_dev->device_id) &&
+         !rshim_is_bluefield3(pci_dev->device_id)))
+      continue;
+
+    /*
+    * Check if the device path (without function number) matches the 
+    * beginning of the current device name (which includes function number)
+    */
+    snprintf(dev_path, sizeof(dev_path), "pcie-%04x:%02x:%02x",
+        pci_dev->domain, pci_dev->bus, pci_dev->dev);
+    if (strncmp(dev_path, bd->dev_name, strlen(dev_path)) == 0) {
+      found = true;
+      RSHIM_INFO("rshim%d found matching device %s.%d\n", 
+          bd->index, dev_path, pci_dev->func);
+
+      if (bd->enable_device)
+        bd->enable_device(bd, false);
+
+      /* Update device function which should be the only change */
+      dev->func = pci_dev->func;
+
+      snprintf(bd->dev_name, RSHIM_DEV_NAME_LEN - 1, "pcie-%04x:%02x:%02x.%x",
+          pci_dev->domain, pci_dev->bus, pci_dev->dev, pci_dev->func);
+
+      if (bd->enable_device) {
+        rc = bd->enable_device(bd, true);
+        if (rc)
+          RSHIM_ERR("rshim%d failed to re-enable device %s.%d\n", bd->index,
+                    dev_path, pci_dev->func);
+      }
+      break;
+    }
+  }
+
+  pci_cleanup(pci);
+
+  if (!found) {
+    RSHIM_ERR("rshim%d no matching PCIe device found for %s\n", 
+        bd->index, dev_path);
+    return -ENODEV;
+  }
+
+  return rc;
+}
+
 /* Probe routine */
 static int rshim_pcie_probe(struct pci_dev *pci_dev)
 {
@@ -1208,6 +1279,7 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
     bd->write_rshim = rshim_pcie_write;
     bd->destroy = rshim_pcie_delete;
     bd->enable_device = rshim_pcie_enable;
+    bd->pcie_refresh_dev = rshim_pcie_refresh_dev;
     dev->write_count = 0;
     dev->device_fd = -1;
     dev->group_fd = -1;
