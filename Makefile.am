@@ -7,7 +7,10 @@ SUBDIRS = src man
 dist_doc_DATA = README.md
 confdir = $(sysconfdir)
 dist_conf_DATA = etc/rshim.conf
-dist_sbin_SCRIPTS = scripts/bfb-install scripts/bf-reg scripts/mlx-mkbfb
+dist_sbin_SCRIPTS = scripts/bfb-install \
+                    scripts/bf-reg \
+                    scripts/mlx-mkbfb \
+                    third_party/PLDM-unpack/fwpkg_unpack.py
 
 AM_DISTCHECK_CONFIGURE_FLAGS = \
   --with-systemdsystemunitdir=$$dc_install_base/$(systemdsystemunitdir)
