@@ -200,7 +200,7 @@ push_boot_stream_via_local_rshim()
 
   if ! $sudo_prefix sh -c "cat ${bfb} ${cfg:+$cfg} ${rootfs:+${rootfs}} ${pv:+| ${pv} | cat -} > ${rshim_node}/boot"; then
     echo "Error: Failed to push boot stream via local rshim"
-    exit 1
+    return
   fi
 
 
@@ -219,7 +219,7 @@ push_boot_stream_via_remote_rshim_scp()
   echo "Pushing bfb${cfg:+ + cfg}${rootfs:+ + rootfs} to ${ip} via scp"
   if ! sh -c "cat ${bfb} ${cfg:+$cfg} ${rootfs:+${rootfs}} ${pv:+| ${pv} | cat -} | ssh root@$ip \"cat > ${rshim_node}/boot\""; then
     echo "Error: Failed to push boot stream via remote rshim with scp"
-    exit 1
+    return
   fi
 }
 
