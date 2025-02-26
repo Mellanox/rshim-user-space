@@ -63,6 +63,7 @@ make
 %{__install} -m 0644 etc/rshim.conf %{buildroot}%{_sysconfdir}
 %{__install} -m 0755 scripts/bfb-install %{buildroot}%{_sbindir}
 %{__install} -m 0755 scripts/mlx-mkbfb %{buildroot}%{_sbindir}
+%{__install} -m 0755 third_party/PLDM-unpack/fwpkg_unpack.py %{buildroot}%{_sbindir}
 %{__install} -m 0755 scripts/bf-reg %{buildroot}%{_sbindir}
 %{__install} -d %{buildroot}%{_datadir}/selinux/packages
 %{__install} -m 0644 scripts/rshim-fix.te %{buildroot}%{_datadir}/selinux/packages/rshim-fix.te
@@ -130,6 +131,7 @@ fi
 %{_sbindir}/bfb-install
 %{_sbindir}/mlx-mkbfb
 %{_sbindir}/bf-reg
+%{_sbindir}/fwpkg_unpack.py
 %{_mandir}/man1/mlx-mkbfb.1.gz
 %{_mandir}/man8/rshim.8.gz
 %{_mandir}/man8/bfb-install.8.gz
@@ -138,6 +140,7 @@ fi
 
 %changelog
 * Tue Feb 18 2025 Vladimir Sokolovsky <vlad@nvidia.com> - 2.2.4
+- Added fwpkg_unpack.py
 - Added mlx-mkbfb
 
 * Tue Jan 14 2025 Liming Sun <limings@nvidia.com> - 2.2.4
