@@ -27,8 +27,12 @@
 # of the authors and should not be interpreted as representing official policies,
 # either expressed or implied, of the FreeBSD Project.
 
+TMP_DIR=$(mktemp -d)
+trap "rm -rf $TMP_DIR" EXIT
+trap "rm -rf $TMP_DIR; exit 1" TERM INT
+
 DEBUG=${DEBUG:-0}                             # Debug mode
-BF_REG=$(dirname $0)/bf-reg
+BF_REG=bf-reg
 RSHIM_PIPE="/tmp/rshim_pipe"
 LOG_FILE="/tmp/bfb-install.log"
 
@@ -45,9 +49,10 @@ usage ()
   echo "  -h, --help                     Show help message."
   echo "  -k, --keep-log                 Do not clear the log after reading during bfb install."
   echo "  -m, --remote-mode <mode>       Remote mode to use (scp, nc, ncpipe)."
+  echo "  -p, --pldm <pldm_file>         PLDM image for runtime upgrade."
   echo "  -r, --rshim <device>           Rshim device, format [<ip>:<port>:]rshim<N>."
   echo "  -R, --reverse-nc               Reverse netcat mode."
-  echo "  -u, --runtime                  Runtime upgrade (BF3 + local rshim only)."
+  echo "  -u, --runtime                  Runtime upgrade (local rshim only)."
   echo "  -v, --verbose                  Enable verbose output."
 }
 
@@ -190,12 +195,17 @@ push_boot_stream_via_local_rshim()
   if [ $runtime -eq 1 ]; then
     # Skip reset when pushing bfb
     echo "BOOT_RESET_SKIP 1" > ${rshim_node}/misc
+
     # Clear the current boot fifo
     clear_boot_fifo
+
     # Set SP2.BIT2=1
     ${BF_REG} $(basename ${rshim_node}) 0x13000c48.64 0x4 >/dev/null
-    # Set SWINT2.BIT2
-    ${BF_REG} $(basename ${rshim_node}) 0x13000318.64 0x4 >/dev/null
+
+    # Set SWINT2.BIT2 for DPU mode
+    if [ ${nic_mode} -eq 0 ]; then
+      ${BF_REG} $(basename ${rshim_node}) 0x13000318.64 0x4 >/dev/null
+    fi
   fi
 
   if ! $sudo_prefix sh -c "cat ${bfb} ${cfg:+$cfg} ${rootfs:+${rootfs}} ${pv:+| ${pv} | cat -} > ${rshim_node}/boot"; then
@@ -403,9 +413,9 @@ check_nic_mode()
   str=`mlxconfig -d ${pcie_bd}.0 -e q INTERNAL_CPU_OFFLOAD_ENGINE 2>/dev/null | grep INTERNAL_CPU_OFFLOAD_ENGINE | awk '{print $(NF-1)}'`
   if [ ."$str" = ."DISABLED(1)" ] || grep -q "NIC mode" ${rshim_node}/misc; then
     echo "${rshim_node} (${pcie_bd}) is in NIC mode"
-    is_nic_mode=1
+    nic_mode=1
   else
-    is_nic_mode=0
+    nic_mode=0
   fi
 }
 
@@ -422,17 +432,19 @@ wait_for_update_to_finish()
   local filter0 filter
 
   filter0="Rebooting\.\.\.|finished|DPU is ready|Linux up|CRITICAL ERROR"
+
   if [ $runtime -eq 0 ]; then
     filter0="$filter0|In Enhanced NIC mode"
+    if [ $nic_mode -eq 1 ]; then
+      filter="In Enhanced NIC mode"
+    else
+      filter="$filter0"
+    fi
   else
     filter0="Runtime upgrade finished"
-  fi
-
-  if [ $is_nic_mode -eq 1 ]; then
-    filter="In Enhanced NIC mode"
-  else
     filter="$filter0"
   fi
+
 
   echo "Collecting BlueField booting status. Press Ctrl+C to stop…"
 
@@ -527,11 +539,15 @@ cleanup() {
     # Reset to default state.
     echo "BOOT_RESET_SKIP 0" > ${rshim_node}/misc
 
-    # Cleanup SP2.BIT2 and trigger SWINT2.
+    # Cleanup SP2.BIT2.
     sp2=`${BF_REG} $(basename ${rshim_node}) 0x13000c48.64 | awk '{print $3}'`
     sp2=$((sp2 & ~4))
     ${BF_REG} $(basename ${rshim_node}) 0x13000c48.64 $sp2 >/dev/null
-    ${BF_REG} $(basename ${rshim_node}) 0x13000318.64 0x4 >/dev/null
+
+    # Set SWINT2.BIT2 for DPU mode
+    if [ ${nic_mode} -eq 0 ]; then
+      ${BF_REG} $(basename ${rshim_node}) 0x13000318.64 0x4 >/dev/null
+    fi
   fi
 
   # Disable CLEAR_ON_READ.
@@ -543,7 +559,7 @@ cleanup() {
   fi
 
   # Restore the original binding states for PF0 and PF1
-  if [ $is_nic_mode -eq 1 -a -n "${pcie_bd}" ]; then
+  if [ $nic_mode -eq 1 -a -n "${pcie_bd}" -a ${runtime} -eq 0 ]; then
     for i in 0 1; do
       if eval "[ \${pf${i}_bound} -eq 0 ]"; then
         [ $verbose -eq 1 ] && echo "Re-binding: skipping originally unbound pf${i} (${pcie_bd}.${i})"
@@ -563,6 +579,7 @@ default_remote_mode=scp
 default_nc_port=9527    # default nc server port for nc* methods
 
 bfb=
+pldm=
 cfg=
 rootfs=
 mode=local        # Values can be local or remote
@@ -580,13 +597,13 @@ port=
 cleanup_started=0
 trap cleanup EXIT INT TERM
 
-is_nic_mode=0     # Flag to indicate whether DPU in NIC mod or not
+nic_mode=0     # Flag to indicate whether DPU in NIC mod or not
 pcie_bd=""        # PCIE Bus-Device
 pf0_bound=0       # PF0 is bound prior to the script run
 pf1_bound=0       # PF1 is bound prior to the script run
 
-options=`getopt -n bfb-install -o b:c:f:hkm:r:Ruv \
-        -l bfb:,config:,rootfs:,help,keep-log,remote-mode:,reverse-nc,rshim:,runtime,verbose \
+options=`getopt -n bfb-install -o b:c:f:hkm:p:r:Ruv \
+        -l bfb:,config:,rootfs:,help,keep-log,remote-mode:,reverse-nc,rshim:,pldm:,runtime,verbose \
         -- "$@"`
 if [ $? != 0 ]; then echo "Command line error" >&2; exit 1; fi
 eval set -- $options
@@ -597,6 +614,7 @@ while [ "$1" != -- ]; do
     --rootfs|-f) shift; rootfs=$1 ;;
     --help|-h) usage; exit 0 ;;
     --keep-log|-k) clear_on_read=0 ;;
+    --pldm|-p) shift; pldm=$1 ;;
     --remote-mode|-m) shift; remote_mode=$1 ;;
     --rshim|-r) shift; rshim=$1 ;;
     --reverse-nc|-R) reverse_nc=1 ;;
@@ -610,9 +628,21 @@ done
 
 # Parameter checks
 
+if [ -z "${bfb}" -a -z "${pldm}" ]; then
+  echo "Error: Need to provide either bfb or pldm file."
+  usage >&2
+  exit 1
+fi
+
+if [ -n "${bfb}" -a -n "${pldm}" ]; then
+  echo "Error: Can't provide both bfb and pldm file."
+  usage >&2
+  exit 1
+fi
+
 # Check if bfb and rshim are set and non-empty
-if [ -z "${bfb}" -o -z "${rshim}" ]; then
-  echo "Error: Need to provide both bfb file and rshim device name."
+if [ -z "${rshim}" ]; then
+  echo "Error: Need to provide rshim device name."
   usage >&2
   exit 1
 fi
@@ -719,6 +749,56 @@ fi
 
 # Setup checks
 
+# Check PLDM and convert it into BFB.
+if [ -n "${pldm}" ]; then
+  if [ $mode == "remote" ] ; then
+    echo "Error: pldm is only for local rshim."
+    exit 1
+  fi
+
+  if [ ! -e "${pldm}" ]; then
+    echo "Error: ${pldm} not found."
+    exit 1
+  fi
+
+  if [ ! -d "${TMP_DIR}" ]; then
+    echo "Error: TMP_DIR not found."
+    exit 1
+  fi
+
+  # PLDM automatically indicate runtime.
+  runtime=1
+
+  pldm_nicfw=""
+  pldm_bfb=""
+  mkdir ${TMP_DIR}/pldm
+  fwpkg_unpack.py --unpack --outdir ${TMP_DIR}/pldm ${pldm}
+  for i in ${TMP_DIR}/pldm/*.bin; do
+    if [ ! -e "${i}" ]; then
+      echo "Error: unable to unpack ${pldm}."
+      exit 1
+    fi
+
+    sig=$(head -c 4 < ${i})
+
+    [ ."${sig}" = ."MTFW" ] && pldm_nicfw="${i}"
+    [ ."${sig:0:2}" = ."Bf" ] && pldm_bfb="${i}"
+  done
+
+  if [ -z "${pldm_nicfw}" -a -z "${pldm_bfb}" ]; then
+    echo "Error: unable to find bfb or nicfw in ${pldm}."
+    exit 1
+  fi
+
+  if ! mlx-mkbfb ${pldm_nicfw:+--nicfw ${pldm_nicfw}} ${pldm_bfb} ${TMP_DIR}/pldm/pldm.bfb; then
+    echo "Error: unable to create bfb from pldm"
+    exit 1
+  fi
+
+  pldm=""
+  bfb="${TMP_DIR}/pldm/pldm.bfb"
+fi
+
 # Check if bfb file exists
 if [ ! -e "${bfb}" ]; then
   echo "Error: ${bfb} not found."
@@ -813,7 +893,7 @@ fi
 # Check NIC mode and unbind mlx5_core driver in NIC mode.
 check_nic_mode
 
-if [ ${is_nic_mode} -eq 1 -a -n "${pcie_bd}" ]; then
+if [ ${nic_mode} -eq 1 -a -n "${pcie_bd}" -a ${runtime} -eq 0 ]; then
   for i in 0 1; do
     if [[ ! -e /sys/bus/pci/drivers/mlx5_core/${pcie_bd}.${i} ]]; then
       [ ${verbose} -eq 1 ] && echo "Unbinding: Skipping originally unbound pf${i} (${pcie_bd}.${i})"

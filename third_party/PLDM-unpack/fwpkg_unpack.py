@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 
 # SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: MIT
@@ -1018,7 +1018,8 @@ def main():
                 json_output = json.dumps(pldm_parser.full_header,
                                          sort_keys=False,
                                          indent=4)
-            print(json_output)
+            if tool_args.verbose is True:
+                print(json_output)
             sys.exit(0)
         else:
             print("Status : Failed")
