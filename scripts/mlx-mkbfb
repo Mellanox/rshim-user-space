@@ -94,7 +94,7 @@ image_list = (
     ("boot-args", "Arguments for boot image", 59),
     ("boot-timeout", "Boot menu timeout", 60),
     ("uefi-tests", "Specify what UEFI tests to run", 61),
-    ("dummy", "Dummy data for padding", 41),
+    ("nicfw", "NIC Firmware image", 41),
     ("ramdisk", "RAM Disk image", 54),
     ("info", "BFB versioning information", 50),
     ("image", "Boot image", 62),
