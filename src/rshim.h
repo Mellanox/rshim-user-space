@@ -463,6 +463,9 @@ struct rshim_backend {
   /* API to enable the device. */
   int (*enable_device)(rshim_backend_t *bd, bool enable);
 
+  /* API to rescan PCIe for potential rshim device name change */
+  int (*pcie_refresh_dev)(struct rshim_backend *bd);
+
   /* Platform specific register addresses */
   const struct rshim_regs *regs;
 };
