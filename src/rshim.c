@@ -2840,58 +2840,34 @@ static void rshim_set_timer(int timer_fd, int interval)
   timerfd_settime(timer_fd, 0, &ts, NULL);
 }
 
-static void rshim_main(int argc, char *argv[])
+int rshim_init(int *epollfd, int *timerfd)
 {
-  int i, fd, num, rc, epoll_fd, timer_fd;
-  bool rshim_pcie_lf_init_done = false;
-  uint8_t index;
-#ifdef __FreeBSD__
-  const int MAXEVENTS = 16;
-#else
-  const int MAXEVENTS = 64;
-#endif
-  struct epoll_event events[MAXEVENTS];
   struct epoll_event event;
-  rshim_backend_t *bd;
-  time_t t0, t1;
-  uint8_t tmp;
+  int rc, epoll_fd, timer_fd;
 
   sem_init(&rshim_stop_sem, 0, 0);
 
   memset(&event, 0, sizeof(event));
-  memset(events, 0, sizeof(events));
-
-#ifdef HAVE_RSHIM_FUSE
-#ifdef __linux__
-  rc = system("modprobe cuse");
-  if (rc == -1)
-    RSHIM_DBG("Failed the load cuse: %m\n");
-#endif
-
-#ifdef __FreeBSD__
-  if (feature_present("cuse") == 0)
-    if (system("kldload cuse") == -1)
-      RSHIM_DBG("Failed the load cuse\n");
-#endif
-#endif
 
   /* Create the epoll fd */
   epoll_fd = epoll_create1(EPOLL_CLOEXEC);
   if (epoll_fd == -1) {
-    RSHIM_ERR("epoll_create1 failed: %m\n");
+    RSHIM_ERR("epoll_create1 failed\n");
     exit(-1);
   }
   rshim_epoll_fd = epoll_fd;
 
   /* Create and add work fd. */
   if (pipe(rshim_work_fd) == -1) {
-    RSHIM_ERR("Failed to create pipe");
+    RSHIM_ERR("Failed to create pipe\n");
     exit(-1);
   }
+
   if (fcntl(rshim_work_fd[0], F_SETFL, O_NONBLOCK) < 0) {
-    RSHIM_ERR("Failed to set nonblock pipe");
+    RSHIM_ERR("Failed to set nonblock pipe\n");
     exit(-1);
   }
+
   event.data.fd = rshim_work_fd[0];
   event.events = EPOLLIN;
   rc = epoll_ctl(epoll_fd, EPOLL_CTL_ADD, rshim_work_fd[0], &event);
@@ -2903,7 +2879,7 @@ static void rshim_main(int argc, char *argv[])
   /* Add periodic timer. */
   timer_fd = timerfd_create(CLOCK_MONOTONIC, 0);
   if (timer_fd == -1) {
-    fprintf(stderr, "timerfd_create failed: %m\n");
+    RSHIM_ERR("timerfd_create failed\n");
     exit(1);
   }
   rshim_set_timer(timer_fd, RSHIM_TIMER_INTERVAL);
@@ -2911,8 +2887,54 @@ static void rshim_main(int argc, char *argv[])
   event.events = EPOLLIN | EPOLLOUT;
   rc = epoll_ctl(epoll_fd, EPOLL_CTL_ADD, timer_fd, &event);
   if (rc == -1) {
-    fprintf(stderr, "epoll_ctl failed: %m\n");
+    RSHIM_ERR("epoll_ctl failed\n");
     exit(1);
+  }
+
+  if (epollfd)
+    *epollfd = epoll_fd;
+
+  if (timerfd)
+    *timerfd = timer_fd;
+
+  return 0;
+}
+
+static void rshim_main(int argc, char *argv[])
+{
+  int i, fd, num, rc, epoll_fd = -1, timer_fd = -1;
+  bool rshim_pcie_lf_init_done = false;
+  uint8_t index;
+#ifdef __FreeBSD__
+  const int MAXEVENTS = 16;
+#else
+  const int MAXEVENTS = 64;
+#endif
+  struct epoll_event events[MAXEVENTS];
+  rshim_backend_t *bd;
+  time_t t0, t1;
+  uint8_t tmp;
+
+  memset(events, 0, sizeof(events));
+
+#ifdef HAVE_RSHIM_FUSE
+#ifdef __linux__
+  rc = system("modprobe cuse");
+  if (rc == -1)
+    RSHIM_DBG("Failed the load cuse\n");
+#endif
+
+#ifdef __FreeBSD__
+  if (feature_present("cuse") == 0)
+    if (system("kldload cuse") == -1)
+      RSHIM_DBG("Failed the load cuse\n");
+#endif
+#endif
+
+  rc = rshim_init(&epoll_fd, &timer_fd);
+  if (rc) {
+    RSHIM_ERR("rshim_init failed\n");
+    exit(-1);
   }
 
   /* Scan rshim backends. */
@@ -2926,26 +2948,19 @@ static void rshim_main(int argc, char *argv[])
       rshim_backend_name = "pcie";
   }
   if (!rshim_backend_name) {
-    if (!rshim_cmdmode)
-      rshim_pcie_init();
+    rshim_pcie_init();
     rshim_usb_init(epoll_fd);
   } else {
     if (!strcmp(rshim_backend_name, "usb"))
       rc = rshim_usb_init(epoll_fd);
-    else if (!strcmp(rshim_backend_name, "pcie-lf") && !rshim_cmdmode)
+    else if (!strcmp(rshim_backend_name, "pcie-lf"))
       rc = rshim_pcie_lf_init();
-    else if (!strcmp(rshim_backend_name, "pcie") && !rshim_cmdmode)
+    else if (!strcmp(rshim_backend_name, "pcie"))
       rc = rshim_pcie_init();
   }
   if (rc) {
     RSHIM_ERR("Failed to initialize rshim backend\n");
     exit(-1);
-  }
-
-  /* Run command mode if specified. */
-  if (rshim_cmdmode) {
-    rshim_cmdmode_run(argc, argv);
-    return;
   }
 
   time(&t0);
@@ -3004,7 +3019,7 @@ static void rshim_main(int argc, char *argv[])
     }
 
     /* Delayed initialization for livefish probe. */
-    if (!rshim_pcie_lf_init_done && !rshim_cmdmode) {
+    if (!rshim_pcie_lf_init_done) {
       time(&t1);
       if (difftime(t1, t0) > 3) {
         if (!rshim_backend_name)
@@ -3302,8 +3317,9 @@ static void print_help(void)
   printf("OPTIONS:\n");
   printf("  -b, --backend             backend name (usb, pcie or pcie-lf)\n");
   printf("  -c, --cmdmode             run in command line mode\n");
-  printf("    -g, --get-debug         get debug mode\n");
-  printf("    -s, --set-debug <0 | 1> set debug mode\n");
+  printf("    -g, --get-debug         get debug code\n");
+  printf("    -r, --reg <addr.[32|64] [value]> read/write register\n");
+  printf("    -s, --set-debug <0 | 1> set debug code\n");
   printf("  -d, --device              device to attach\n");
   printf("  -f, --foreground          run in foreground\n");
   printf("  -F, --force               run in force mode\n");
@@ -3316,7 +3332,7 @@ static void print_help(void)
 
 int main(int argc, char *argv[])
 {
-  static const char short_options[] = "b:cd:fgFhi:l:nsv";
+  static const char short_options[] = "b:cd:fgFhi:l:nr:sv";
   static struct option long_options[] = {
     { "backend", required_argument, NULL, 'b' },
     { "cmdmode", no_argument, NULL, 'c' },
@@ -3328,6 +3344,7 @@ int main(int argc, char *argv[])
     { "index", required_argument, NULL, 'i' },
     { "log-level", required_argument, NULL, 'l' },
     { "nonet", no_argument, NULL, 'n' },
+    { "reg", required_argument, NULL, 'r' },
     { "set-debug", required_argument, NULL, 's' },
     { "version", no_argument, NULL, 'v' },
     { NULL, 0, NULL, 0 }
@@ -3391,11 +3408,17 @@ int main(int argc, char *argv[])
         print_help();
         return 0;
       }
+      break;
     }
   }
 
+  /* Handle command mode separately. */
+  if (rshim_cmdmode) {
+    return rshim_cmdmode_run(argc, argv);
+  }
+
   /* Put into daemon mode. */
-  if (rshim_daemon_mode && !rshim_cmdmode) {
+  if (rshim_daemon_mode) {
     int pid = fork();
 
     if (pid < 0) {
@@ -3427,8 +3450,7 @@ int main(int argc, char *argv[])
    * 1. Command mode
    * 2. Direct device attachment ('-d')
    */
-  if (!rshim_cmdmode && !rshim_static_dev_name) {
-    // Single instance otherwise
+  if (!rshim_static_dev_name) {
     pid_fd = create_pid_file(PID_FILE);
     if (pid_fd < 0) {
       exit(EXIT_FAILURE);
@@ -3455,9 +3477,7 @@ int main(int argc, char *argv[])
 
   rshim_main(argc, argv);
 
-  if (!rshim_cmdmode) {
-    cleanup_pid_file(PID_FILE, pid_fd);
-  }
+  cleanup_pid_file(PID_FILE, pid_fd);
 
   closelog();
 

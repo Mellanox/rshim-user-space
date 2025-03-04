@@ -25,6 +25,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mount.h>
 #include <termios.h>
 #include <unistd.h>
 #ifdef HAVE_CONFIG_H
@@ -500,6 +501,27 @@ struct rshim_regs {
   uint32_t scratch_buf_ctl;
 };
 
+/* Ioctl() message header. */
+typedef struct {
+  uint32_t addr;
+  uint64_t data;
+} __attribute__((packed)) rshim_ioctl_msg;
+
+/* Ioctl() message header with size. */
+typedef struct {
+  uint32_t addr;
+  uint64_t data;
+  uint8_t data_size;
+} __attribute__((packed)) rshim_ioctl_msg2;
+
+/* Ioctl() code. */
+enum {
+  RSHIM_IOC_READ = _IOWR('R', 0, rshim_ioctl_msg),
+  RSHIM_IOC_WRITE = _IOWR('R', 1, rshim_ioctl_msg),
+  RSHIM_IOC_READ2 = _IOWR('R', 0, rshim_ioctl_msg2),
+  RSHIM_IOC_WRITE2 = _IOWR('R', 1, rshim_ioctl_msg2),
+};
+
 extern const struct rshim_regs bf1_bf2_rshim_regs;
 extern const struct rshim_regs bf3_rshim_regs;
 
@@ -659,5 +681,8 @@ int rshim_set_drop_mode(rshim_backend_t *bd, int value);
 
 /* Run rshim command mode. */
 int rshim_cmdmode_run(int argc, char *argv[]);
+
+/* Common initialization. */
+int rshim_init(int *epoll_fd, int *timer_fd);
 
 #endif /* _RSHIM_H */

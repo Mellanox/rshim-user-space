@@ -1091,28 +1091,6 @@ static const struct cuse_methods rshim_misc_fops = {
 
 /* Rshim file operations routines */
 
-/* ioctl message header. */
-typedef struct {
-  uint32_t addr;
-  uint64_t data;
-} __attribute__((packed)) rshim_ioctl_msg;
-
-/* ioctl message header for Mustang. Unlike BF1 and BF2, Mustang
- * HW enables different USB transfer sizes: 1B, 2B, 4B and 8B.
- */
-typedef struct {
-  uint32_t addr;
-  uint64_t data;
-  uint8_t data_size;
-} __attribute__((packed)) rshim_ioctl_msg2;
-
-enum {
-  RSHIM_IOC_READ = _IOWR('R', 0, rshim_ioctl_msg),
-  RSHIM_IOC_WRITE = _IOWR('R', 1, rshim_ioctl_msg),
-  RSHIM_IOC_READ2 = _IOWR('R', 0, rshim_ioctl_msg2),
-  RSHIM_IOC_WRITE2 = _IOWR('R', 1, rshim_ioctl_msg2),
-};
-
 #ifdef __linux__
 static void rshim_fuse_rshim_ioctl(fuse_req_t req, int cmd, void *arg,
                                    struct fuse_file_info *fi,
