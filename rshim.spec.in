@@ -139,8 +139,15 @@ fi
 %{_datadir}/selinux/packages/rshim-fix.te
 
 %changelog
-* Tue Feb 18 2025 Vladimir Sokolovsky <vlad@nvidia.com> - 2.2.4
+
+* Thu Mar 06 2025 Liming Sun <limings@nvidia.com> - 2.2.5
+- Enhance command line for register read/write
+- Support PCIe device name runtime update
+- bfb-install: Enhancement for runtime upgrade
+- bfb-install: don't exit script when rshim install fails
 - Added fwpkg_unpack.py
+
+* Tue Feb 18 2025 Vladimir Sokolovsky <vlad@nvidia.com> - 2.2.4
 - Added mlx-mkbfb
 
 * Tue Jan 14 2025 Liming Sun <limings@nvidia.com> - 2.2.4
