@@ -57,7 +57,7 @@ via the virtual console or network interface.
 %{_mandir}/man8/rshim.8.gz
 
 %changelog
-* Thu Mar 06 2025 Liming Sun <limings@nvidia.com> - 2.2.5
+* Thu Mar 06 2025 Liming Sun <limings@nvidia.com> - 2.3.1
 - Enhance command line for register read/write
 - Support PCIe device name runtime update
 - bfb-install: Enhancement for runtime upgrade
