@@ -1,4 +1,4 @@
-rshim (2.2.5) UNRELEASED; urgency=low
+rshim (2.3.1) UNRELEASED; urgency=low
 
   * Enhance command line for register read/write
   * Support PCIe device name runtime update
