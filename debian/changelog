@@ -1,3 +1,14 @@
+rshim (2.2.5) UNRELEASED; urgency=low
+
+  * Enhance command line for register read/write
+  * Support PCIe device name runtime update
+  * bfb-install: Enhancement for runtime upgrade
+  * bfb-install: don't exit script when rshim install fails
+  * Add fwpkg_unpack tool
+  * Added mlx-mkbfb
+
+ -- Liming Sun <limings@nvidia.com>  Thu, 06 Mar 2025 11:33:20 -0500
+
 rshim (2.2.4) UNRELEASED; urgency=low
 
   * Fix RPM dependency on Oracle Linux 8.6
