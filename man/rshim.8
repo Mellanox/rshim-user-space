@@ -95,16 +95,25 @@ Specify the backend to attach, which can be one of usb, pcie or pcie_lf. If not 
 
 -c, --cmdmode
 .in +4n
-Run rshim as command line rather than as driver. The following sub-commands are supported (only for USB backend).
-
+Run rshim as command line rather than as driver. Run "-c --help" to see the sub-commands.
+.br
+Syntax: rshim -c --help
+.br
+OPTIONS:
     -g, --get-debug
-    Get the current debug setting.
+    Get the debug code.
+
+    -m, --bfdump
+    Start debug dump which is sent to the standard output.
 
     -r, --reg <addr.[32|64] [value]>
     Read/write registers.
 
-    -s, set-debug <0 | 1>
-    Set the debug setting.
+    -s, --set-debug <0 | 1> set debug code
+    Set the debug code.
+
+  If rshim driver is already running on the current host, use "-i <index>" to specify /dev/rshim<index> to use.
+  If "-i <index>" is not specified, it'll try to connect to the first USB backend.
 .in
 
 -d, --device

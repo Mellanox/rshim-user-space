@@ -65,6 +65,7 @@
 
 #define RSH_SCRATCHPAD1 0xc20
 #define RSH_SCRATCHPAD2 0xc28
+#define RSH_SCRATCHPAD3 0xc30
 #define RSH_SCRATCHPAD6 0xc48
 
 #define RSH_TM_HOST_TO_TILE_STS 0xa28
@@ -121,7 +122,7 @@
 #define RSH_MMIO_ADDRESS_SPACE__CHANNEL_VAL_WDOG0 0xe
 #define RSH_MMIO_ADDRESS_SPACE__CHANNEL_VAL_WDOG1 0xf
 
-/* TODO: Find equivalent registers in Mustang. Only used in PCIe */
+/* Only used in BF2 + PCIe */
 #define RSH_BYTE_ACC_CTL 0x490
 #define RSH_BYTE_ACC_WDAT 0x498
 #define RSH_BYTE_ACC_RDAT 0x4a0
@@ -169,7 +170,7 @@
 #define RSH_BREADCRUMB1 0x0518
 #define RSH_BREADCRUMB1_DBG_ENABLE_MASK (0x1ULL << 30)
 
-// Mustang-specific registers' addresses, masks, shifts
+/* Mustang-specific registers' addresses, masks, shifts. */
 #define BF3_RSH_ADDR_MASK 0x10000000
 #define BF3_RSH_BASE_ADDR 0x13000000
 #define BF3_RSH_BOOT_FIFO_DATA 0x2000
@@ -179,6 +180,7 @@
 #define BF3_RSH_RESET_CONTROL 0x500
 #define BF3_RSH_SCRATCHPAD1 0xc40
 #define BF3_RSH_SCRATCHPAD2 0xc48
+#define BF3_RSH_SCRATCHPAD3 0xc50
 #define BF3_RSH_SCRATCHPAD6 0xc68
 #define BF3_RSH_TM_HOST_TO_TILE_STS 0x6000
 #define BF3_RSH_TM_TILE_TO_HOST_STS 0x6100
@@ -205,6 +207,23 @@
 #define BF_MODE_DPU       1
 #define BF_MODE_NIC       2
 #define BF_MODE_RESERVED  3
+
+/* Command definition */
+enum {
+  RSH_DBG_CMD_NONE,
+  RSH_DBG_CMD_BFDUMP
+};
+
+/* Register structure */
+typedef union {
+  struct {
+    uint64_t boot_progress : 8;
+    uint64_t unused : 51;
+    uint64_t dbg_cmd : 4;    /* BF_DBG_CMD_xxx */
+    uint64_t dpu_own : 1;    /* Owned by DPU if 1 */
+  };
+  uint64_t word;
+} rsh_scratchpad3_t;
 
 #endif /* !defined(__DOXYGEN__) */
 #endif /* !defined(__RSHIM_REGS_H__) */
