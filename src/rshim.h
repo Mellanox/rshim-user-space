@@ -482,6 +482,7 @@ struct rshim_regs {
   uint32_t reset_control;
   uint32_t scratchpad1;
   uint32_t scratchpad2;
+  uint32_t scratchpad3;
   uint32_t scratchpad6;
   uint32_t tm_htt_sts;
   uint32_t tm_tth_sts;

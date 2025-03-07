@@ -1754,6 +1754,7 @@ ssize_t rshim_fifo_write(rshim_backend_t *bd, const char *buffer,
 
 static void rshim_work_handler(rshim_backend_t *bd)
 {
+  rsh_scratchpad3_t sp3 = { .word = 0 };
   int rc;
 
   pthread_mutex_lock(&bd->mutex);
@@ -1762,8 +1763,12 @@ static void rshim_work_handler(rshim_backend_t *bd)
 
   if (bd->keepalive && bd->has_rshim && !bd->debug_code && !bd->drop_mode &&
       !bd->in_access_check) {
-    bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad1,
-                    RSHIM_KEEPALIVE_MAGIC_NUM, RSHIM_REG_SIZE_8B);
+    bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad3,
+                   &sp3.word, RSHIM_REG_SIZE_8B);
+    if (sp3.dbg_cmd == RSH_DBG_CMD_NONE) {
+      bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->scratchpad1,
+                      RSHIM_KEEPALIVE_MAGIC_NUM, RSHIM_REG_SIZE_8B);
+    }
     bd->keepalive = 0;
   }
 
@@ -3316,13 +3321,12 @@ static void print_help(void)
   printf("\n");
   printf("OPTIONS:\n");
   printf("  -b, --backend             backend name (usb, pcie or pcie-lf)\n");
-  printf("  -c, --cmdmode             run in command line mode\n");
-  printf("    -g, --get-debug         get debug code\n");
-  printf("    -r, --reg <addr.[32|64] [value]> read/write register\n");
-  printf("    -s, --set-debug <0 | 1> set debug code\n");
+  printf("  -c, --cmdmode             command line mode");
+  printf(" ('-c --help' for sub-commands)\n");
   printf("  -d, --device              device to attach\n");
   printf("  -f, --foreground          run in foreground\n");
   printf("  -F, --force               run in force mode\n");
+  printf("  -h, --help                show help info\n");
   printf("  -i, --index               use device path /dev/rshim<i>/\n");
   printf("  -l, --log-level           log level");
   printf("(0:none, 1:error, 2:warning, 3:notice, 4:debug)\n");
@@ -3332,20 +3336,17 @@ static void print_help(void)
 
 int main(int argc, char *argv[])
 {
-  static const char short_options[] = "b:cd:fgFhi:l:nr:sv";
+  static const char short_options[] = "b:cd:fFhi:l:nv";
   static struct option long_options[] = {
     { "backend", required_argument, NULL, 'b' },
     { "cmdmode", no_argument, NULL, 'c' },
     { "device", required_argument, NULL, 'd' },
     { "foreground", no_argument, NULL, 'f' },
     { "force", no_argument, NULL, 'F' },
-    { "get-debug", no_argument, NULL, 'g' },
     { "help", no_argument, NULL, 'h' },
     { "index", required_argument, NULL, 'i' },
     { "log-level", required_argument, NULL, 'l' },
     { "nonet", no_argument, NULL, 'n' },
-    { "reg", required_argument, NULL, 'r' },
-    { "set-debug", required_argument, NULL, 's' },
     { "version", no_argument, NULL, 'v' },
     { NULL, 0, NULL, 0 }
   };
@@ -3353,6 +3354,7 @@ int main(int argc, char *argv[])
   pthread_t thread;
 
   /* Parse arguments. */
+  opterr = 0;
   while ((c = getopt_long(argc, argv, short_options, long_options, NULL))
          != -1) {
     switch (c) {
@@ -3402,6 +3404,16 @@ int main(int argc, char *argv[])
       printf("Rshim Driver for BlueField SoC 2.0\n");
 #endif
       return 0;
+    case '?':
+      if (!rshim_cmdmode) {
+        if (optopt) {
+          fprintf(stderr, "Invalid option: -%c\n", optopt);
+        } else {
+          fprintf(stderr, "Invalid option\n");
+        }
+        return -EINVAL;
+      }
+      break;
     case 'h':
     default:
       if (!rshim_cmdmode) {
