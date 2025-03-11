@@ -82,7 +82,8 @@ if [ -f /etc/os-release ]; then
     . /etc/os-release
     RHEL_MAJOR=$(echo $VERSION_ID | cut -d '.' -f 1)
     RHEL_MINOR=$(echo $VERSION_ID | cut -d '.' -f 2)
-    if [ "$RHEL_MAJOR" -eq 9 ] && [ "$RHEL_MINOR" -eq 5 ]; then
+    if [ "$RHEL_MAJOR" -gt 9 ] || \
+         { [ "$RHEL_MAJOR" -eq 9 ] && [ "$RHEL_MINOR" -ge 5 ]; }; then
       polver=$(grep "^module" %{_datadir}/selinux/packages/rshim-fix.te | sed 's/;//' | awk '{print $3}')
       echo "Applying SELinux rshim policy fix $polver for RHEL 9.5..."
       if [ -x /usr/bin/checkmodule ] && [ -x /usr/bin/semodule_package ]; then
