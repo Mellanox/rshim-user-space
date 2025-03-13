@@ -1,0 +1,71 @@
+.\" Manpage for bfb-tool.
+.TH bfb-tool 8 "2025-03-13" "bfb-tool" "BFB Management Tool"
+
+.SH NAME
+bfb-tool - Tool for extracting and repackaging BFBs
+
+.SH SYNOPSIS
+bfb-tool <action> --bfb <BFB> --psid <PSID>|--opn <OPN>|--all [-p|--profile <Profile>] [--output-dir <dir>] [-v|--verbose]
+
+.SH DESCRIPTION
+The bfb-tool is used for managing BFBs (bf-bundle/bf-fwbundle). It supports two primary actions: extract and repack.
+
+The repack action involves extracting and building a new BFB for a specific OPN/PSID.
+
+.SH OPTIONS
+
+.TP
+.B action
+Specify the action to perform. Supported actions are: extract and repack
+.RS
+.TP
+.B extract
+Extract the payload from the BFB.
+.TP
+.B repack
+Extract and build a new BFB for a specific OPN/PSID.
+.RE
+
+.TP
+.B --bfb <BFB>
+Specify the BFB file (either bf-bundle or bf-fwbundle).
+
+.TP
+.B --psid <PSID>
+Specify the PSID of the DPU for payload extraction.
+
+.TP
+.B --opn <OPN>
+Specify the OPN of the DPU for payload extraction.
+
+.TP
+.B --all
+Extract or repack for all applicable configurations.
+
+.TP
+.B -p, --profile <Profile>
+Specify a configuration profile.
+
+.TP
+.B --output-dir <dir>
+Specify the directory where results will be stored.
+
+.TP
+.B -v, --verbose
+Enable verbose mode for detailed output.
+
+.SH EXAMPLES
+
+Extract payload from a BFB for a specific PSID:
+.sp
+bfb-tool extract --bfb bf-fwbundle-2.9.2-40_25.02-prod.bfb --psid MT_0000001070
+
+Repack a BFB for a specific OPN:
+.sp
+bfb-tool repack --bfb bf-fwbundle-2.9.2-40_25.02-prod.bfb --opn 900-9D3B6-F2SV-PA0_Ax
+
+.SH SEE ALSO
+mlx-mkbfb(8)
+
+.SH AUTHOR
+Written by Vladimir Sokolovsky <vlad@nvidia.com>
