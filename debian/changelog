@@ -1,3 +1,10 @@
+rshim (2.1.11) UNRELEASED; urgency=low
+
+  * Use BREADCRUMB.BIT32 to indicate NIC mode
+  * bfb-install: don't exit script when rshim install fails
+
+ -- Liming Sun <limings@nvidia.com>  Thu, 13 Mar 2025 16:07:40 -0400
+
 rshim (2.1.10) UNRELEASED; urgency=low
 
   * Fix SELinux policy in enforcing mode
