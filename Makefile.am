@@ -9,6 +9,7 @@ confdir = $(sysconfdir)
 dist_conf_DATA = etc/rshim.conf
 dist_sbin_SCRIPTS = scripts/bfb-install \
                     scripts/bf-reg \
+                    scripts/bfb-tool \
                     scripts/mlx-mkbfb \
                     third_party/PLDM-unpack/fwpkg_unpack.py
 

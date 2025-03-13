@@ -1,0 +1,708 @@
+#!/bin/bash
+
+###############################################################################
+#
+# Copyright 2025 NVIDIA Corporation
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy of
+# this software and associated documentation files (the "Software"), to deal in
+# the Software without restriction, including without limitation the rights to
+# use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+# the Software, and to permit persons to whom the Software is furnished to do so,
+# subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+# FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+# COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+# IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+# CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+#
+###############################################################################
+
+
+if [ "$(id -u)" -ne 0 ]; then
+	echo "This script must be run as root"
+	exit 1
+fi
+
+info() {
+	echo >&2 "INFO: $*"
+}
+
+note() {
+	echo >&2 "NOTE: $*"
+}
+
+warn() {
+	echo >&2 "WARNING: $*"
+}
+
+error() {
+	echo >&2 "ERROR: $*"
+}
+
+usage() {
+	cat << EOF
+	Usage: $(basename $0) <action> --bfb <BFB> --psid <PSID>|--opn <OPN>|--all [-p|--profile <Profile>] [--output-dir <dir>] [-v|--verbose]
+
+	action:                 extract or repack. The repack action includes extracting and building a new BFB for a specific OPN/PSID
+
+	--bfb <BFB>             bf-bundle/bf-fwbundle BFB
+	--psid <PSID>           PSID of the DPU to extract the paylod
+	--opn <OPN>             OPN of the DPU to extract the payload
+	--profile <Profile>     Configuration Profile
+	--output-dir <dir>      Directory to keep the results
+	-v|--verbose            Verbose mode
+EOF
+}
+
+finish() {
+	[ -n "$WDIR" ] && rm -rf "$WDIR"
+}
+
+MLX_MKBFB=$(which mlx-mkbfb 2> /dev/null)
+BASE_BFB="/usr/lib/firmware/mellanox/boot/default.bfb"
+
+if [ -z "$1" ]; then
+	usage
+    exit 1
+fi
+
+action=$1
+shift
+REPACK=0
+
+case "$action" in
+	"repack")
+			REPACK=1
+		;;
+	"extract")
+		;;
+	*)
+		error "Unsupported action: $action"
+		echo
+		usage
+		exit 1
+		;;
+esac
+
+options=$(getopt -l "output-dir:,psid:,opn:,bfb:,profile:,all,help,verbose" -o "o:p:O:b:p:ahv" -a -- "$@")
+
+eval set -- "$options"
+
+while true
+do
+        case $1 in
+                -h|--help)
+                    usage
+                    exit 0
+                    ;;
+				-a|--all)
+					BUILD_ALL=1
+					;;
+				-b|--bfb)
+					shift
+					bfb=$1
+					;;
+				-p|--profile)
+					shift
+					profile=$1
+					;;
+                -o|--output-dir)
+                    shift
+                    OUTPUT_DIR=$1
+                    ;;
+                -p|--psid)
+                    shift
+					ID_SET="PSID"
+                    BOARD_ID=$1
+                    ;;
+                -O|--opn)
+                    shift
+					ID_SET="OPN"
+                    BOARD_ID=$1
+                    ;;
+                -v|--verbose)
+                    verbose=1
+                    set -xv
+                    ;;
+				-R|--repackage)
+					REPACK=1
+					;;
+                --)
+                    shift
+                    break;;
+        esac
+        shift
+done
+
+BUILD_ALL=${BUILD_ALL:-0}
+
+unset BSP_CAPSULE
+unset BMC_FW
+unset CEC_FW
+unset NIC_FW
+unset DPU_GI
+unset NIC_FW_GI
+unset MLXFWMANAGER
+unset TARGET_DIR
+
+if [ ! -e "$bfb" ]; then
+    error "BFB: $bfb does not exist"
+    exit 1
+fi
+
+if [ $BUILD_ALL -eq 0 ]; then
+	if [ -z "$BOARD_ID" ]; then
+		error "PSID and OPN are not set. Provide one of them."
+		usage
+		exit 1
+	fi
+else
+	BOARD_ID="FW"
+fi
+
+if [ -z "$MLX_MKBFB" ]; then
+	error "mlx-mkbfb is required"
+	exit 1
+fi
+
+if [ "`uname -m`" != "aarch64" ]; then
+	if [ ! -x /usr/bin/qemu-aarch64-static ]; then
+		error "qemu-aarch64-static is required"
+		exit 1
+	fi
+
+	if [ ! -d /etc/binfmt.d ]; then
+		error "systemd package is required"
+		exit 1
+	fi
+	if ! (grep -q /usr/bin/qemu-aarch64-static /etc/binfmt.d/qemu-aarch64.conf > /dev/null 2>&1); then
+		cat > /etc/binfmt.d/qemu-aarch64.conf << EOF
+:qemu-aarch64:M::\x7fELF\x02\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\xb7:\xff\xff\xff\xff\xff\xff\xff\xfc\xff\xff\xff\xff\xff\xff\xff\xff\xfe\xff\xff:/usr/bin/qemu-aarch64-static:
+EOF
+		systemctl restart systemd-binfmt
+	fi
+fi
+
+trap finish EXIT
+
+bfb_name=$(basename $bfb | sed -e 's/.bfb//')
+
+OUTPUT_DIR=${OUTPUT_DIR:-"/tmp"}
+
+doca_version=$(echo $bfb_name | cut -d '_' -f 1,2 | cut -d '-' -f 3-)
+bfb_sfx=${bfb_name##*_}
+
+TMPDIR=${TMPDIR:-"/tmp"}
+mkdir -p ${TMPDIR}/bfb
+
+WDIR=${WDIR:-$(mktemp -d ${TMPDIR}/bfb/tmp.XXXXXX)}
+mkdir -p "${WDIR}"
+cd $WDIR
+
+INITRAMFS_WDIR=$WDIR/initramfs
+INITRAMFS_REPKG_DIR=$WDIR/initramfs.repackage
+
+info "Extracting BFB"
+$MLX_MKBFB -x -n initramfs-v0 $bfb
+mkdir -p $INITRAMFS_WDIR
+cd $INITRAMFS_WDIR
+
+info "Extracting BFB's initramfs"
+gzip -d < ../dump-initramfs-v0 | cpio -id
+
+if ! (/bin/ls */install.env/common > /dev/null 2>&1); then
+    error "This BFB does not support BMC components update"
+    exit 1
+fi
+
+if [ ! -d ./opt/mellanox/mlnx-fw-updater  ]; then
+    info "Extracting mlnx-fw-updater"
+    tar xJf */image.tar.xz ./opt/mellanox/mlnx-fw-updater/
+fi
+
+BSP_CAPSULE="./usr/lib/firmware/mellanox/boot/capsule/boot_update2.cap"
+BSP_VERSION=""
+if [ -e ./lib/firmware/mellanox/boot/atf_uefi.version ]; then
+	BSP_VERSION="$(cat ./lib/firmware/mellanox/boot/atf_uefi.version 2> /dev/null)"
+else
+	BSP_VERSION="$(strings $BSP_CAPSULE | grep -m 1 "(\(release\|debug\))" | cut -d ':' -f 2 | cut -d '-' -f 1)"
+fi
+
+if [ ! -f "$BSP_CAPSULE" ]; then
+	echo "ERROR: ATF/UEFI capsule was not found"
+	exit 1
+fi
+
+if [ -z "$BSP_VERSION" ]; then
+	echo "ERROR: Cannot identify ATF/UEFI version"
+	exit 1
+fi
+
+if [ ! -d ./usr/lib/firmware/mellanox/bmc ]; then
+    echo "Extract BMC components"
+    tar Jxf */image.tar.xz --warning=no-timestamp ./usr/lib/firmware/mellanox/{bmc,cec}/
+fi
+
+cp /usr/bin/qemu-aarch64-static ./usr/bin
+
+bfver_out="$(chroot ${INITRAMFS_WDIR} /usr/bin/bfver --file ${BASE_BFB} 2> /dev/null)"
+
+ATF_VERSION=$(echo "$bfver_out" | grep -m 1 "ATF" | cut -d':' -f 3 | \
+    sed -e 's/[[:space:]]//')
+UEFI_VERSION=$(echo "$bfver_out" | grep -m 1 "UEFI" | cut -d':' -f 2 | \
+    sed -e 's/[[:space:]]//')
+
+if [ -z "$UEFI_VERSION" ]; then
+	mkdir uefi
+	cd uefi
+	$MLX_MKBFB -x ../${BASE_BFB}
+	mv dump-bl33-v0 dump-bl33-v0.gz
+	gunzip dump-bl33-v0.gz
+	UEFI_VERSION="$(strings -el dump-bl33-v0 | grep "BlueField" | cut -d':' -f 2)"
+	cd - >/dev/null
+	rm -rf uefi
+fi
+
+if [ $REPACK -eq 1 ]; then
+	info "Extracting initramfs for repackaging"
+	mkdir -p $INITRAMFS_REPKG_DIR
+	cd $INITRAMFS_REPKG_DIR
+	gzip -d < ../dump-initramfs-v0 | cpio -id
+
+	if [ ! -d ./opt/mellanox/mlnx-fw-updater  ]; then
+	    info "Extracting mlnx-fw-updater"
+	    tar xJf */image.tar.xz ./opt/mellanox/mlnx-fw-updater/
+	fi
+
+	if [ ! -d ./usr/lib/firmware/mellanox/bmc ]; then
+	    echo "Extract BMC components"
+	    tar Jxf */image.tar.xz --warning=no-timestamp ./usr/lib/firmware/mellanox/{bmc,cec}/
+	fi
+
+	cp /usr/bin/qemu-aarch64-static ./usr/bin
+
+	cd $INITRAMFS_WDIR
+else
+	INITRAMFS_REPKG_DIR=$INITRAMFS_WDIR
+fi
+
+cleanup_base_initramfs()
+{
+	cd $INITRAMFS_REPKG_DIR
+
+	# Cleanup
+	rm -f ./tmp/*bin
+	rm -f ./usr/lib/firmware/mellanox/boot/capsule/MmcBootCap
+	rm -f ./${BASE_BFB}
+
+	rm -rf ./usr/lib/modules/*/kernel/drivers/net/ethernet/chelsio \
+		./usr/lib/modules/*/kernel/drivers/net/ethernet/broadcom \
+		./usr/lib/modules/*/kernel/drivers/net/ethernet/litex \
+		./usr/lib/aarch64-linux-gnu/perl/*/CORE \
+		./usr/include
+
+	# Remove unused MFT files
+	rm -f $(ls -1 ./usr/share/mft/mstdump_dbs/* | grep -iv BlueField)
+	rm -f ./usr/bin/mlxtokengenerator \
+	./usr/bin/mlxtrace_ext  \
+	./usr/bin/mlxcables_ext \
+	./usr/bin/mlxarchive \
+	./usr/bin/mlxdump_ext \
+	./usr/bin/mlxlink_ext \
+	./usr/bin/wqdump_ext \
+	./usr/bin/mlxreg_ext \
+	./usr/bin/mtserver \
+	./usr/bin/mic \
+	./usr/bin/mlxdpa \
+	./usr/bin/mlxfwstress_ext \
+	./usr/lib64/mft/libmtcr.a \
+	./usr/lib64/mft/libmtcr_ul.a
+
+	rm -rf \
+	./usr/share/mft/prm_dbs/gpu \
+	./usr/share/mft/prm_dbs/retimers \
+	./usr/share/mft/prm_dbs/switch \
+	./usr/lib64/mft/mtcr_plugins \
+	./usr/lib64/mft/sdk \
+	./usr/lib/aarch64-linux-gnu/perl/*/auto/Encode/JP \
+	./usr/lib/aarch64-linux-gnu/perl/*/auto/Encode/KR \
+	./usr/lib/aarch64-linux-gnu/perl/*/auto/Encode/TW \
+	./usr/lib/aarch64-linux-gnu/perl/*/auto/Encode/EBCDIC \
+	./usr/lib/aarch64-linux-gnu/perl/*/auto/Encode/CN
+}
+
+create_info()
+{
+# Create JSON using jq
+odata_count=1
+
+json_output=$(jq -n \
+	--arg odata_count "$odata_count" \
+	--arg odata_id "/redfish/v1/UpdateService/SoftwareInventory/$odata_count" \
+	--arg bsp_name "${BFREV}_BSP" \
+	--arg bsp_version "$BSP_VERSION" \
+	--arg bsp_source "${BSP_CAPSULE##*/}" \
+'{
+	"//": "This JSON represents a Redfish Software Inventory collection containing multiple software components.",
+	"@odata.type": "#SoftwareInventoryCollection.SoftwareInventoryCollection",
+	"@odata.id": "/redfish/v1/UpdateService/SoftwareInventory",
+	"Name": "BFB File Content",
+	"Members": [
+		{
+			"@odata.id": $odata_id,
+			"Id": $odata_count,
+			"Name": $bsp_name,
+			"Version": $bsp_version,
+			"SoftwareId": $bsp_source,
+		}
+	],
+	"Members@odata.count": 1
+}')
+
+if [ -n "$ATF_VERSION" ]; then
+	let odata_count++
+	json_output=$( echo $json_output | jq \
+		--arg odata_count "$odata_count" \
+		--arg odata_id "/redfish/v1/UpdateService/SoftwareInventory/$odata_count" \
+		--arg atf_name "${BFREV}_ATF" \
+		--arg atf_version "${ATF_VERSION}" \
+		--arg atf_source "${BSP_CAPSULE##*/}" \
+		'.Members += [{
+			"@odata.id": $odata_id,
+			"Id": $odata_count,
+			"Name": $atf_name,
+			"Version": $atf_version,
+			"SoftwareId": $atf_source,
+		}] | .["Members@odata.count"] += 1')
+fi
+
+if [ -n "$UEFI_VERSION" ]; then
+	let odata_count++
+	json_output=$( echo $json_output | jq \
+		--arg odata_count "$odata_count" \
+		--arg odata_id "/redfish/v1/UpdateService/SoftwareInventory/$odata_count" \
+		--arg uefi_name "${BFREV}_UEFI" \
+		--arg uefi_version "${UEFI_VERSION}" \
+		--arg uefi_source "${BSP_CAPSULE##*/}" \
+		'.Members += [{
+			"@odata.id": $odata_id,
+			"Id": $odata_count,
+			"Name": $uefi_name,
+			"Version": $uefi_version,
+			"SoftwareId": $uefi_source,
+		}] | .["Members@odata.count"] += 1')
+fi
+
+if [ -n "$NIC_FW_VERSION" ]; then
+	let odata_count++
+	json_output=$( echo $json_output | jq \
+		--arg odata_count "$odata_count" \
+		--arg odata_id "/redfish/v1/UpdateService/SoftwareInventory/$odata_count" \
+		--arg nic_fw_name "${BFREV}_NIC_FW" \
+		--arg nic_fw_version "${NIC_FW_VERSION}" \
+		--arg nic_fw_source "${NIC_FW##*/}" \
+		'.Members += [{
+			"@odata.id": $odata_id,
+			"Id": $odata_count,
+			"Name": $nic_fw_name,
+			"Version": $nic_fw_version,
+			"SoftwareId": $nic_fw_source,
+		}] | .["Members@odata.count"] += 1')
+fi
+
+if [ -n "$BMC_FW_VERSION" ]; then
+	let odata_count++
+	json_output=$( echo $json_output | jq \
+		--arg odata_count "$odata_count" \
+		--arg odata_id "/redfish/v1/UpdateService/SoftwareInventory/$odata_count" \
+		--arg bmc_fw_name "${BFREV}_BMC_FW" \
+		--arg bmc_fw_version "${BMC_FW_VERSION}" \
+		--arg bmc_fw_source "${BMC_FW##*/}" \
+		'.Members += [{
+			"@odata.id": $odata_id,
+			"Id": $odata_count,
+			"Name": $bmc_fw_name,
+			"Version": $bmc_fw_version,
+			"SoftwareId": $bmc_fw_source,
+		}] | .["Members@odata.count"] += 1')
+fi
+
+if [ -n "$CEC_FW_VERSION" ]; then
+	let odata_count++
+	json_output=$( echo $json_output | jq \
+		--arg odata_count "$odata_count" \
+		--arg odata_id "/redfish/v1/UpdateService/SoftwareInventory/$odata_count" \
+		--arg cec_fw_name "${BFREV}_CEC_FW" \
+		--arg cec_fw_version "${CEC_FW_VERSION}" \
+		--arg cec_fw_source "${CEC_FW##*/}" \
+		'.Members += [{
+			"@odata.id": $odata_id,
+			"Id": $odata_count,
+			"Name": $cec_fw_name,
+			"Version": $cec_fw_version,
+			"SoftwareId": $cec_fw_source,
+		}] | .["Members@odata.count"] += 1')
+fi
+
+if [ -n "$DPU_GI_VERSION" ]; then
+	let odata_count++
+	json_output=$( echo $json_output | jq \
+		--arg odata_count "$odata_count" \
+		--arg odata_id "/redfish/v1/UpdateService/SoftwareInventory/$odata_count" \
+		--arg dpu_gi_name "${BFREV}_DPU_GI" \
+		--arg dpu_gi_version "${DPU_GI_VERSION}" \
+		--arg dpu_gi_source "${DPU_GI##*/}" \
+		'.Members += [{
+			"@odata.id": $odata_id,
+			"Id": $odata_count,
+			"Name": $dpu_gi_name,
+			"Version": $dpu_gi_version,
+			"SoftwareId": $dpu_gi_source,
+		}] | .["Members@odata.count"] += 1')
+fi
+
+if [ -n "$NIC_FW_GI_VERSION" ]; then
+	let odata_count++
+	json_output=$( echo $json_output | jq \
+		--arg odata_count "$odata_count" \
+		--arg odata_id "/redfish/v1/UpdateService/SoftwareInventory/$odata_count" \
+		--arg nic_fw_gi_name "${BFREV}_NIC_FW_GI" \
+		--arg nic_fw_gi_version "${NIC_FW_GI_VERSION}" \
+		--arg nic_fw_gi_source "${NIC_FW_GI##*/}" \
+		'.Members += [{
+			"@odata.id": $odata_id,
+			"Id": $odata_count,
+			"Name": $nic_fw_gi_name,
+			"Version": $nic_fw_gi_version,
+			"SoftwareId": $nic_fw_gi_source,
+		}] | .["Members@odata.count"] += 1')
+fi
+
+if [ -n "$profile" ]; then
+	let odata_count++
+	json_output=$( echo $json_output | jq \
+		--arg odata_count "$odata_count" \
+		--arg odata_id "/redfish/v1/UpdateService/SoftwareInventory/$odata_count" \
+		--arg profile_name "$PROFILE_NAME" \
+		--arg profile_version "$PROFILE_VERSION" \
+		--arg profile_source "${PROFILE##*/}" \
+		'.Members += [{
+			"@odata.id": $odata_id,
+			"Id": $odata_count,
+			"Name": $profile_name,
+			"Version": $profile_version,
+			"SoftwareId": $profile_source,
+		}] | .["Members@odata.count"] += 1')
+fi
+
+echo "$json_output" > ${TARGET_DIR}/info.json
+}
+
+rebuild_bfb()
+{
+	cd $INITRAMFS_REPKG_DIR
+
+	# Remove the extra payload
+	rm -f ./usr/bin/qemu-aarch64-static
+	rm -f ./${BASE_BFB}
+	rm -f ./usr/lib/firmware/mellanox/bmc/*
+	rm -f ./usr/lib/firmware/mellanox/cec/*
+
+	cp ${TARGET_DIR}/${BMC_FW##*/} ./usr/lib/firmware/mellanox/bmc/
+	echo $BMC_FW_VERSION > ./usr/lib/firmware/mellanox/bmc/bf3-bmc-fw.version
+	cp ${TARGET_DIR}/${CEC_FW##*/} ./usr/lib/firmware/mellanox/cec/
+	echo $CEC_FW_VERSION > ./usr/lib/firmware/mellanox/cec/bf3-cec-fw.version
+	if [ -n "${DPU_GI}" ]; then
+		cp ${TARGET_DIR}/${DPU_GI##*/} ./usr/lib/firmware/mellanox/bmc/
+		echo $DPU_GI_VERSION > ./usr/lib/firmware/mellanox/bmc/bf3-bmc-preboot-install.version
+	fi
+	if [ -n "${NIC_FW_GI}" ]; then
+		cp ${TARGET_DIR}/${NIC_FW_GI##*/} ./usr/lib/firmware/mellanox/bmc/
+	fi
+	if [ -n "$profile" ]; then
+		cp ${TARGET_DIR}/${PROFILE##*/} ./usr/lib/firmware/mellanox/bmc/
+		echo $PROFILE_VERSION > ./usr/lib/firmware/mellanox/bmc/config-image.version
+	fi
+
+	find . | cpio -H newc -o | gzip -9 > ../dump-initramfs-v0
+	target_bfb=${bfb##*/}
+	target_bfb=${target_bfb/.bfb/-${OPN}.bfb}
+
+	create_info
+
+	$MLX_MKBFB --initramfs ../dump-initramfs-v0 --info ${TARGET_DIR}/info.json ${bfb} ${TARGET_DIR}/${target_bfb}
+
+	cp /usr/bin/qemu-aarch64-static ./usr/bin
+}
+
+handle_opn()
+{
+	OPN=$1
+	PSID=$2
+	NIC_FW_VERSION=$3
+	mlxfwmanager=$4
+
+	case $mlxfwmanager in
+		*41692*)
+			device=BlueField-3
+			;;
+		*41686*)
+			device=BlueField-2
+			;;
+	esac
+
+	cd $INITRAMFS_WDIR
+
+	echo "Extracting NIC Firmware Binary for PSID ${PSID} OPN ${OPN}..."
+	if ! (chroot $INITRAMFS_WDIR /$fwmanager --psid ${PSID} --extract --extract-file /tmp/fw-${device}-rel-${NIC_FW_VERSION//\./_}-${OPN}.bin > /dev/null 2>&1); then
+		echo "ERROR: Failed to extract NIC Firmware binary"
+		exit 1
+	fi
+
+	BMC_FW=
+	BMC_FW_VERSION=
+	CEC_FW=
+	CEC_FW_VERSION=
+	DPU_GI=
+	NIC_FW_GI=
+	PROFILE=
+	PROFILE_VERSION=
+	if [ "$device" == "BlueField-2" ]; then
+		BFREV="BF2"
+		BMC_FW="./usr/lib/firmware/mellanox/bmc/bf2-bmc-fw.tar"
+		BMC_FW_VERSION=$(cat ./usr/lib/firmware/mellanox/bmc/bf2-bmc-fw.version 2> /dev/null)
+		CEC_FW="./usr/lib/firmware/mellanox/cec/bf2-cec-fw.bin"
+		CEC_FW_VERSION=$(cat ./usr/lib/firmware/mellanox/cec/bf2-cec-fw.version 2> /dev/null)
+	elif [ "$device" == "BlueField-3" ]; then
+		BFREV="BF3"
+		BMC_FW="./usr/lib/firmware/mellanox/bmc/bf3-bmc-fw.fwpkg"
+		BMC_FW_VERSION=$(cat ./usr/lib/firmware/mellanox/bmc/bf3-bmc-fw.version 2> /dev/null)
+		CEC_FW="./usr/lib/firmware/mellanox/cec/bf3-cec-fw.fwpkg"
+		CEC_FW_VERSION=$(cat ./usr/lib/firmware/mellanox/cec/bf3-cec-fw.version 2> /dev/null)
+		DPU_GI="./usr/lib/firmware/mellanox/bmc/bf3-bmc-preboot-install.bfb"
+		DPU_GI_VERSION=$(cat ./usr/lib/firmware/mellanox/bmc/bf3-bmc-preboot-install.version 2> /dev/null)
+		NIC_FW_GI=$(/bin/ls -1 ./usr/lib/firmware/mellanox/bmc/fw-BlueField-3-rel-*-${OPN}-*.bfb 2> /dev/null)
+		NIC_FW_GI_VERSION=$(echo $NIC_FW_GI | grep -oP '(?<=BlueField-3-rel-)\d+_\d+_\d+')
+	fi
+
+	if [ -n "$profile" ]; then
+		if [ ! -e "$profile" ]; then
+			echo "ERROR: Profile not found: $profile"
+			exit 1
+		fi
+		PROFILE_VERSION=$(echo $profile | grep -oP '(?<=config-image-)[0-9.-]+(?=\.bfb)')
+		PROFILE=./usr/lib/firmware/mellanox/bmc/config-image.bfb
+		cp $profile $PROFILE
+	else
+		if [ -e ./usr/lib/firmware/mellanox/bmc/config-image.bfb ]; then
+			PROFILE=./usr/lib/firmware/mellanox/bmc/config-image.bfb
+			PROFILE_VERSION=$(cat ./usr/lib/firmware/mellanox/bmc/config-image.version 2> /dev/null)
+			profile="${TARGET_DIR}/${PROFILE##*/}"
+		fi
+	fi
+	PROFILE_NAME="${BFREV}_PROFILE"
+
+	NIC_FW="${INITRAMFS_WDIR}/tmp/fw-${device}-rel-${NIC_FW_VERSION//\./_}-${OPN}.bin"
+	if [ ! -e "${NIC_FW}" ]; then
+		echo "ERROR: Failed to extract NIC FW for OPN ${OPN}"
+		exit 1
+	fi
+
+	rm -f ${INITRAMFS_REPKG_DIR}/opt/mellanox/mlnx-fw-updater/firmware/mlxfwmanager*
+
+	# Create mlxfwmanager with single FW binary
+	cp $NIC_FW ${INITRAMFS_REPKG_DIR}/opt/mellanox/mlnx-fw-updater/firmware/
+	chroot ${INITRAMFS_REPKG_DIR} /usr/bin/mlx_fwsfx_gen --source-dir /opt/mellanox/mlnx-fw-updater/firmware/ --out-dir /opt/mellanox/mlnx-fw-updater/firmware/ --sfx-name ${mlxfwmanager##*/} > /dev/null 2>&1
+	if [ $? -ne 0 ]; then
+		echo "ERROR: Failed to build mlxfwmanager for ${BOARD_ID}"
+		exit 1
+	else
+		rm -f ${INITRAMFS_REPKG_DIR}/opt/mellanox/mlnx-fw-updater/firmware/*bin
+		rm -f ${INITRAMFS_REPKG_DIR}/opt/mellanox/mlnx-fw-updater/firmware/*log
+	fi
+
+	MLXFWMANAGER=$(ls -1 ${INITRAMFS_REPKG_DIR}/opt/mellanox/mlnx-fw-updater/firmware/mlxfwmanager*)
+
+	TARGET_DIR="$OUTPUT_DIR/${bfb_name}/${OPN}"
+	if [ $BUILD_ALL -eq 0 ]; then
+		TARGET_DIR="$OUTPUT_DIR/${bfb_name}/${BOARD_ID}"
+	fi
+	mkdir -p "$TARGET_DIR"
+
+	cp \
+		$BSP_CAPSULE \
+		$BMC_FW \
+		$CEC_FW \
+		$NIC_FW \
+		$DPU_GI \
+		$NIC_FW_GI \
+		$MLXFWMANAGER \
+		$PROFILE \
+			${TARGET_DIR}
+
+	if [ $? -ne 0 ]; then
+		echo "ERROR: Failed to copy FW binaries to the target dir"
+		exit 1
+	fi
+
+	if [ $REPACK -eq 1 ]; then
+		rebuild_bfb
+	fi
+}
+
+if [ $REPACK -eq 1 ]; then
+	cleanup_base_initramfs
+fi
+
+total_ids=0
+mlxfwmanager_num=0
+
+cd $INITRAMFS_WDIR
+for fwmanager in $(ls -1r ./opt/mellanox/mlnx-fw-updater/firmware/mlxfwmanager*)
+do
+	let mlxfwmanager_num++
+	while read line
+	do
+		set -- $(echo $line)
+		OPN=$1
+		PSID=$2
+		NIC_FW_VERSION=$3
+		if [ -z "$OPN" ]; then
+			echo "WARN: No data found for ${ID_SET}: ${BOARD_ID} in $fwmanager"
+			continue
+		fi
+		echo "Found PSID $PSID OPN $OPN FW version $NIC_FW_VERSION in $fwmanager"
+
+		handle_opn ${OPN} ${PSID} ${NIC_FW_VERSION} $fwmanager
+		let total_ids++
+	done <<< $(chroot $INITRAMFS_WDIR /$fwmanager --list 2>&1 | grep -w $BOARD_ID | awk '{print $1, $2, $4}')
+	if [[ $total_ids -gt 0 && $BUILD_ALL -eq 0 ]]; then
+		break
+	fi
+done
+
+if [ $mlxfwmanager_num -eq 0 ]; then
+	echo "ERROR: No mlxfwmanager files found"
+	exit 1
+fi
+
+if [ $total_ids -eq 0 ]; then
+	echo "ERROR: NIC FW was not found for ${ID_SET}: ${BOARD_ID}"
+	exit 1
+fi
+
+if [ $BUILD_ALL -eq 0 ]; then
+	echo "See the result under ${TARGET_DIR}"
+else
+	echo "See the result under $(readlink -f ${TARGET_DIR}/..)"
+fi
+
+du -ach $(find ${TARGET_DIR})
+
+exit 0
