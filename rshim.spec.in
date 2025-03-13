@@ -128,6 +128,10 @@ fi
 %{_datadir}/selinux/packages/rshim-fix.te
 
 %changelog
+* Thu Mar 13 2025 Liming Sun <limings@nvidia.com> - 2.1.11
+- Use BREADCRUMB.BIT32 to indicate NIC mode
+- bfb-install: don't exit script when rshim install fails
+
 * Sun Feb 02 2025 Liming Sun <limings@nvidia.com> - 2.1.10
 - Fix SELinux policy in enforcing mode
 - bfb-install: Handle PF1 bind/unbind in NIC mode
