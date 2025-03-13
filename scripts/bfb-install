@@ -894,6 +894,12 @@ fi
 check_nic_mode
 
 if [ ${nic_mode} -eq 1 -a -n "${pcie_bd}" -a ${runtime} -eq 0 ]; then
+  # Set BREADCRUMB.BIT32 to indicate NIC mode.
+  breadcrumb1=$(${BF_REG} $(basename ${rshim_node}) 0x13000518.64 | awk '{print $3}')
+  breadcrumb1=$((breadcrumb1 | (0x1 << 32)))
+  breadcrumb1=$(printf "0x%x\n" $breadcrumb1)
+  ${BF_REG} $(basename ${rshim_node}) 0x13000518.64 ${breadcrumb1} >/dev/null
+
   for i in 0 1; do
     if [[ ! -e /sys/bus/pci/drivers/mlx5_core/${pcie_bd}.${i} ]]; then
       [ ${verbose} -eq 1 ] && echo "Unbinding: Skipping originally unbound pf${i} (${pcie_bd}.${i})"
