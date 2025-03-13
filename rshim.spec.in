@@ -58,10 +58,12 @@ make
 %{__install} -d %{buildroot}%{_mandir}/man8
 %{__install} -m 0644 man/rshim.8 %{buildroot}%{_mandir}/man8
 %{__install} -m 0644 man/bfb-install.8 %{buildroot}%{_mandir}/man8
+%{__install} -m 0644 man/bfb-tool.8 %{buildroot}%{_mandir}/man8
 %{__install} -m 0644 man/bf-reg.8 %{buildroot}%{_mandir}/man8
 %{__install} -d %{buildroot}%{_sysconfdir}
 %{__install} -m 0644 etc/rshim.conf %{buildroot}%{_sysconfdir}
 %{__install} -m 0755 scripts/bfb-install %{buildroot}%{_sbindir}
+%{__install} -m 0755 scripts/bfb-tool %{buildroot}%{_sbindir}
 %{__install} -m 0755 scripts/mlx-mkbfb %{buildroot}%{_sbindir}
 %{__install} -m 0755 third_party/PLDM-unpack/fwpkg_unpack.py %{buildroot}%{_sbindir}
 %{__install} -m 0755 scripts/bf-reg %{buildroot}%{_sbindir}
@@ -129,12 +131,14 @@ fi
 %endif
 %{_sbindir}/rshim
 %{_sbindir}/bfb-install
+%{_sbindir}/bfb-tool
 %{_sbindir}/mlx-mkbfb
 %{_sbindir}/bf-reg
 %{_sbindir}/fwpkg_unpack.py
 %{_mandir}/man1/mlx-mkbfb.1.gz
 %{_mandir}/man8/rshim.8.gz
 %{_mandir}/man8/bfb-install.8.gz
+%{_mandir}/man8/bfb-tool.8.gz
 %{_mandir}/man8/bf-reg.8.gz
 %{_datadir}/selinux/packages/rshim-fix.te
 
