@@ -144,6 +144,12 @@ fi
 
 %changelog
 
+* Fri Mar 14 2025 Liming Sun <limings@nvidia.com> - 2.3.2
+- bfb-install: Support trimmed NIC_FW
+- bfdump support
+- Use BREADCRUMB.BIT32 to indicate NIC mode
+- Added bfb-tool script
+
 * Thu Mar 06 2025 Liming Sun <limings@nvidia.com> - 2.3.1
 - Enhance command line for register read/write
 - Support PCIe device name runtime update
