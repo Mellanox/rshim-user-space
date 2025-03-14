@@ -781,8 +781,17 @@ if [ -n "${pldm}" ]; then
 
     sig=$(head -c 4 < ${i})
 
-    [ ."${sig}" = ."MTFW" ] && pldm_nicfw="${i}"
-    [ ."${sig:0:2}" = ."Bf" ] && pldm_bfb="${i}"
+    if [ ."${sig:0:2}" = ."Bf" ]; then
+      pldm_bfb="${i}"
+    elif [ ."${sig}" = ."MTFW" ]; then
+      pldm_nicfw="${i}"
+    else
+      printf "\\x4d\\x54\\x46\\x57\\xab\\xcd\\xef\\x00\\xfa\\xde\\x12\\x34\\x56\\x78\\xde\\xad" \
+        > ${TMP_DIR}/pldm/nicfw_header
+      dd if="${i}" of=${TMP_DIR}/pldm/nicfw_body bs=16 skip=1
+      cat ${TMP_DIR}/pldm/nicfw_header ${TMP_DIR}/pldm/nicfw_body > ${TMP_DIR}/pldm/nicfw.bin
+      pldm_nicfw=${TMP_DIR}/pldm/nicfw.bin
+    fi
   done
 
   if [ -z "${pldm_nicfw}" -a -z "${pldm_bfb}" ]; then
