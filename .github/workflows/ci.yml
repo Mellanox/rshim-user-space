@@ -53,7 +53,7 @@ jobs:
         run: |
           version="$(./scripts/get-ver)"
           sed -i "1s/(\(.*\))/($version)/" debian/changelog
-          DEB_BUILD_OPTIONS="nocheck nostrip" dpkg-buildpackage \
+          DEB_BUILD_OPTIONS="nocheck nostrip nolto" dpkg-buildpackage \
             -us -uc -a amd64
           mkdir -p dist
           mv -v ../*.deb dist/
@@ -89,7 +89,7 @@ jobs:
               sed -i \"1s/(\(.*\))/(\$version)/\" \
                 /workspace/debian/changelog && \
               mkdir -p /workspace/build && \
-              DEB_BUILD_OPTIONS='nocheck nostrip' dpkg-buildpackage \
+              DEB_BUILD_OPTIONS='nocheck nostrip nolto' dpkg-buildpackage \
                 -us -uc -a arm64 && \
               mv -v ../*.deb /workspace/build/ && \
               apt-get install -y libpci3 libusb-1.0-0 fuse || true && \
