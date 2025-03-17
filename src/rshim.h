@@ -257,6 +257,9 @@ struct rshim_backend {
   /* Device name. */
   char dev_name[RSHIM_DEV_NAME_LEN];
 
+  /* Network polling interval in timer ticks */
+  int net_poll_interval_ticks;
+
   /* Backend device. */
   void *dev;
 
@@ -578,8 +581,8 @@ int rshim_cons_early_enable(rshim_backend_t *bd);
 #ifdef HAVE_RSHIM_NET
 int rshim_net_init(rshim_backend_t *bd);
 int rshim_net_del(rshim_backend_t *bd);
-void rshim_net_rx(rshim_backend_t *bd);
-void rshim_net_tx(rshim_backend_t *bd);
+int rshim_net_rx(rshim_backend_t *bd);
+int rshim_net_tx(rshim_backend_t *bd);
 #else
 static inline int rshim_net_init(rshim_backend_t *bd)
 {
@@ -589,11 +592,13 @@ static inline int rshim_net_del(rshim_backend_t *bd)
 {
   return 0;
 }
-static inline void rshim_net_rx(rshim_backend_t *bd)
+static inline int rshim_net_rx(rshim_backend_t *bd)
 {
+  return 0;
 }
-static inline void rshim_net_tx(rshim_backend_t *bd)
+static inline int rshim_net_tx(rshim_backend_t *bd)
 {
+  return 0;
 }
 #endif
 
