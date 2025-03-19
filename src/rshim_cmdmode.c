@@ -249,10 +249,6 @@ static int bfdump(void)
       goto done;
     }
 
-    /* Check completion. */
-    if (sp.dbg_cmd != RSH_DBG_CMD_BFDUMP)
-      break;
-
     /* Read data. */
     rc = rshim_rw(RSHIM_CHANNEL, scratchpad1_addr,
                  &value, RSHIM_REG_SIZE_8B, true);
@@ -285,10 +281,14 @@ static int bfdump(void)
     cur_len += sizeof(uint64_t);
     if (cur_len >= max_len)
       break;
+
+    /* Check completion. */
+    if (sp.dbg_cmd != RSH_DBG_CMD_BFDUMP)
+      break;
   }
 
 done:
-  printf("bfdump completed\n");
+  printf("\nbfdump completed\n");
 
   /* Clear scratchpad6 since it'll be used by NIC_FW reset. */
   value = 0;
