@@ -911,4 +911,8 @@ def main(argv):
 
 
 if __name__ == "__main__":
-    main(sys.argv)
+    try:
+        main(sys.argv)
+    except KeyboardInterrupt:
+        print("Aborted (Ctrl+C)")
+        sys.exit(1)
