@@ -799,7 +799,7 @@ if [ -n "${pldm}" ]; then
     exit 1
   fi
 
-  if ! mlx-mkbfb ${pldm_nicfw:+--nicfw ${pldm_nicfw}} ${pldm_bfb} ${TMP_DIR}/pldm/pldm.bfb; then
+  if ! mlx-mkbfb ${pldm_nicfw:+--nicfw ${pldm_nicfw}} ${cfg:+--boot-args ${cfg}} ${pldm_bfb} ${TMP_DIR}/pldm/pldm.bfb; then
     echo "Error: unable to create bfb from pldm"
     exit 1
   fi
