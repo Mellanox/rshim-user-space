@@ -31,7 +31,7 @@
 #define RSHIM_MAX_DEV 64
 
 /* RShim timer interval in milliseconds. */
-#define RSHIM_TIMER_INTERVAL 1
+#define RSHIM_TIMER_INTERVAL 10
 
 /* Intervals to check the locked mode. */
 #define RSHIM_CHECK_LOCKED_MODE_MS      100
