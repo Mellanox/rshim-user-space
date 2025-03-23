@@ -144,6 +144,12 @@ fi
 %{_datadir}/selinux/packages/rshim-fix.te
 
 %changelog
+* Sat Mar 22 2025 Liming Sun <limings@nvidia.com> - 2.3.3
+- bfb-install: register usage cleanup
+- RPM pkg: Apply selinux workaround to RHEL 9.5 or later
+- mlx-mkbfb/fwpkg_unpack.py: Add graceful handling of ctrl+c
+- bfb-install: pack the bf.cfg into the generated BFB
+- Fix occasional github pipeline docker error
 
 * Fri Mar 14 2025 Liming Sun <limings@nvidia.com> - 2.3.2
 - bfb-install: Support trimmed NIC_FW

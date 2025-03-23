@@ -1,3 +1,13 @@
+rshim (2.3.3) UNRELEASED; urgency=low
+
+  * bfb-install: register usage cleanup	
+  * RPM pkg: Apply selinux workaround to RHEL 9.5 or later
+  * mlx-mkbfb/fwpkg_unpack.py: Add graceful handling of ctrl+c
+  * bfb-install: pack the bf.cfg into the generated BFB
+  * Fix occasional github pipeline docker error
+
+ -- Liming Sun <limings@nvidia.com>  Sat, 22 Mar 2025 17:00:20 -0400
+
 rshim (2.3.2) UNRELEASED; urgency=low
 
   * bfb-install: Support trimmed NIC_FW

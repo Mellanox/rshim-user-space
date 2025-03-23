@@ -57,6 +57,13 @@ via the virtual console or network interface.
 %{_mandir}/man8/rshim.8.gz
 
 %changelog
+* Sat Mar 22 2025 Liming Sun <limings@nvidia.com> - 2.3.3
+- bfb-install: register usage cleanup
+- PM pkg: Apply selinux workaround to RHEL 9.5 or later
+- mlx-mkbfb/fwpkg_unpack.py: Add graceful handling of ctrl+c
+- bfb-install: pack the bf.cfg into the generated BFB
+- Fix occasional github pipeline docker error
+
 * Fri Mar 14 2025 Liming Sun <limings@nvidia.com> - 2.3.2
 - bfb-install: Support trimmed NIC_FW
 - bfdump support
