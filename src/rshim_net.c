@@ -328,10 +328,11 @@ int rshim_net_del(rshim_backend_t *bd)
   return 0;
 }
 
-void rshim_net_rx(rshim_backend_t *bd)
+int rshim_net_rx(rshim_backend_t *bd)
 {
   rshim_net_pkt_t *pkt = &bd->net_rx_pkt;
   int len, total_len;
+  int data_processed = 0;
 
   bd->net_rx_pending = false;
 
@@ -342,8 +343,9 @@ void rshim_net_rx(rshim_backend_t *bd)
                             total_len - bd->net_rx_len,
                             TMFIFO_NET_CHAN, true);
       if (len <= 0)
-        return;
+        return data_processed;
       bd->net_rx_len += len;
+      data_processed = 1;
     }
 
     total_len = ntohs(pkt->hdr.len) + sizeof(pkt->hdr);
@@ -357,8 +359,9 @@ void rshim_net_rx(rshim_backend_t *bd)
                             total_len - bd->net_rx_len,
                             TMFIFO_NET_CHAN, true);
       if (len <= 0)
-        return;
+        return data_processed;
       bd->net_rx_len += len;
+      data_processed = 1;
     }
 
     if (pkt->hdr.len) {
@@ -370,10 +373,11 @@ void rshim_net_rx(rshim_backend_t *bd)
   }
 }
 
-void rshim_net_tx(rshim_backend_t *bd)
+int rshim_net_tx(rshim_backend_t *bd)
 {
   rshim_net_pkt_t *pkt = &bd->net_tx_pkt;
   int len, written;
+  int data_processed = 0;
 
   do {
     if (!pkt->hdr.len ||
@@ -383,17 +387,22 @@ void rshim_net_tx(rshim_backend_t *bd)
 
       len = rshim_if_read(bd->net_fd, pkt->buf, sizeof(pkt->buf));
       if (len <= 0)
-        return;
+        return data_processed;
 
       pkt->hdr.data = 0;
       pkt->hdr.type = VIRTIO_ID_NET;
       pkt->hdr.len = htons(len);
+      data_processed = 1;
     }
 
     len = ntohs(pkt->hdr.len) + sizeof(pkt->hdr) - bd->net_tx_len;
     written = rshim_fifo_write(bd, (char *)pkt + bd->net_tx_len,
                                len, TMFIFO_NET_CHAN, true);
-    if (written > 0)
+    if (written > 0) {
       bd->net_tx_len += written;
+      data_processed = 1;
+    }
   } while (written == len);
+
+  return data_processed;
 }

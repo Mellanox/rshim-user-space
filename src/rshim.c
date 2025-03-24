@@ -33,6 +33,9 @@
 /* RShim timer interval in milliseconds. */
 #define RSHIM_TIMER_INTERVAL 1
 
+/* Network polling interval in timer ticks when idle (no network activity) */
+#define RSHIM_NET_POLL_IDLE_INTERVAL_TICKS 10
+
 /* Intervals to check the locked mode. */
 #define RSHIM_CHECK_LOCKED_MODE_MS      100
 #define RSHIM_CHECK_LOCKED_MODE_TICKS   (RSHIM_CHECK_LOCKED_MODE_MS / RSHIM_TIMER_INTERVAL)
@@ -63,6 +66,7 @@ static int rshim_keepalive_ticks = RSHIM_KEEPALIVE_PERIOD / RSHIM_TIMER_INTERVAL
 #define RSHIM_OSP_MGT_INTERVAL_TICKS     (RSHIM_OSP_MGT_INTERVAL_MS / RSHIM_TIMER_INTERVAL)
 #define RSHIM_OSP_REQ_MAGIC_NUM 0x4F53505F524551ULL /* OSP_REQ */
 #define RSHIM_OSP_ACK_MAGIC_NUM 0x4F53505F41434BULL /* OSP_ACK */
+
 
 const char *magic_to_str(uint64_t magic)
 {
@@ -2450,7 +2454,7 @@ static void rshim_timer_func(rshim_backend_t *bd) {
 static void rshim_timer_run(void)
 {
   rshim_backend_t *bd;
-  int i;
+  int i, tx_activity, rx_activity;
 
   rshim_timer_ticks++;
 
@@ -2474,8 +2478,16 @@ static void rshim_timer_run(void)
 
       /* Push out remaining data if not sent out in the epoll loop. */
       if (bd->net_fd >= 0) {
-        rshim_net_tx(bd);
-        rshim_net_rx(bd);
+        if (rshim_timer_ticks % bd->net_poll_interval_ticks == 0) {
+          tx_activity = rshim_net_tx(bd);
+          rx_activity = rshim_net_rx(bd);
+
+          /* Adjust polling interval based on activity */
+          if (tx_activity || rx_activity)
+            bd->net_poll_interval_ticks = 1;
+          else
+            bd->net_poll_interval_ticks = RSHIM_NET_POLL_IDLE_INTERVAL_TICKS;
+        }
       }
     }
   }
@@ -2665,6 +2677,8 @@ int rshim_register(rshim_backend_t *bd)
     bd->read = rshim_read_default;
 
   pthread_mutex_init(&bd->ringlock, NULL);
+
+  bd->net_poll_interval_ticks = 1;
 
   for (i = 0; i < TMFIFO_MAX_CHAN; i++) {
     pthread_cond_init(&bd->read_fifo[i].operable, NULL);
