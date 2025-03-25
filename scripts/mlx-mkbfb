@@ -589,6 +589,7 @@ def dump_stream(infn, do_dump, do_extract, prefix, images):
     if file_len < ImageHdr.length:
         raise FormatError("BFB too short")
     inf.seek(0, os.SEEK_SET)
+    count=0
 
     while True:
         try:
@@ -619,6 +620,10 @@ def dump_stream(infn, do_dump, do_extract, prefix, images):
                 xfile = open(prefix + fn, "wb")
                 xfile.write(img.get_bits())
                 xfile.close()
+                if fn in images.split():
+                    count = count + 1
+                    if len(images.split()) == count:
+                        break
 
     inf.close()
 
