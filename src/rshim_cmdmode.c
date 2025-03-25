@@ -20,6 +20,8 @@ static uint64_t scratchpad1_addr = BF3_RSH_SCRATCHPAD1;
 static uint64_t scratchpad3_addr = BF3_RSH_SCRATCHPAD3;
 static uint64_t scratchpad6_addr = BF3_RSH_SCRATCHPAD6;
 
+static int rshim_setup(void);
+
 /* Register read/write via /dev/rshim<N>/rshim. */
 static int rshim_fd_rw(uint32_t chan, uint32_t addr, uint64_t *value,
                        int size, bool read)
@@ -71,6 +73,14 @@ static int rshim_bd_rw(uint32_t chan, uint32_t addr, uint64_t *value,
 static int rshim_rw(uint32_t chan, uint32_t addr, uint64_t *value,
                     int size, bool read)
 {
+  int rc;
+
+  if (!rshim_cmd_bd && rshim_cmd_fd == -1) {
+    rc = rshim_setup();
+    if (rc)
+      return rc;
+  }
+
   if (rshim_cmd_bd)
     return rshim_bd_rw(chan, addr, value, size, read);
   else if (rshim_cmd_fd >= 0)
@@ -141,10 +151,6 @@ static int rshim_uefi_debug(bool read, uint64_t *setting)
   uint64_t value = 0;
   int rc;
 
-  rc = rshim_setup();
-  if (rc)
-    return rc;
-
   rc = rshim_rw(RSHIM_CHANNEL, RSH_BREADCRUMB1, &value,
                 RSHIM_REG_SIZE_8B, true);
   if (rc) {
@@ -200,10 +206,6 @@ static int bfdump(void)
   rsh_scratchpad3_t sp;
   uint64_t value = 0;
   int rc;
-
-  rc = rshim_setup();
-  if (rc)
-    return rc;
 
   /* Take owner */
   rc = bfdump_poll(&sp);
