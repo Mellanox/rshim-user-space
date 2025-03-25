@@ -1,3 +1,10 @@
+rshim (2.3.4) UNRELEASED; urgency=low
+
+  * mlx-mkbfb: Improve the performance when extracting a single image
+  * Reduce CPU utilization by network optimization
+
+ -- Liming Sun <limings@nvidia.com>  Tue, 25 Mar 2025 09:15:30 -0400
+
 rshim (2.3.3) UNRELEASED; urgency=low
 
   * bfb-install: register usage cleanup	
