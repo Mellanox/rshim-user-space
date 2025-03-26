@@ -619,6 +619,10 @@ runtime=0         # Values can be 0 or 1.
 verbose=0         # Values can be 0 or 1.
 reverse_nc=0      # Values can be 0 or 1.
 clear_on_read=1   # Values can be 0 or 1.
+num_bfb=0
+num_rshim=0
+max_bfb=1
+max_rshim=1
 
 rshim_node=       # rshim device identifier, e.g. rshim0
 ip=               # IP address for remote host
@@ -639,14 +643,14 @@ if [ $? != 0 ]; then echo "Command line error" >&2; exit 1; fi
 eval set -- $options
 while [ "$1" != -- ]; do
   case $1 in
-    --bfb|-b) shift; bfb=$1 ;;
+    --bfb|-b) shift; bfb=$1 num_bfb=$((num_bfb + 1));;
     --config|-c) shift; cfg=$1 ;;
     --rootfs|-f) shift; rootfs=$1 ;;
     --help|-h) usage; exit 0 ;;
     --keep-log|-k) clear_on_read=0 ;;
     --pldm|-p) shift; pldm=$1 ;;
     --remote-mode|-m) shift; remote_mode=$1 ;;
-    --rshim|-r) shift; rshim=$1 ;;
+    --rshim|-r) shift; rshim=$1 num_rshim=$((num_rshim + 1));;
     --reverse-nc|-R) reverse_nc=1 ;;
     --runtime|-u) runtime=1 ;;
     --verbose|-v) verbose=1 ;;
@@ -673,6 +677,19 @@ fi
 # Check if bfb and rshim are set and non-empty
 if [ -z "${rshim}" ]; then
   echo "Error: Need to provide rshim device name."
+  usage >&2
+  exit 1
+fi
+
+# Check if bfb and rshim options are valid or not
+if [ ${num_bfb} -gt ${max_bfb} ]; then
+  echo "Error: More than one bfb image provided"
+  usage >&2
+  exit 1
+fi
+
+if [ ${num_rshim} -gt ${max_rshim} ]; then
+  echo "Error: More than one rshim device provided"
   usage >&2
   exit 1
 fi
