@@ -31,7 +31,7 @@
 #define RSHIM_MAX_DEV 64
 
 /* RShim timer interval in milliseconds. */
-#define RSHIM_TIMER_INTERVAL 1
+#define RSHIM_TIMER_INTERVAL 10
 
 /* Network polling interval in timer ticks when idle (no network activity) */
 #define RSHIM_NET_POLL_IDLE_INTERVAL_TICKS 10
