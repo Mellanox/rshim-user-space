@@ -144,6 +144,10 @@ fi
 %{_datadir}/selinux/packages/rshim-fix.te
 
 %changelog
+* Sat Mar 29 2025 Liming Sun <limings@nvidia.com> - 2.3.5
+- bfb-install: add validation of bfb and rshim options
+- Fix the rshim command line for register read/write
+
 * Tue Mar 25 2025 Liming Sun <limings@nvidia.com> - 2.3.4
 - mlx-mkbfb: Improve the performance when extracting a single image
 - Reduce CPU utilization by network optimization
