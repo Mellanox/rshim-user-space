@@ -28,8 +28,6 @@
 # either expressed or implied, of the FreeBSD Project.
 
 TMP_DIR=$(mktemp -d)
-trap "rm -rf $TMP_DIR" EXIT
-trap "rm -rf $TMP_DIR; exit 1" TERM INT
 
 DEBUG=${DEBUG:-0}                             # Debug mode
 BF_REG=bf-reg
@@ -541,6 +539,9 @@ apply_chip_settings()
 # shellcheck disable=SC2317
 cleanup() {
   local sp2
+
+  # Remove the temp directory.
+  rm -rf $TMP_DIR
 
   # prevent cleanup from being called multiple times
   if [ "$cleanup_started" -eq 1 ]; then
