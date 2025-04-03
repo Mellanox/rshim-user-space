@@ -57,6 +57,9 @@ via the virtual console or network interface.
 %{_mandir}/man8/rshim.8.gz
 
 %changelog
+* Thu Apr 03 2025 Liming Sun <limings@nvidia.com> - 2.3.6
+- bfb-install: cleanup the TMP_DIR
+
 * Sat Mar 29 2025 Liming Sun <limings@nvidia.com> - 2.3.5
 - bfb-install: add validation of bfb and rshim options
 - Fix the rshim command line for register read/write
