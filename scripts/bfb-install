@@ -976,6 +976,16 @@ if [ ${nic_mode} -eq 1 -a -n "${pcie_bd}" -a ${runtime} -eq 0 ]; then
   done
 fi
 
+# Reactivate NIC_FW
+if which flint &> /dev/null; then
+  if [ -n "${pcie_bd}" -a ${runtime} -eq 1 ]; then
+    # Suppress errors if already activated.
+    flint -d ${pcie_bd}.0 ir >&/dev/null
+  fi
+else
+  echo "Flint not found. Skip NIC_FW reactivation."
+fi
+
 push_boot_stream
 
 wait_for_update_to_finish
