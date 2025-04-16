@@ -144,6 +144,9 @@ fi
 %{_datadir}/selinux/packages/rshim-fix.te
 
 %changelog
+* Wed Apr 16 2025 Liming Sun <limings@nvidia.com> - 2.3.7
+- bfb-install: Reactivate NIC_FW for runtime upgrade
+
 * Thu Apr 03 2025 Liming Sun <limings@nvidia.com> - 2.3.6
 - bfb-install: cleanup the TMP_DIR
 
