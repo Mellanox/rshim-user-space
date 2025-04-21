@@ -1173,7 +1173,7 @@ static int rshim_pcie_refresh_dev(rshim_backend_t *bd)
   rshim_pcie_t *dev = container_of(bd, rshim_pcie_t, bd);
   struct pci_access *pci;
   struct pci_dev *pci_dev;
-  char dev_path[RSHIM_PATH_MAX];
+  char dev_path[RSHIM_PATH_MAX] = {0};
   int rc = -ENODEV;
   bool found = false;
 
@@ -1199,7 +1199,7 @@ static int rshim_pcie_refresh_dev(rshim_backend_t *bd)
       continue;
 
     /*
-    * Check if the device path (without function number) matches the 
+    * Check if the device path (without function number) matches the
     * beginning of the current device name (which includes function number)
     */
     snprintf(dev_path, sizeof(dev_path), "pcie-%04x:%02x:%02x",
@@ -1232,7 +1232,7 @@ static int rshim_pcie_refresh_dev(rshim_backend_t *bd)
 
   if (!found) {
     RSHIM_ERR("rshim%d no matching PCIe device found for %s\n", 
-        bd->index, dev_path);
+        bd->index, bd->dev_name);
     return -ENODEV;
   }
 
