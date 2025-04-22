@@ -57,6 +57,9 @@ via the virtual console or network interface.
 %{_mandir}/man8/rshim.8.gz
 
 %changelog
+* Tue Apr 22 2025 Penghe Geng <pgeng@nvidia.com> - 2.3.8
+- Fix a potentially unintialized variable
+
 * Wed Apr 16 2025 Liming Sun <limings@nvidia.com> - 2.3.7
 - bfb-install: Reactivate NIC_FW for runtime upgrade
 

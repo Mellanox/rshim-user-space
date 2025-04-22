@@ -1,3 +1,9 @@
+rshim (2.3.8) UNRELEASED; urgency=low
+
+  * Fix a potentially unintialized variable
+
+ -- Penghe Geng <pgeng@nvidia.com>  Tue, 22 Apr 2025 09:57:26 -0400
+
 rshim (2.3.7) UNRELEASED; urgency=low
 
   * bfb-install: Reactivate NIC_FW for runtime upgrade
