@@ -25,9 +25,38 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
+      - name: Create apt-get update retry script
+        run: |
+          cat << 'EOF' > retry_apt_update.sh
+          #!/bin/bash
+
+          # Retry apt-get update with exponential backoff and built-in retries
+          retry_apt_get_update() {
+            local attempt=0
+            local max_attempts=5
+            local delay=10
+
+            while (( attempt < max_attempts )); do
+              echo "Running apt-get update (attempt $((attempt+1))/$max_attempts)..."
+              if sudo apt-get update -o Acquire::Retries=3; then
+                return 0
+              fi
+              echo "apt-get update failed. Retrying in ${delay}s..."
+              sleep $delay
+              delay=$(( delay * 2 ))
+              attempt=$(( attempt + 1 ))
+            done
+
+            echo "apt-get update failed after $max_attempts attempts."
+            return 1
+          }
+          EOF
+          chmod +x retry_apt_update.sh
+
       - name: Install dependencies (for .deb)
         run: |
-          sudo apt-get update
+          . ./retry_apt_update.sh
+          sudo apt-get update || retry_apt_get_update && \
           sudo apt-get install -y \
             build-essential debhelper devscripts fakeroot git \
             libpci-dev libusb-1.0-0-dev libfuse-dev pkg-config
@@ -70,9 +99,9 @@ jobs:
 
       - name: Build & Test ARM64 .deb package in Docker
         run: |
+          set -e
           docker run --rm --privileged multiarch/qemu-user-static \
             --reset -p yes
-
           docker run --rm --platform linux/arm64 \
             -e HOST_UID="${{ env.HOST_UID }}" \
             -e HOST_GID="${{ env.HOST_GID }}" \
@@ -80,7 +109,8 @@ jobs:
             -w /workspace \
             arm64v8/ubuntu:22.04 \
             /bin/bash -c "
-              apt-get update && \
+              . /workspace/retry_apt_update.sh && \
+              apt-get update || retry_apt_get_update && \
               apt-get install -y build-essential debhelper devscripts \
                 fakeroot gcc git libpci-dev libusb-1.0-0-dev libfuse-dev \
                 pkg-config && \
