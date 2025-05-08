@@ -82,8 +82,9 @@ jobs:
         run: |
           version="$(./scripts/get-ver)"
           sed -i "1s/(\(.*\))/($version)/" debian/changelog
-          DEB_BUILD_OPTIONS="nocheck nostrip nolto" dpkg-buildpackage \
-            -us -uc -a amd64
+          DEB_BUILD_OPTIONS="nocheck nostrip nolto" \
+            CFLAGS="-fno-lto" LDFLAGS="-fno-lto" \
+            dpkg-buildpackage -us -uc -a amd64
           mkdir -p dist
           mv -v ../*.deb dist/
           ls -lh dist
@@ -119,8 +120,9 @@ jobs:
               sed -i \"1s/(\(.*\))/(\$version)/\" \
                 /workspace/debian/changelog && \
               mkdir -p /workspace/build && \
-              DEB_BUILD_OPTIONS='nocheck nostrip nolto' dpkg-buildpackage \
-                -us -uc -a arm64 && \
+              DEB_BUILD_OPTIONS='nocheck nostrip nolto' \
+                CFLAGS="-fno-lto" LDFLAGS="-fno-lto" \
+                dpkg-buildpackage -us -uc -a arm64 && \
               mv -v ../*.deb /workspace/build/ && \
               apt-get install -y libpci3 libusb-1.0-0 fuse || true && \
               dpkg -i /workspace/build/*.deb || apt-get -f install -y && \
@@ -144,7 +146,8 @@ jobs:
               yum -y install gcc make rpm-build git autoconf automake \
                 libtool pkgconfig pciutils-devel libusb1-devel fuse-devel && \
               git config --global --add safe.directory /workspace && \
-              ARCH=x86_64 ./scripts/build-rpm && \
+              ARCH=x86_64 CFLAGS="-fno-lto" LDFLAGS="-fno-lto" \
+                ./scripts/build-rpm && \
               yum localinstall -y /workspace/rpmbuild/RPMS/x86_64/*.rpm && \
               echo 'Running rshim --version:' && \
               rshim --version && \
@@ -168,7 +171,8 @@ jobs:
               yum -y install gcc make rpm-build git autoconf automake \
                 libtool pkgconfig pciutils-devel libusb1-devel fuse-devel && \
               git config --global --add safe.directory /workspace && \
-              ARCH=aarch64 ./scripts/build-rpm && \
+              ARCH=aarch64 CFLAGS="-fno-lto" LDFLAGS="-fno-lto" \
+                ./scripts/build-rpm && \
               yum localinstall -y /workspace/rpmbuild/RPMS/aarch64/*.rpm && \
               echo 'Running rshim --version:' && \
               rshim --version && \
