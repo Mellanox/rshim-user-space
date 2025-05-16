@@ -96,6 +96,8 @@ image_list = (
     ("uefi-tests", "Specify what UEFI tests to run", 61),
     ("nicfw", "NIC Firmware image", 41),
     ("ramdisk", "RAM Disk image", 54),
+    ("dpu-gi", "DPU golden image", 49),
+    ("cfg-gi", "Config golden image", 48),
     ("info", "BFB versioning information", 50),
     ("image", "Boot image", 62),
     ("initramfs", "In-memory filesystem", 63),
