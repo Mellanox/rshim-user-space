@@ -5,7 +5,8 @@
 bfb-tool - Tool for extracting and repackaging BFBs
 
 .SH SYNOPSIS
-bfb-tool <action> --bfb <BFB> --psid <PSID>|--opn <OPN>|--all [-p|--profile <Profile>] [--output-dir <dir>] [-v|--verbose]
+bfb-tool <action> --bfb <BFB> --psid <PSID>|--opn <OPN>|--all [-p|--profile <Profile>] [-o|--output-dir <dir>] [-f|--output-format <format>] [-B|--output-bfb] [-v|--verbose]
+
 
 .SH DESCRIPTION
 The bfb-tool is used for managing BFBs (bf-bundle/bf-fwbundle). It supports two primary actions: extract and repack.
@@ -47,8 +48,19 @@ Extract or repack for all applicable configurations.
 Specify a configuration profile.
 
 .TP
-.B --output-dir <dir>
+.B -o, --output-dir <dir>
 Specify the directory where results will be stored.
+
+.TP
+.B -f, --output-format <format>
+Specify the output BFB format (bundle, flat). "bundle" format is the format for DPU mode (default).
+"flat" format is the format for NIC mode.
+
+.TP
+.B -B, --output-bfb <bfb>
+Specify output BFB file name.
+The default for bundle format: bf-fwbundle-<version>-prod-<OPN>.bfb
+The default for flat format: bf-fwbundle-<version>-prod-<OPN>.flat.bfb
 
 .TP
 .B -v, --verbose
