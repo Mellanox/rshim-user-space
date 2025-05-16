@@ -56,6 +56,9 @@ usage() {
 	--opn <OPN>             OPN of the DPU to extract the payload
 	--profile <Profile>     Configuration Profile
 	--output-dir <dir>      Directory to keep the results
+	--output-format <format>  Output format (bundle, flat)
+	                        Bundle format is the format for DPU mode (default).
+	                        Flat format is the format for NIC mode.
 	-v|--verbose            Verbose mode
 EOF
 }
@@ -66,6 +69,7 @@ finish() {
 
 MLX_MKBFB=$(which mlx-mkbfb 2> /dev/null)
 BASE_BFB="/usr/lib/firmware/mellanox/boot/default.bfb"
+OUTPUT_FORMAT="bundle"
 
 if [ -z "$1" ]; then
 	usage
@@ -90,7 +94,7 @@ case "$action" in
 		;;
 esac
 
-options=$(getopt -l "output-dir:,psid:,opn:,bfb:,profile:,all,help,verbose" -o "o:p:O:b:p:ahv" -a -- "$@")
+options=$(getopt -l "output-dir:,psid:,opn:,bfb:,profile:,output-format:,all,help,verbose" -o "o:p:O:b:p:f:ahv" -a -- "$@")
 
 eval set -- "$options"
 
@@ -130,8 +134,9 @@ do
                     verbose=1
                     set -xv
                     ;;
-				-R|--repackage)
-					REPACK=1
+				-f|--output-format)
+					shift
+					OUTPUT_FORMAT=$1
 					;;
                 --)
                     shift
@@ -170,6 +175,18 @@ if [ -z "$MLX_MKBFB" ]; then
 	error "mlx-mkbfb is required"
 	exit 1
 fi
+
+case "$OUTPUT_FORMAT" in
+	"bundle")
+		;;
+	"flat")
+		;;
+	*)
+		error "Unsupported output format: $OUTPUT_FORMAT"
+		usage
+		exit 1
+		;;
+esac
 
 if [ "`uname -m`" != "aarch64" ]; then
 	if [ ! -x /usr/bin/qemu-aarch64-static ]; then
@@ -342,12 +359,30 @@ create_info()
 # Create JSON using jq
 odata_count=1
 
+if [ "$OUTPUT_FORMAT" == "bundle" ]; then
+	bsp_source="${BSP_CAPSULE##*/}"
+	nic_fw_source="${NIC_FW##*/}"
+	bmc_fw_source="${BMC_FW##*/}"
+	cec_fw_source="${CEC_FW##*/}"
+	dpu_gi_source="${DPU_GI##*/}"
+	nic_fw_gi_source="${NIC_FW_GI##*/}"
+	profile_source="${PROFILE##*/}"
+else
+	bsp_source="dump-capsule-v0"
+	nic_fw_source="dump-nicfw-v0"
+	bmc_fw_source="dump-image-v0"
+	cec_fw_source="dump-upgrade-image-v0"
+	dpu_gi_source="dump-dpu-gi-v0"
+	nic_fw_gi_source="dump-ramdisk-v0"
+	profile_source="dump-cfg-gi-v0"
+fi
+
 json_output=$(jq -n \
 	--arg odata_count "$odata_count" \
 	--arg odata_id "/redfish/v1/UpdateService/SoftwareInventory/$odata_count" \
 	--arg bsp_name "${BFREV}_BSP" \
-	--arg bsp_version "$BSP_VERSION" \
-	--arg bsp_source "${BSP_CAPSULE##*/}" \
+	--arg bsp_version "${BSP_VERSION}" \
+	--arg bsp_source "${bsp_source}" \
 '{
 	"//": "This JSON represents a Redfish Software Inventory collection containing multiple software components.",
 	"@odata.type": "#SoftwareInventoryCollection.SoftwareInventoryCollection",
@@ -372,7 +407,7 @@ if [ -n "$ATF_VERSION" ]; then
 		--arg odata_id "/redfish/v1/UpdateService/SoftwareInventory/$odata_count" \
 		--arg atf_name "${BFREV}_ATF" \
 		--arg atf_version "${ATF_VERSION}" \
-		--arg atf_source "${BSP_CAPSULE##*/}" \
+		--arg atf_source "${bsp_source}" \
 		'.Members += [{
 			"@odata.id": $odata_id,
 			"Id": $odata_count,
@@ -389,7 +424,7 @@ if [ -n "$UEFI_VERSION" ]; then
 		--arg odata_id "/redfish/v1/UpdateService/SoftwareInventory/$odata_count" \
 		--arg uefi_name "${BFREV}_UEFI" \
 		--arg uefi_version "${UEFI_VERSION}" \
-		--arg uefi_source "${BSP_CAPSULE##*/}" \
+		--arg uefi_source "${bsp_source}" \
 		'.Members += [{
 			"@odata.id": $odata_id,
 			"Id": $odata_count,
@@ -406,7 +441,7 @@ if [ -n "$NIC_FW_VERSION" ]; then
 		--arg odata_id "/redfish/v1/UpdateService/SoftwareInventory/$odata_count" \
 		--arg nic_fw_name "${BFREV}_NIC_FW" \
 		--arg nic_fw_version "${NIC_FW_VERSION}" \
-		--arg nic_fw_source "${NIC_FW##*/}" \
+		--arg nic_fw_source "${nic_fw_source}" \
 		'.Members += [{
 			"@odata.id": $odata_id,
 			"Id": $odata_count,
@@ -423,7 +458,7 @@ if [ -n "$BMC_FW_VERSION" ]; then
 		--arg odata_id "/redfish/v1/UpdateService/SoftwareInventory/$odata_count" \
 		--arg bmc_fw_name "${BFREV}_BMC_FW" \
 		--arg bmc_fw_version "${BMC_FW_VERSION}" \
-		--arg bmc_fw_source "${BMC_FW##*/}" \
+		--arg bmc_fw_source "${bmc_fw_source}" \
 		'.Members += [{
 			"@odata.id": $odata_id,
 			"Id": $odata_count,
@@ -440,7 +475,7 @@ if [ -n "$CEC_FW_VERSION" ]; then
 		--arg odata_id "/redfish/v1/UpdateService/SoftwareInventory/$odata_count" \
 		--arg cec_fw_name "${BFREV}_CEC_FW" \
 		--arg cec_fw_version "${CEC_FW_VERSION}" \
-		--arg cec_fw_source "${CEC_FW##*/}" \
+		--arg cec_fw_source "${cec_fw_source}" \
 		'.Members += [{
 			"@odata.id": $odata_id,
 			"Id": $odata_count,
@@ -457,7 +492,7 @@ if [ -n "$DPU_GI_VERSION" ]; then
 		--arg odata_id "/redfish/v1/UpdateService/SoftwareInventory/$odata_count" \
 		--arg dpu_gi_name "${BFREV}_DPU_GI" \
 		--arg dpu_gi_version "${DPU_GI_VERSION}" \
-		--arg dpu_gi_source "${DPU_GI##*/}" \
+		--arg dpu_gi_source "${dpu_gi_source}" \
 		'.Members += [{
 			"@odata.id": $odata_id,
 			"Id": $odata_count,
@@ -474,7 +509,7 @@ if [ -n "$NIC_FW_GI_VERSION" ]; then
 		--arg odata_id "/redfish/v1/UpdateService/SoftwareInventory/$odata_count" \
 		--arg nic_fw_gi_name "${BFREV}_NIC_FW_GI" \
 		--arg nic_fw_gi_version "${NIC_FW_GI_VERSION}" \
-		--arg nic_fw_gi_source "${NIC_FW_GI##*/}" \
+		--arg nic_fw_gi_source "${nic_fw_gi_source}" \
 		'.Members += [{
 			"@odata.id": $odata_id,
 			"Id": $odata_count,
@@ -491,7 +526,7 @@ if [ -n "$profile" ]; then
 		--arg odata_id "/redfish/v1/UpdateService/SoftwareInventory/$odata_count" \
 		--arg profile_name "$PROFILE_NAME" \
 		--arg profile_version "$PROFILE_VERSION" \
-		--arg profile_source "${PROFILE##*/}" \
+		--arg profile_source "${profile_source}" \
 		'.Members += [{
 			"@odata.id": $odata_id,
 			"Id": $odata_count,
@@ -504,8 +539,9 @@ fi
 echo "$json_output" > ${TARGET_DIR}/info.json
 }
 
-rebuild_bfb()
+rebuild_bfb_bundle()
 {
+	info "Rebuilding BFB in bundle format"
 	cd $INITRAMFS_REPKG_DIR
 
 	# Remove the extra payload
@@ -531,14 +567,41 @@ rebuild_bfb()
 	fi
 
 	find . | cpio -H newc -o | gzip -9 > ../dump-initramfs-v0
-	target_bfb=${bfb##*/}
-	target_bfb=${target_bfb/.bfb/-${OPN}.bfb}
-
-	create_info
 
 	$MLX_MKBFB --initramfs ../dump-initramfs-v0 --info ${TARGET_DIR}/info.json ${bfb} ${TARGET_DIR}/${target_bfb}
 
 	cp /usr/bin/qemu-aarch64-static ./usr/bin
+}
+
+rebuild_bfb_flat()
+{
+	info "Rebuilding BFB in flat format"
+	cd $INITRAMFS_REPKG_DIR
+	MKBFB_PARAMS="--info ${TARGET_DIR}/info.json \
+		--capsule ${TARGET_DIR}/${BSP_CAPSULE##*/} \
+		--image ${TARGET_DIR}/${BMC_FW##*/} \
+		--upgrade-image ${TARGET_DIR}/${CEC_FW##*/} \
+		--nicfw ${TARGET_DIR}/${NIC_FW##*/}"
+
+	if [ -f "${TARGET_DIR}/${DPU_GI##*/}" ]; then
+		MKBFB_PARAMS="${MKBFB_PARAMS} \
+		--dpu-gi ${TARGET_DIR}/${DPU_GI##*/}"
+	fi
+
+	if [ -f "${TARGET_DIR}/${NIC_FW_GI##*/}" ]; then
+		MKBFB_PARAMS="${MKBFB_PARAMS} \
+		--ramdisk ${TARGET_DIR}/${NIC_FW_GI##*/}"
+	fi
+
+	if [ -f "${TARGET_DIR}/${PROFILE##*/}" ]; then
+		MKBFB_PARAMS="${MKBFB_PARAMS} \
+		--cfg-gi ${TARGET_DIR}/${PROFILE##*/}"
+	fi
+
+	$MLX_MKBFB \
+		${MKBFB_PARAMS} \
+		./${BASE_BFB} \
+		${TARGET_DIR}/${target_bfb}
 }
 
 handle_opn()
@@ -652,12 +715,24 @@ handle_opn()
 	fi
 
 	if [ $REPACK -eq 1 ]; then
-		rebuild_bfb
+		target_bfb=${bfb##*/}
+		target_bfb=${target_bfb/.bfb/-${OPN}.bfb}
+
+		create_info
+		if [ "$OUTPUT_FORMAT" == "bundle" ]; then
+			target_bfb=${target_bfb/.bfb/-${OPN}.bfb}
+			rebuild_bfb_bundle
+		else
+			target_bfb=${target_bfb/.bfb/-${OPN}.flat.bfb}
+			rebuild_bfb_flat
+		fi
 	fi
 }
 
 if [ $REPACK -eq 1 ]; then
-	cleanup_base_initramfs
+	if [ "$OUTPUT_FORMAT" == "bundle" ]; then
+		cleanup_base_initramfs
+	fi
 fi
 
 total_ids=0
