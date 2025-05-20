@@ -644,12 +644,12 @@ if [ $? != 0 ]; then echo "Command line error" >&2; exit 1; fi
 eval set -- $options
 while [ "$1" != -- ]; do
   case $1 in
-    --bfb|-b) shift; bfb=$1 num_bfb=$((num_bfb + 1));;
+    --bfb|-b) shift; bfb=$(readlink -f $1) num_bfb=$((num_bfb + 1));;
     --config|-c) shift; cfg=$1 ;;
     --rootfs|-f) shift; rootfs=$1 ;;
     --help|-h) usage; exit 0 ;;
     --keep-log|-k) clear_on_read=0 ;;
-    --pldm|-p) shift; pldm=$1 ;;
+    --pldm|-p) shift; pldm=$(readlink -f $1) ;;
     --remote-mode|-m) shift; remote_mode=$1 ;;
     --rshim|-r) shift; rshim=$1 num_rshim=$((num_rshim + 1));;
     --reverse-nc|-R) reverse_nc=1 ;;
@@ -802,6 +802,12 @@ fi
 
 # Setup checks
 
+# Check BF chip version and adjust register offsets.
+apply_chip_settings
+
+# Check NIC mode and unbind mlx5_core driver in NIC mode.
+check_nic_mode
+
 # Check PLDM and convert it into BFB.
 if [ -n "${pldm}" ]; then
   if [ $mode == "remote" ] ; then
@@ -859,9 +865,40 @@ if [ -n "${pldm}" ]; then
 
   pldm=""
   bfb="${TMP_DIR}/pldm/pldm.bfb"
+elif [ ${runtime} -eq 1 ]; then
+  if [ ! -e "${bfb}" ]; then
+    echo "Error: ${bfb} not found."
+    exit 1
+  fi
+
+  # Convert bundle BFB to flat BFB if needed.
+  # This conversion is only supported on PCIe host.
+  is_bundle=$(mlx-mkbfb -d "${bfb}" | grep "In-memory filesystem")
+  if [ -n "${is_bundle}" -a -n "$pcie_bd" ]; then
+    echo "Convert $(basename "${bfb}") to flat format for runtime upgrade"
+    psid=$(flint -d "$pcie_bd".0 q | grep PSID | awk '{print $2}')
+    if [ -z "${psid}" ]; then
+      echo "Error: failed to get PSID."
+      exit 1
+    fi
+    mkdir ${TMP_DIR}/bfb
+    bfb-tool repack --bfb "${bfb}" --psid ${psid} \
+      --output-dir ${TMP_DIR}/bfb --output-format flat \
+      --output-bfb flat.bfb
+    bfb=$(basename "${bfb}")
+    bfb=${bfb%.*}
+    bfb_path=${TMP_DIR}/bfb/"${bfb}"/${psid}
+    bfb="${bfb_path}"/flat.bfb
+
+    # Replace config file if provided.
+    if [ -n "${cfg}" -a -e "${cfg}" ]; then
+      mlx-mkbfb --boot-args ${cfg} ${bfb} "${bfb_path}"/flat-cfg.bfb
+      bfb="${bfb_path}"/flat-cfg.bfb
+    fi
+  fi
 fi
 
-# Check if bfb file exists
+# Check again if bfb file exists
 if [ ! -e "${bfb}" ]; then
   echo "Error: ${bfb} not found."
   exit 1
@@ -951,12 +988,6 @@ pv=$(which pv 2>/dev/null)
 if [ -z "${pv}" ]; then
   echo "Warn: 'pv' command not found. Continue without showing BFB progress."
 fi
-
-# Check BF chip version and adjust register offsets.
-apply_chip_settings
-
-# Check NIC mode and unbind mlx5_core driver in NIC mode.
-check_nic_mode
 
 if [ ${nic_mode} -eq 1 -a -n "${pcie_bd}" -a ${runtime} -eq 0 ]; then
   # Set BREADCRUMB.BIT32 to indicate NIC mode.
