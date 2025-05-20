@@ -800,6 +800,17 @@ if [ $verbose -eq 1 ]; then
   echo "  RSHIM Device Node: $rshim_node"
 fi
 
+# Root access check.
+check_root_cmd="[ \$(id -u) -eq 0 ]"
+echo "Checking if local host has root access..."
+if ! eval "$check_root_cmd"; then
+  echo "  Warning: No host root access. Trying sudo"
+  sudo_prefix="sudo"
+fi
+
+# rshim is ready to use 'run_cmd_exit local xxx'.
+run_cmd_local_ready=1
+
 # Setup checks
 
 # Check BF chip version and adjust register offsets.
@@ -876,6 +887,10 @@ elif [ ${runtime} -eq 1 ]; then
   is_bundle=$(mlx-mkbfb -d "${bfb}" | grep "In-memory filesystem")
   if [ -n "${is_bundle}" -a -n "$pcie_bd" ]; then
     echo "Convert $(basename "${bfb}") to flat format for runtime upgrade"
+    if ! which flint &> /dev/null; then
+      echo "Error: flint not found."
+      exit 1
+    fi
     psid=$(flint -d "$pcie_bd".0 q | grep PSID | awk '{print $2}')
     if [ -z "${psid}" ]; then
       echo "Error: failed to get PSID."
@@ -915,15 +930,6 @@ if [ -n "${cfg}" ] && [ ! -e "${cfg}" ]; then
   echo "Error: ${cfg} not found."
   exit 1
 fi
-
-check_root_cmd="[ \$(id -u) -eq 0 ]"
-echo "Checking if local host has root access..."
-if ! eval "$check_root_cmd"; then
-  echo "  Warning: No host root access. Trying sudo"
-  sudo_prefix="sudo"
-fi
-
-run_cmd_local_ready=1
 
 rshim_check_cmd="[ -e ${rshim_node}/boot ]"
 
