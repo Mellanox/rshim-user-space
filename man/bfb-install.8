@@ -6,10 +6,12 @@ bfb-install \- BFB installing script for BlueField SoC over rshim driver
 .SH SYNOPSIS
 .B bfb-install
 -b, --bfb <bfb_file> -r, --rshim [<ip:>[:port]:]rshim<N>
+[-a, --activate <0 | 1>]
 [-c, --config <config_file>]
 [-f, --rootfs <rootfs_file>]
 [-h, --help]
 [-k, --keep-log]
+[-l, --lfwp]
 [-m, --remote-mode <scp|nc|ncpipe>]
 [-R, --reverse-nc]
 [-u, --runtime]
@@ -18,8 +20,8 @@ bfb-install \- BFB installing script for BlueField SoC over rshim driver
 
 .SH DESCRIPTION
 
-bfb-install is a utility script to install BFB images on BlueField SoC over the
-rshim driver.
+bfb-install is a utility script to install or activate BFB images on
+BlueField SoC over the rshim driver.
 
 When the "--rshim" option doesn't provide an "ip" argument, the script will run
 in local mode and try to access the local rshim device and install the BFB image
@@ -41,6 +43,13 @@ particularly useful for environments with firewall restrictions on the local
 host side.
 
 .SH OPTIONS
+.TP
+-a, --activate
+
+This argument is used for upgrade activation. For now it's only
+used with LFWP (Live-Firmware-Patch). '--lfwp' enables LFWP and does
+activation by default unless '--activate=0' is specified.
+
 .TP
 -b, --bfb
 
@@ -68,6 +77,11 @@ Show the help message.
 -k, --keep-log
 
 Do not clear rshim log buffer after reading during bfb install.
+
+.TP
+-l, --lfwp
+
+This argument is used to enable LFWP (Live-Firmware-Patch).
 
 .TP
 -m , --remote-mode
