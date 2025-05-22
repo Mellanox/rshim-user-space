@@ -48,11 +48,13 @@ usage ()
 {
   echo "Usage: $0 [options]"
   echo "Options:"
+  echo "  -a, --activate <0|1>           Activate the upgrade."
   echo "  -b, --bfb <bfb_file>           BFB image file to use."
   echo "  -c, --config <config_file>     Optional configuration file."
   echo "  -f, --rootfs <rootfs_file>     Optional rootfs file."
   echo "  -h, --help                     Show help message."
   echo "  -k, --keep-log                 Do not clear the log after reading during bfb install."
+  echo "  -l, --lfwp                     Enable LFWP upgrade."
   echo "  -m, --remote-mode <mode>       Remote mode to use (scp, nc, ncpipe)."
   echo "  -p, --pldm <pldm_file>         PLDM image for runtime upgrade."
   echo "  -r, --rshim <device>           Rshim device, format [<ip>:<port>:]rshim<N>."
@@ -620,6 +622,8 @@ runtime=0         # Values can be 0 or 1.
 verbose=0         # Values can be 0 or 1.
 reverse_nc=0      # Values can be 0 or 1.
 clear_on_read=1   # Values can be 0 or 1.
+lfwp=0
+activate=
 
 rshim_node=       # rshim device identifier, e.g. rshim0
 ip=               # IP address for remote host
@@ -633,18 +637,20 @@ pcie_bd=""        # PCIE Bus-Device
 pf0_bound=0       # PF0 is bound prior to the script run
 pf1_bound=0       # PF1 is bound prior to the script run
 
-options=`getopt -n bfb-install -o b:c:f:hkm:p:r:Ruv \
-        -l bfb:,config:,rootfs:,help,keep-log,remote-mode:,reverse-nc,rshim:,pldm:,runtime,verbose \
+options=`getopt -n bfb-install -o a:b:c:f:hklm:p:r:Ruv \
+        -l activate:,bfb:,config:,rootfs:,help,keep-log,lfwp,remote-mode:,reverse-nc,rshim:,pldm:,runtime,verbose \
         -- "$@"`
 if [ $? != 0 ]; then echo "Command line error" >&2; exit 1; fi
 eval set -- $options
 while [ "$1" != -- ]; do
   case $1 in
+    --activate|-a) shift; activate=$1 ;;
     --bfb|-b) shift; bfb=$(readlink -f $1) ;;
     --config|-c) shift; cfg=$1 ;;
     --rootfs|-f) shift; rootfs=$1 ;;
     --help|-h) usage; exit 0 ;;
     --keep-log|-k) clear_on_read=0 ;;
+    --lfwp|-l) lfwp=1; runtime=1 ;;
     --pldm|-p) shift; pldm=$(readlink -f $1) ;;
     --remote-mode|-m) shift; remote_mode=$1 ;;
     --rshim|-r) shift; rshim=$1 ;;
@@ -659,7 +665,10 @@ done
 
 # Parameter checks
 
-if [ -z "${bfb}" -a -z "${pldm}" ]; then
+# Default activate to the lfwp value.
+activate=${activate:-$lfwp}
+
+if [ -z "${bfb}" -a -z "${pldm}" -a ${activate} -eq 0 ]; then
   echo "Error: Need to provide either bfb or pldm file."
   usage >&2
   exit 1
@@ -859,12 +868,7 @@ if [ -n "${pldm}" ]; then
 
   pldm=""
   bfb="${TMP_DIR}/pldm/pldm.bfb"
-elif [ ${runtime} -eq 1 ]; then
-  if [ ! -e "${bfb}" ]; then
-    echo "Error: ${bfb} not found."
-    exit 1
-  fi
-
+elif [ ${runtime} -eq 1 -a -e "${bfb}" ]; then
   # Convert bundle BFB to flat BFB if needed.
   # This conversion is only supported on PCIe host.
   is_bundle=$(mlx-mkbfb -d "${bfb}" | grep "In-memory filesystem")
@@ -896,8 +900,8 @@ elif [ ${runtime} -eq 1 ]; then
   fi
 fi
 
-# Check again if bfb file exists
-if [ ! -e "${bfb}" ]; then
+# Check again if bfb file exists (if not activate-only).
+if [ ! -e "${bfb}" -a ${activate} -eq 0 ]; then
   echo "Error: ${bfb} not found."
   exit 1
 fi
@@ -996,16 +1000,44 @@ if [ ${nic_mode} -eq 1 -a -n "${pcie_bd}" -a ${runtime} -eq 0 ]; then
   done
 fi
 
-# Reactivate NIC_FW
-if which flint &> /dev/null; then
-  if [ -n "${pcie_bd}" -a ${runtime} -eq 1 ]; then
+# Reactivate NIC_FW if runtime but not LFWP.
+if [ ${lfwp} -eq 0 -a -n "${pcie_bd}" -a ${runtime} -eq 1 ]; then
+  if which flint &> /dev/null; then
     # Suppress errors if already activated.
     flint -d ${pcie_bd}.0 ir >&/dev/null
+  else
+    echo "Flint not found. Skip NIC_FW reactivation."
   fi
-else
-  echo "Flint not found. Skip NIC_FW reactivation."
 fi
 
-push_boot_stream
+# Push BFB and wait for result.
+if [ -e "${bfb}" ]; then
+  push_boot_stream
+  wait_for_update_to_finish
+fi
 
-wait_for_update_to_finish
+# LFWP activation on PCIe host.
+if [ ${lfwp} -eq 1 -a ${activate} -eq 1 ]; then
+  if [ -z "${pcie_bd}" ]; then
+    echo "ERROR: Failed to activate LFWP, PCIe device not found."
+    exit 1
+  fi
+
+  if ! which mlxfwreset &> /dev/null; then
+    echo "ERROR: Failed to activate LFWP, mlxfwreset not found."
+    exit 1
+  fi
+
+  # Best-effort to check and apply L0 reset.
+  if (mlxfwreset -d ${pcie_bd}.0 q | grep live-Patch | grep -qw "\-Supported"); then
+    echo "Live Patch NIC Firmware reset is supported."
+    msg=$(mlxfwreset -d ${pcie_bd}.0 -y -l 0 r 2>&1)
+    if [ $? -ne 0 ]; then
+      echo "ERROR: Live Patch NIC Firmware reset failed. $msg"
+    else
+      echo "Live Patch NIC Firmware reset done"
+    fi
+  else
+    echo "Live Patch NIC Firmware reset not supported."
+  fi
+fi
