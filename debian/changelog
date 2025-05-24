@@ -1,3 +1,23 @@
+rshim (2.1.12) UNRELEASED; urgency=low
+
+  * bfb-install: add command syntax for lfwp
+  * bfb-install: BFB format conversion for runtime upgrade
+  * bfb-install: Convert to flat BFB for runtime upgrade
+  * scripts/bfb-tool: Add flat format support for BFB
+  * bfb-install: Reactivate NIC_FW for runtime upgrade
+  * bfb-install: cleanup the TMP_DIR
+  * mlx-mkbfb: Improve the performance when extracting a single image
+  * bfb-install: register usage cleanup
+  * Add graceful handling of ctrl+c
+  * bfb-install: pack the bf.cfg into the generated BFB
+  * bfb-install: Support trimmed NIC_FW
+  * Added bfb-tool script
+  * bfb-install: Enhancement for runtime upgrade
+  * Add fwpkg_unpack tool
+  * Added mlx-mkbfb
+
+ -- Liming Sun <limings@nvidia.com>  Fri, 23 May 2025 17:53:30 -0400
+
 rshim (2.1.11) UNRELEASED; urgency=low
 
   * Use BREADCRUMB.BIT32 to indicate NIC mode
