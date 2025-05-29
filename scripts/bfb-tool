@@ -250,10 +250,25 @@ cd $WDIR
 
 if [ $GET_INFO -eq 1 ]; then
 	$MLX_MKBFB -x -n info-v0 $bfb
-	if [ $JSON -eq 1 ]; then
-		cat dump-info-v0
+	if [ -e dump-info-v0 ]; then
+		if [ $JSON -eq 1 ]; then
+			cat dump-info-v0
+		else
+			cat dump-info-v0  | jq '.Members[] |"\(.Name): \(.Version)"' | tr -d '"'
+		fi
 	else
-		cat dump-info-v0  | jq '.Members[] |"\(.Name): \(.Version)"' | tr -d '"'
+		if [ $JSON -eq 1 ]; then
+			cat << EOF
+{
+  "error": {
+    "message": "This BFB file does not contain version information."
+  }
+}
+EOF
+		else
+			error "This BFB file does not contain version information."
+		fi
+		exit 1
 	fi
 	cd - > /dev/null 2>&1
 
