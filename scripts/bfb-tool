@@ -47,9 +47,9 @@ error() {
 
 usage() {
 	cat << EOF
-	Usage: $(basename $0) <action> --bfb <BFB> --psid <PSID>|--opn <OPN>|--all [-p|--profile <Profile>] [-o|--output-dir <dir>] [-f|--output-format <format>] [-B|--output-bfb] [-v|--verbose]
+	Usage: $(basename $0) <action> --bfb <BFB> --psid <PSID>|--opn <OPN>|--all [-p|--profile <Profile>] [-o|--output-dir <dir>] [-f|--output-format <format>] [-B|--output-bfb] [-v|--verbose] [-j|--json]
 
-	action:                 extract or repack. The repack action includes extracting and building a new BFB for a specific OPN/PSID
+	action:                 extract, repack or info. The repack action includes extracting and building a new BFB for a specific OPN/PSID
 
 	Options:
 	--bfb <BFB>             bf-bundle/bf-fwbundle BFB
@@ -61,6 +61,7 @@ usage() {
 	                        Bundle format is the format for DPU mode (default).
 	                        Flat format is the format for NIC mode.
 	--output-bfb <bfb>      Output BFB name
+	-j|--json               Print version info in JSON format
 	-v|--verbose            Verbose mode
 EOF
 }
@@ -74,6 +75,7 @@ BASE_BFB="/usr/lib/firmware/mellanox/boot/default.bfb"
 OUTPUT_FORMAT="bundle"
 OUTPUT_BFB=""
 verbose=0
+JSON=0
 
 if [ -z "$1" ]; then
 	usage
@@ -83,12 +85,16 @@ fi
 action=$1
 shift
 REPACK=0
+GET_INFO=0
 
 case "$action" in
 	"repack")
 			REPACK=1
 		;;
 	"extract")
+		;;
+	"info")
+		GET_INFO=1
 		;;
 	*)
 		error "Unsupported action: $action"
@@ -98,7 +104,7 @@ case "$action" in
 		;;
 esac
 
-options=$(getopt -l "output-dir:,psid:,opn:,bfb:,profile:,output-format:,output-bfb:,all,help,verbose" -o "o:p:O:b:p:f:B:ahv" -a -- "$@")
+options=$(getopt -l "output-dir:,psid:,opn:,bfb:,profile:,output-format:,output-bfb:,all,help,json,verbose" -o "o:p:O:b:p:f:B:ahjv" -a -- "$@")
 
 eval set -- "$options"
 
@@ -133,6 +139,9 @@ do
 			shift
 			ID_SET="OPN"
 			BOARD_ID=$1
+			;;
+		-j|--json)
+			JSON=1
 			;;
 		-v|--verbose)
 			verbose=1
@@ -169,14 +178,16 @@ if [ ! -e "$bfb" ]; then
     exit 1
 fi
 
-if [ $BUILD_ALL -eq 0 ]; then
-	if [ -z "$BOARD_ID" ]; then
-		error "PSID and OPN are not set. Provide one of them."
-		usage
-		exit 1
+if [ $GET_INFO -ne 1 ]; then
+	if [ $BUILD_ALL -eq 0 ]; then
+		if [ -z "$BOARD_ID" ]; then
+			error "PSID and OPN are not set. Provide one of them."
+			usage
+			exit 1
+		fi
+	else
+		BOARD_ID="FW"
 	fi
-else
-	BOARD_ID="FW"
 fi
 
 if [ -z "$MLX_MKBFB" ]; then
@@ -202,20 +213,22 @@ case "$OUTPUT_FORMAT" in
 esac
 
 if [ "`uname -m`" != "aarch64" ]; then
-	if [ ! -x /usr/bin/qemu-aarch64-static ]; then
-		error "qemu-aarch64-static is required"
-		exit 1
-	fi
+	if [ $GET_INFO -ne 1 ]; then
+		if [ ! -x /usr/bin/qemu-aarch64-static ]; then
+			error "qemu-aarch64-static is required"
+			exit 1
+		fi
 
-	if [ ! -d /etc/binfmt.d ]; then
-		error "systemd package is required"
-		exit 1
-	fi
-	if ! (grep -q /usr/bin/qemu-aarch64-static /etc/binfmt.d/qemu-aarch64.conf > /dev/null 2>&1); then
-		cat > /etc/binfmt.d/qemu-aarch64.conf << EOF
+		if [ ! -d /etc/binfmt.d ]; then
+			error "systemd package is required"
+			exit 1
+		fi
+		if ! (grep -q /usr/bin/qemu-aarch64-static /etc/binfmt.d/qemu-aarch64.conf > /dev/null 2>&1); then
+			cat > /etc/binfmt.d/qemu-aarch64.conf << EOF
 :qemu-aarch64:M::\x7fELF\x02\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\xb7:\xff\xff\xff\xff\xff\xff\xff\xfc\xff\xff\xff\xff\xff\xff\xff\xff\xfe\xff\xff:/usr/bin/qemu-aarch64-static:
 EOF
-		systemctl restart systemd-binfmt
+			systemctl restart systemd-binfmt
+		fi
 	fi
 fi
 
@@ -234,6 +247,18 @@ mkdir -p ${TMPDIR}/bfb
 WDIR=${WDIR:-$(mktemp -d ${TMPDIR}/bfb/tmp.XXXXXX)}
 mkdir -p "${WDIR}"
 cd $WDIR
+
+if [ $GET_INFO -eq 1 ]; then
+	$MLX_MKBFB -x -n info-v0 $bfb
+	if [ $JSON -eq 1 ]; then
+		cat dump-info-v0
+	else
+		cat dump-info-v0  | jq '.Members[] |"\(.Name): \(.Version)"' | tr -d '"'
+	fi
+	cd - > /dev/null 2>&1
+
+	exit 0
+fi
 
 INITRAMFS_WDIR=$WDIR/initramfs
 INITRAMFS_REPKG_DIR=$WDIR/initramfs.repackage
