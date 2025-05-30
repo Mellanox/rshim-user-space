@@ -1,3 +1,18 @@
+rshim (2.4.1) UNRELEASED; urgency=low
+
+  * bfb-tool: Add error for missing version information in BFB files
+  * bfb-tool: Add command to print versions of components in BFB
+  * bfb-install: add command syntax for lfwp
+  * bfb-install: BFB format conversion for runtime upgrade
+  * bfb-install: Convert to flat BFB for runtime upgrade
+  * scripts/bfb-tool: Add flat format support for BFB
+  * Updated mlx-mkbfb
+  * Disable LTO build option in github CI
+  * Fix transient pipeline error caused by apt update
+  * Skip SELinux fix on non-RHEL distros like SLES
+
+ -- Liming Sun <limings@nvidia.com>  Fri, 30 May 2025 09:05:20 -0400
+
 rshim (2.3.8) UNRELEASED; urgency=low
 
   * Fix a potentially unintialized variable
