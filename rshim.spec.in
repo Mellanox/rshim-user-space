@@ -139,6 +139,9 @@ fi
 %{_datadir}/selinux/packages/rshim-fix.te
 
 %changelog
+* Fri May 30 2025 Liming Sun <limings@nvidia.com> - 2.1.13
+- bfb-install: add validation of bfb and rshim options
+
 * Fri May 23 2025 Liming Sun <limings@nvidia.com> - 2.1.12
 - bfb-install: add command syntax for lfwp
 - bfb-install: BFB format conversion for runtime upgrade
