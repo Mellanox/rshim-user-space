@@ -5,11 +5,11 @@
 bfb-tool - Tool for extracting and repackaging BFBs
 
 .SH SYNOPSIS
-bfb-tool <action> --bfb <BFB> --psid <PSID>|--opn <OPN>|--all [-p|--profile <Profile>] [-o|--output-dir <dir>] [-f|--output-format <format>] [-B|--output-bfb] [-v|--verbose]
+bfb-tool <action> --bfb <BFB> --psid <PSID>|--opn <OPN>|--all [-p|--profile <Profile>] [-o|--output-dir <dir>] [-f|--output-format <format>] [-B|--output-bfb] [-v|--verbose] [-j|--json]
 
 
 .SH DESCRIPTION
-The bfb-tool is used for managing BFBs (bf-bundle/bf-fwbundle). It supports two primary actions: extract and repack.
+The bfb-tool is used for managing BFBs (bf-bundle/bf-fwbundle). It supports the following actions: extract, repack and info.
 
 The repack action involves extracting and building a new BFB for a specific OPN/PSID.
 
@@ -17,7 +17,7 @@ The repack action involves extracting and building a new BFB for a specific OPN/
 
 .TP
 .B action
-Specify the action to perform. Supported actions are: extract and repack
+Specify the action to perform. Supported actions are: extract, repack and info
 .RS
 .TP
 .B extract
@@ -25,6 +25,9 @@ Extract the payload from the BFB.
 .TP
 .B repack
 Extract and build a new BFB for a specific OPN/PSID.
+.TP
+.B info
+Print version information for components contained in a BFB
 .RE
 
 .TP
@@ -61,6 +64,10 @@ Specify the output BFB format (bundle, flat). "bundle" format is the format for 
 Specify output BFB file name.
 The default for bundle format: bf-fwbundle-<version>-prod-<OPN>.bfb
 The default for flat format: bf-fwbundle-<version>-prod-<OPN>.flat.bfb
+
+.TP
+.B -j, --json
+Print version information in JSON format
 
 .TP
 .B -v, --verbose
