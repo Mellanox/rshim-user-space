@@ -2903,7 +2903,7 @@ int rshim_init(int *epollfd, int *timerfd)
   }
   rshim_set_timer(timer_fd, RSHIM_TIMER_INTERVAL);
   event.data.fd = timer_fd;
-  event.events = EPOLLIN | EPOLLOUT;
+  event.events = EPOLLIN;
   rc = epoll_ctl(epoll_fd, EPOLL_CTL_ADD, timer_fd, &event);
   if (rc == -1) {
     RSHIM_ERR("epoll_ctl failed\n");
