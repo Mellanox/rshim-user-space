@@ -61,7 +61,7 @@ usage() {
 	                        Bundle format is the format for DPU mode (default).
 	                        Flat format is the format for NIC mode.
 	--output-bfb <bfb>      Output BFB name
-	--replace-fw <path>     Path to replacement mlnx-fw-updater .deb file
+	--replace-fw <path>     Path to replacement mlnx-fw-updater file
 	-j|--json               Print version info in JSON format
 	-v|--verbose            Verbose mode
 EOF
@@ -73,38 +73,55 @@ finish() {
 
 replace_mlnx_fw_updater() {
 	local target_dir=$1
-	local deb_file=$2
+	local package_file=$2
 
-	info "Replacing mlnx-fw-updater with content from $deb_file"
+	info "Replacing mlnx-fw-updater with content from $package_file"
 
-	# Check if the .deb file exists
-	if [ ! -f "$deb_file" ]; then
-		error "mlnx-fw-updater .deb file not found: $deb_file"
+	# Check if the package file exists
+	if [ ! -f "$package_file" ]; then
+		error "mlnx-fw-updater package file not found: $package_file"
 		exit 1
 	fi
 
-	# Verify it's a .deb file
-	if [[ ! "$deb_file" =~ \.deb$ ]]; then
-		error "File is not a .deb file: $deb_file"
+	# Determine package type and verify extension
+	local package_type=""
+	if [[ "$package_file" =~ \.deb$ ]]; then
+		package_type="deb"
+		info "Detected .deb mlnx-fw-updater package"
+	elif [[ "$package_file" =~ \.rpm$ ]]; then
+		package_type="rpm"
+		info "Detected .rpm mlnx-fw-updater package"
+	else
+		error "File is not a .deb or .rpm mlnx-fw-updater file: $package_file"
 		exit 1
 	fi
 
-	info "Using .deb file: $deb_file"
+	info "Using package file: $package_file"
 
 	# Create temporary directory for extraction
-	local temp_deb_dir=$(mktemp -d ${TMPDIR}/deb_extract.XXXXXX)
+	local temp_extract_dir=$(mktemp -d ${TMPDIR}/pkg_extract.XXXXXX)
 
-	# Extract .deb file
-	if ! dpkg-deb -x "$deb_file" "$temp_deb_dir"; then
-		error "Failed to extract .deb file: $deb_file"
-		rm -rf "$temp_deb_dir"
-		exit 1
+	# Extract package based on type
+	if [ "$package_type" = "deb" ]; then
+		# Extract .deb file
+		if ! dpkg-deb -x "$package_file" "$temp_extract_dir"; then
+			error "Failed to extract .deb file: $package_file"
+			rm -rf "$temp_extract_dir"
+			exit 1
+		fi
+	else
+		# Extract .rpm file
+		if ! (cd "$temp_extract_dir" && rpm2cpio "$package_file" | cpio -idm 2>/dev/null); then
+			error "Failed to extract .rpm file: $package_file"
+			rm -rf "$temp_extract_dir"
+			exit 1
+		fi
 	fi
 
-	# Check if the expected directory exists in the .deb
-	if [ ! -d "$temp_deb_dir/opt/mellanox/mlnx-fw-updater" ]; then
-		error "mlnx-fw-updater directory not found in .deb file"
-		rm -rf "$temp_deb_dir"
+	# Check if the expected directory exists in the package
+	if [ ! -d "$temp_extract_dir/opt/mellanox/mlnx-fw-updater" ]; then
+		error "mlnx-fw-updater directory not found in package file"
+		rm -rf "$temp_extract_dir"
 		exit 1
 	fi
 
@@ -117,10 +134,10 @@ replace_mlnx_fw_updater() {
 	# Copy new mlnx-fw-updater directory
 	info "Copying new mlnx-fw-updater content"
 	mkdir -p "$target_dir/opt/mellanox"
-	cp -r "$temp_deb_dir/opt/mellanox/mlnx-fw-updater" "$target_dir/opt/mellanox/"
+	cp -r "$temp_extract_dir/opt/mellanox/mlnx-fw-updater" "$target_dir/opt/mellanox/"
 
 	# Cleanup
-	rm -rf "$temp_deb_dir"
+	rm -rf "$temp_extract_dir"
 
 	info "Successfully replaced mlnx-fw-updater"
 }
@@ -259,9 +276,23 @@ if ! jq --version > /dev/null 2>&1; then
 	exit 1
 fi
 
-if [ -n "$REPLACE_FW_PATH" ] && ! dpkg-deb --version > /dev/null 2>&1; then
-	error "dpkg-deb is required for --replace-fw option"
-	exit 1
+if [ -n "$REPLACE_FW_PATH" ]; then
+	# Check dependencies based on file type
+	if [[ "$REPLACE_FW_PATH" =~ \.deb$ ]]; then
+		if ! dpkg-deb --version > /dev/null 2>&1; then
+			error "dpkg-deb is required for --replace-fw option with .deb files"
+			exit 1
+		fi
+	elif [[ "$REPLACE_FW_PATH" =~ \.rpm$ ]]; then
+		if ! dpkg -l | grep rpm2cpio > /dev/null 2>&1; then
+			error "rpm2cpio is required for --replace-fw option with .rpm files"
+			exit 1
+		fi
+		if ! dpkg -l | grep cpio > /dev/null 2>&1; then
+			error "cpio is required for --replace-fw option with .rpm files"
+			exit 1
+		fi
+	fi
 fi
 
 case "$OUTPUT_FORMAT" in
