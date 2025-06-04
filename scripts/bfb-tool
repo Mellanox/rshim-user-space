@@ -112,7 +112,7 @@ replace_mlnx_fw_updater() {
 		exit 1
 	fi
 
-	info "✓ All required files verified"
+	info "All required files verified"
 
 	# Remove existing mlnx-fw-updater directory
 	if [ -d "$target_dir/opt/mellanox/mlnx-fw-updater" ]; then
