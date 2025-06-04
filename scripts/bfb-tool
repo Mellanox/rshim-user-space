@@ -47,7 +47,7 @@ error() {
 
 usage() {
 	cat << EOF
-	Usage: $(basename $0) <action> --bfb <BFB> --psid <PSID>|--opn <OPN>|--all [-p|--profile <Profile>] [-o|--output-dir <dir>] [-f|--output-format <format>] [-B|--output-bfb] [-v|--verbose] [-j|--json]
+	Usage: $(basename $0) <action> --bfb <BFB> --psid <PSID>|--opn <OPN>|--all [-p|--profile <Profile>] [-o|--output-dir <dir>] [-f|--output-format <format>] [-B|--output-bfb] [-r|--replace-fw <path>] [-v|--verbose] [-j|--json]
 
 	action:                 extract, repack or info. The repack action includes extracting and building a new BFB for a specific OPN/PSID
 
@@ -61,6 +61,7 @@ usage() {
 	                        Bundle format is the format for DPU mode (default).
 	                        Flat format is the format for NIC mode.
 	--output-bfb <bfb>      Output BFB name
+	--replace-fw <path>     Path to extracted mlnx-fw-updater directory
 	-j|--json               Print version info in JSON format
 	-v|--verbose            Verbose mode
 EOF
@@ -68,6 +69,63 @@ EOF
 
 finish() {
 	[ -n "$WDIR" ] && rm -rf "$WDIR"
+}
+
+replace_mlnx_fw_updater() {
+	local target_dir=$1
+	local fw_updater_path=$2
+
+	info "Replacing mlnx-fw-updater with content from $fw_updater_path"
+
+	# Check if the provided path exists and is a directory
+	if [ ! -d "$fw_updater_path" ]; then
+		error "mlnx-fw-updater path not found or not a directory: $fw_updater_path"
+		exit 1
+	fi
+
+	# Verify the required files exist in the provided path
+	info "Verifying mlnx-fw-updater directory structure"
+
+	if [ ! -f "$fw_updater_path/mlnx_fw_updater.pl" ]; then
+		error "Required file mlnx_fw_updater.pl not found in $fw_updater_path"
+		exit 1
+	fi
+
+	if [ ! -f "$fw_updater_path/mlnx_fpga_updater.sh" ]; then
+		error "Required file mlnx_fpga_updater.sh not found in $fw_updater_path"
+		exit 1
+	fi
+
+	if [ ! -f "$fw_updater_path/mlnx-fw-updater.conf" ]; then
+		error "Required file mlnx-fw-updater.conf not found in $fw_updater_path"
+		exit 1
+	fi
+
+	if [ ! -d "$fw_updater_path/firmware" ]; then
+		error "Required directory firmware not found in $fw_updater_path"
+		exit 1
+	fi
+
+	# Check for mlxfwmanager files in firmware directory
+	if ! ls "$fw_updater_path/firmware"/mlxfwmanager_sriov_dis_aarch64* >/dev/null 2>&1; then
+		error "No mlxfwmanager_sriov_dis_aarch64 files found in $fw_updater_path/firmware"
+		exit 1
+	fi
+
+	info "All required files verified"
+
+	# Remove existing mlnx-fw-updater directory
+	if [ -d "$target_dir/opt/mellanox/mlnx-fw-updater" ]; then
+		info "Removing existing mlnx-fw-updater directory"
+		rm -rf "$target_dir/opt/mellanox/mlnx-fw-updater"
+	fi
+
+	# Copy new mlnx-fw-updater directory
+	info "Copying new mlnx-fw-updater content"
+	mkdir -p "$target_dir/opt/mellanox"
+	cp -r "$fw_updater_path" "$target_dir/opt/mellanox/mlnx-fw-updater"
+
+	info "Successfully replaced mlnx-fw-updater"
 }
 
 MLX_MKBFB=$(which mlx-mkbfb 2> /dev/null)
@@ -104,7 +162,7 @@ case "$action" in
 		;;
 esac
 
-options=$(getopt -l "output-dir:,psid:,opn:,bfb:,profile:,output-format:,output-bfb:,all,help,json,verbose" -o "o:p:O:b:p:f:B:ahjv" -a -- "$@")
+options=$(getopt -l "output-dir:,psid:,opn:,bfb:,profile:,output-format:,output-bfb:,replace-fw:,all,help,json,verbose" -o "o:p:O:b:p:f:B:r:ahjv" -a -- "$@")
 
 eval set -- "$options"
 
@@ -154,6 +212,10 @@ do
 		-B|--output-bfb)
 			shift
 			OUTPUT_BFB=$1
+			;;
+		-r|--replace-fw)
+			shift
+			REPLACE_FW_PATH=$1
 			;;
 		--)
 			shift
@@ -296,6 +358,10 @@ if [ ! -d ./opt/mellanox/mlnx-fw-updater  ]; then
     tar xJf */image.tar.xz ./opt/mellanox/mlnx-fw-updater/
 fi
 
+if [ -n "$REPLACE_FW_PATH" ]; then
+	replace_mlnx_fw_updater "${INITRAMFS_WDIR}" "${REPLACE_FW_PATH}"
+fi
+
 BSP_CAPSULE="./usr/lib/firmware/mellanox/boot/capsule/boot_update2.cap"
 BSP_VERSION=""
 if [ -e ./lib/firmware/mellanox/boot/atf_uefi.version ]; then
@@ -348,6 +414,10 @@ if [ $REPACK -eq 1 ]; then
 	if [ ! -d ./opt/mellanox/mlnx-fw-updater  ]; then
 	    info "Extracting mlnx-fw-updater"
 	    tar xJf */image.tar.xz ./opt/mellanox/mlnx-fw-updater/
+	fi
+
+	if [ -n "$REPLACE_FW_PATH" ]; then
+		replace_mlnx_fw_updater "${INITRAMFS_REPKG_DIR}" "${REPLACE_FW_PATH}"
 	fi
 
 	if [ ! -d ./usr/lib/firmware/mellanox/bmc ]; then
