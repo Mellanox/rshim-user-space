@@ -139,6 +139,11 @@ fi
 %{_datadir}/selinux/packages/rshim-fix.te
 
 %changelog
+* Fri Jun 06 2025 Liming Sun <limings@nvidia.com> - 2.1.14
+- bfb-tool: support NIC FW replacing
+- bfb-tool: Add error for missing version information in BFB files
+- bfb-tool: Add command to print versions of components in BFB
+
 * Fri May 30 2025 Liming Sun <limings@nvidia.com> - 2.1.13
 - bfb-install: add validation of bfb and rshim options
 
