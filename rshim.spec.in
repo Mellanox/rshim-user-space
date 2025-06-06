@@ -146,6 +146,10 @@ fi
 %{_datadir}/selinux/packages/rshim-fix.te
 
 %changelog
+* Fri Jun 06 2025 Penghe Geng <pgeng@nvidia.com> - 2.4.2
+- Update bfb-tool - support NIC FW replacing
+- Reduce CPU usage by polling optimization
+
 * Fri May 30 2025 Liming Sun <limings@nvidia.com> - 2.4.1
 - bfb-tool: Add error for missing version information in BFB files
 - bfb-tool: Add command to print versions of components in BFB
