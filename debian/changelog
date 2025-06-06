@@ -1,3 +1,10 @@
+rshim (2.4.2) UNRELEASED; urgency=low
+
+  * Update bfb-tool - support NIC FW replacing
+  * Reduce CPU usage by polling optimization
+
+ -- Penghe Geng <pgeng@nvidia.com>  Fri, 06 Jun 2025 09:48:10 -0400
+
 rshim (2.4.1) UNRELEASED; urgency=low
 
   * bfb-tool: Add error for missing version information in BFB files
