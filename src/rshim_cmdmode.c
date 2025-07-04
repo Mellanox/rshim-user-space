@@ -412,7 +412,7 @@ int rshim_cmdmode_run(int argc, char *argv[])
         break;
 
     case 'm':
-        bfdump();
+        rc = bfdump();
         break;
 
     case 'r':
