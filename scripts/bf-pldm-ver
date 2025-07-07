@@ -116,6 +116,7 @@ print_capsule_file_vers () {
             fi
 
             echo "BlueField UEFI  version: $uefi_version"
+            break
         fi
     done
 }
