@@ -56,13 +56,13 @@ fi
 trap cleanup EXIT INT TERM
 
 # NIC FW & BSP
-fwpkg_unpack.py --show_all_metadata --verbose $1 | grep "ComponentVersionString\"" | awk 'BEGIN { product[1] = "BlueField NICFW version: "; product[2] = "BlueField BSP   version: ";} {print product[NR] $2}' | tr -d '"' 
+fwpkg_unpack.py --show_all_metadata --verbose $pldm_image_file | grep "ComponentVersionString\"" | awk 'BEGIN { product[1] = "BlueField NICFW version: "; product[2] = "BlueField BSP   version: ";} {print product[NR] $2}' | tr -d '"' 
 if [ ! $? -eq 0 ]; then
     echo "Error: failed to get NICFW version."
 fi
 
 # Unpack
-fwpkg_unpack.py --unpack --outdir ${TMP_DIR} $1 
+fwpkg_unpack.py --unpack --outdir ${TMP_DIR} $pldm_image_file 
 if [ ! $? -eq 0 ]; then
     echo "Error: failed to unpack $pldm_image_file."
     exit 1
