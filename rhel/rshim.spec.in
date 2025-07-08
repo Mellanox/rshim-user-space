@@ -52,9 +52,17 @@ via the virtual console or network interface.
 %{_sbindir}/rshim
 %{_sbindir}/mlx-mkbfb
 %{_sbindir}/fwpkg_unpack.py
+%{_sbindir}/bfb-install
+%{_sbindir}/bfb-tool
+%{_sbindir}/bf-reg
+%{_sbindir}/bf-pldm-ver
 %{_mandir}/man1/mlx-mkbfb.1.gz
 %{_unitdir}/rshim.service
 %{_mandir}/man8/rshim.8.gz
+%{_mandir}/man8/bfb-install.8.gz
+%{_mandir}/man8/bfb-tool.8.gz
+%{_mandir}/man8/bf-reg.8.gz
+%{_mandir}/man8/bf-pldm-ver.8.gz
 
 %changelog
 * Fri Jun 06 2025 Penghe Geng <pgeng@nvidia.com> - 2.4.2
