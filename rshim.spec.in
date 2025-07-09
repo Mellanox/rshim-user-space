@@ -60,6 +60,7 @@ make
 %{__install} -m 0644 man/bfb-install.8 %{buildroot}%{_mandir}/man8
 %{__install} -m 0644 man/bfb-tool.8 %{buildroot}%{_mandir}/man8
 %{__install} -m 0644 man/bf-reg.8 %{buildroot}%{_mandir}/man8
+%{__install} -m 0644 man/bf-pldm-ver.8 %{buildroot}%{_mandir}/man8
 %{__install} -d %{buildroot}%{_sysconfdir}
 %{__install} -m 0644 etc/rshim.conf %{buildroot}%{_sysconfdir}
 %{__install} -m 0755 scripts/bfb-install %{buildroot}%{_sbindir}
@@ -69,6 +70,7 @@ make
 %{__install} -m 0755 scripts/bf-reg %{buildroot}%{_sbindir}
 %{__install} -d %{buildroot}%{_datadir}/selinux/packages
 %{__install} -m 0644 scripts/rshim-fix.te %{buildroot}%{_datadir}/selinux/packages/rshim-fix.te
+%{__install} -m 0755 scripts/bf-pldm-ver %{buildroot}%{_sbindir}
 
 %pre
 %if "%{with_systemd}" == "1"
@@ -143,6 +145,7 @@ fi
 %{_mandir}/man8/bfb-install.8.gz
 %{_mandir}/man8/bfb-tool.8.gz
 %{_mandir}/man8/bf-reg.8.gz
+%{_mandir}/man8/bf-pldm-ver.8.gz
 %{_datadir}/selinux/packages/rshim-fix.te
 
 %changelog
