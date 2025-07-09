@@ -57,13 +57,13 @@ trap cleanup EXIT INT TERM
 
 # NIC FW & BSP
 fwpkg_unpack.py --show_all_metadata --verbose $pldm_image_file | grep "ComponentVersionString\"" | awk 'BEGIN { product[1] = "BlueField NICFW version: "; product[2] = "BlueField BSP   version: ";} {print product[NR] $2}' | tr -d '"' 
-if [ ! $? -eq 0 ]; then
+if [ $? -ne 0 ]; then
     echo "Error: failed to get NICFW version."
 fi
 
 # Unpack
 fwpkg_unpack.py --unpack --outdir ${TMP_DIR} $pldm_image_file 
-if [ ! $? -eq 0 ]; then
+if [ $? -ne 0 ]; then
     echo "Error: failed to unpack $pldm_image_file."
     exit 1
 fi
@@ -135,7 +135,7 @@ done
 for file in ${TMP_DIR}/dump*; do
     fwpkg_unpack.py --show_all_metadata --verbose $file  | grep "ComponentVersionString\"" | awk -v substrBMC="ApFw" -v substrCEC="Ecfw" '{ if (index($2, substrBMC)) {print "BlueField BMC   version: " $2} else if (index($2, substrCEC)) { print "BlueField CEC   version: " $2}}' | tr -d '"'
 
-    if [ ! $? -eq 0 ]; then
+    if [ $? -ne 0 ]; then
         echo "Error: failed to read $file."
         exit 1
     fi
