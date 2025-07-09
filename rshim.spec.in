@@ -139,6 +139,7 @@ fi
 %{_sbindir}/bfb-tool
 %{_sbindir}/mlx-mkbfb
 %{_sbindir}/bf-reg
+%{_sbindir}/bf-pldm-ver
 %{_sbindir}/fwpkg_unpack.py
 %{_mandir}/man1/mlx-mkbfb.1.gz
 %{_mandir}/man8/rshim.8.gz
