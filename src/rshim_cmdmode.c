@@ -280,6 +280,7 @@ static int bfdump(void)
       printf("Failed to write: %m\n");
       goto done;
     }
+    rc = 0;
     cur_len += sizeof(uint64_t);
     if (cur_len >= max_len)
       break;
