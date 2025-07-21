@@ -904,10 +904,18 @@ elif [ ${runtime} -eq 1 -a -e "${bfb}" ]; then
     bfb-tool repack --bfb "${bfb}" --psid ${psid} \
       --output-dir ${TMP_DIR}/bfb --output-format flat \
       --output-bfb flat.bfb
+    if [ $? -ne 0 ]; then
+        echo "Error: Failed to create BFB in flat format"
+        exit 1
+    fi
     bfb=$(basename "${bfb}")
     bfb=${bfb%.*}
     bfb_path=${TMP_DIR}/bfb/"${bfb}"/${psid}
     bfb="${bfb_path}"/flat.bfb
+    if [ ! -e "${bfb}" ]; then
+        echo "Error: ${bfb} not found"
+        exit 1
+    fi
 
     # Replace config file if provided.
     if [ -n "${cfg}" -a -e "${cfg}" ]; then
