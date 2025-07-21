@@ -389,11 +389,11 @@ static void rshim_fuse_console_ioctl(fuse_req_t req, int cmd, void *arg,
   switch (cmd) {
   case TCGETS:
     if (!out_bufsz) {
-      struct iovec iov = { arg, sizeof(struct termio) };
+      struct iovec iov = { arg, sizeof(struct termios) };
 
       fuse_reply_ioctl_retry(req, NULL, 0, &iov, 1);
     } else {
-      fuse_reply_ioctl(req, 0, &bd->cons_termios, sizeof(struct termio));
+      fuse_reply_ioctl(req, 0, &bd->cons_termios, sizeof(struct termios));
     }
     break;
 
