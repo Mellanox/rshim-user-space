@@ -387,6 +387,11 @@ fi
 
 cp /usr/bin/qemu-aarch64-static ./usr/bin
 
+if [ ! -e ".${BASE_BFB}" ]; then
+	echo "ERROR: ${BASE_BFB} not found. Invalid BFB format"
+	exit 1
+fi
+
 bfver_out="$(chroot ${INITRAMFS_WDIR} /usr/bin/bfver --file ${BASE_BFB} 2> /dev/null)"
 
 ATF_VERSION=$(echo "$bfver_out" | grep -m 1 "ATF" | cut -d':' -f 3 | \
@@ -439,7 +444,6 @@ cleanup_base_initramfs()
 	# Cleanup
 	rm -f ./tmp/*bin
 	rm -f ./usr/lib/firmware/mellanox/boot/capsule/MmcBootCap
-	rm -f ./${BASE_BFB}
 
 	rm -rf ./usr/lib/modules/*/kernel/drivers/net/ethernet/chelsio \
 		./usr/lib/modules/*/kernel/drivers/net/ethernet/broadcom \
@@ -669,7 +673,6 @@ rebuild_bfb_bundle()
 
 	# Remove the extra payload
 	rm -f ./usr/bin/qemu-aarch64-static
-	rm -f ./${BASE_BFB}
 	rm -f ./usr/lib/firmware/mellanox/bmc/*
 	rm -f ./usr/lib/firmware/mellanox/cec/*
 
