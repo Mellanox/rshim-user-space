@@ -164,6 +164,11 @@ fi
 %{_datadir}/selinux/packages/rshim-fix.te
 
 %changelog
+* Tue Jul 22 2025 Penghe Geng <pgeng@nvidia.com> - 2.4.4
+- Added support for bf-fwbundle per OPN
+- Set is_uek64k flag at build time
+- Fix bfdump doesn't return error code in case of success
+
 * Wed Jul 09 2025 Liming Sun <limings@nvidia.com> - 2.4.3
 - bf-pldm-ver: initial version to retrieve image versions from PLDM
 - Fix bfdump doesn't return error code

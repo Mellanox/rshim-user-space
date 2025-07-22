@@ -1,3 +1,11 @@
+rshim (2.4.4) UNRELEASED; urgency=low
+
+  * Added support for bf-fwbundle per OPN
+  * Set is_uek64k flag at build time
+  * Fix bfdump doesn't return error code in case of success
+
+ -- Penghe Geng <pgeng@nvidia.com>  Tue, 22 Jul 2025 12:13:01 -0400
+
 rshim (2.4.3) UNRELEASED; urgency=low
 
   * bf-pldm-ver: initial version to retrieve image versions from PLDM
