@@ -278,6 +278,10 @@ if [ "`uname -m`" != "aarch64" ]; then
 	if [ $GET_INFO -ne 1 ]; then
 		if [ ! -x /usr/bin/qemu-aarch64-static ]; then
 			error "qemu-aarch64-static is required"
+			cat << EOF
+To install qemu-aarch64-static, use the following command, or install it via your Linux distribution's package manager if available:
+docker run --rm --entrypoint tar multiarch/qemu-user-static -C /usr/bin -cf- . | sudo tar -C /usr/bin -xf-
+EOF
 			exit 1
 		fi
 
