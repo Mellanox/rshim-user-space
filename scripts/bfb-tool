@@ -807,6 +807,7 @@ handle_opn()
 
 	# Create mlxfwmanager with single FW binary
 	cp $NIC_FW ${INITRAMFS_REPKG_DIR}/opt/mellanox/mlnx-fw-updater/firmware/
+	sed -i -e "s@ 2> /dev/null@@" ${INITRAMFS_REPKG_DIR}/usr/bin/mlx_fwsfx_gen
 	chroot ${INITRAMFS_REPKG_DIR} /usr/bin/mlx_fwsfx_gen --source-dir /opt/mellanox/mlnx-fw-updater/firmware/ --out-dir /opt/mellanox/mlnx-fw-updater/firmware/ --sfx-name ${mlxfwmanager##*/} > /dev/null 2>&1
 	if [ $? -ne 0 ]; then
 		echo "ERROR: Failed to build mlxfwmanager for ${BOARD_ID}"
