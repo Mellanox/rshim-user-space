@@ -323,20 +323,14 @@ static void rshim_pcie_mmap_release(rshim_pcie_t *dev)
 
 static void rshim_pcie_bind(rshim_pcie_t *dev, bool enable)
 {
-  uint16_t device_id[] = {BLUEFIELD1_DEVICE_ID, BLUEFIELD2_DEVICE_ID,
-                          BLUEFIELD3_DEVICE_ID, BLUEFIELD3_DEVICE_ID2};
   char cmd[RSHIM_CMD_MAX];
-  int i, rc;
+  const char *driver_name = NULL;
 
-  /*
-   * Linux kernel prior 4.18 has a bug which could cause crash when uio is
-   * unregistered (see commit 57c5f4df0a5a uio: fix crash after the device
-   * is unregistered). Below is a workaround to avoid such crash for uio.
-   * The rshim probing order is vfio->uio->direct. The uio unbind won't
-   * affect the operation of direct mapping.
-   */
-  if (!enable && (dev->mmap_mode == RSHIM_PCIE_MMAP_UIO))
-    return;
+  if (dev->mmap_mode == RSHIM_PCIE_MMAP_VFIO) {
+    driver_name = "vfio-pci";
+  } else if (dev->mmap_mode == RSHIM_PCIE_MMAP_UIO) {
+    driver_name = "uio_pci_generic";
+  }
 
   if (dev->mmap_mode == RSHIM_PCIE_MMAP_VFIO ||
       dev->mmap_mode == RSHIM_PCIE_MMAP_UIO) {
@@ -347,26 +341,29 @@ static void rshim_pcie_bind(rshim_pcie_t *dev, bool enable)
                dev->pci_path);
       if (system(cmd) == -1)
         RSHIM_DBG("Failed to unbind device\n");
-    } else if (dev->mmap_mode == RSHIM_PCIE_MMAP_VFIO) {
-      /* Clear driver_override. */
+
       snprintf(cmd, sizeof(cmd),
                "echo \"\" > %s/%04x:%02x:%02x.%1u/driver_override 2>/dev/null",
                SYS_BUS_PCI_PATH, dev->domain, dev->bus,
                dev->dev, dev->func);
       if (system(cmd) == -1)
-        RSHIM_DBG("Failed to enable pcie\n");
-    }
+        RSHIM_DBG("Failed to clear driver_override\n");
+    } else {
+      snprintf(cmd, sizeof(cmd),
+               "echo %s > %s/%04x:%02x:%02x.%1u/driver_override 2>/dev/null",
+               driver_name,
+               SYS_BUS_PCI_PATH, dev->domain, dev->bus,
+               dev->dev, dev->func);
+      if (system(cmd) == -1)
+        RSHIM_DBG("Failed to set driver_override\n");
 
-    for (i = 0; i < sizeof(device_id) / sizeof(uint16_t); i++) {
-      snprintf(cmd, sizeof(cmd), "echo '%x %x' > %s/%s 2>/dev/null",
-               TILERA_VENDOR_ID, device_id[i], dev->pci_path,
-               enable ? "new_id" : "remove_id");
-      rc = system(cmd);
-      if (rc == -1)
-        RSHIM_DBG("Failed to write device id %m\n");
-    }
+      /* Unbind if bound to a diffrent driver. Won't hurt if it's not bound. */
+      snprintf(cmd, sizeof(cmd),
+               "echo %04x:%02x:%02x.%1u > %s/unbind 2>/dev/null",
+               dev->domain, dev->bus, dev->dev, dev->func,
+               dev->pci_path);
+      system(cmd);  /* Ignore errors - device may already be unbound */
 
-    if (enable) {
       snprintf(cmd, sizeof(cmd),
                "echo %04x:%02x:%02x.%1u > %s/bind 2>/dev/null",
                dev->domain, dev->bus, dev->dev, dev->func,
@@ -395,7 +392,7 @@ static void rshim_pcie_bind(rshim_pcie_t *dev, bool enable)
              SYS_BUS_PCI_PATH, dev->domain, dev->bus,
              dev->dev, dev->func);
     if (system(cmd) == -1)
-      RSHIM_DBG("Failed to enable pcie\n");
+      RSHIM_DBG("Failed to set driver_override\n");
   }
 }
 
@@ -1103,6 +1100,24 @@ static void rshim_pcie_delete(rshim_backend_t *bd)
   free(dev);
 }
 
+static void rshim_pcie_register_device_ids(const char *driver_path)
+{
+  uint16_t device_id[] = {BLUEFIELD1_DEVICE_ID, BLUEFIELD2_DEVICE_ID,
+                          BLUEFIELD3_DEVICE_ID, BLUEFIELD3_DEVICE_ID2};
+  char cmd[RSHIM_CMD_MAX];
+  int i, rc;
+
+  /* Register all BF vendor IDs with the driver */
+  for (i = 0; i < sizeof(device_id) / sizeof(uint16_t); i++) {
+    snprintf(cmd, sizeof(cmd), "echo '%x %x' > %s/new_id 2>/dev/null",
+             TILERA_VENDOR_ID, device_id[i], driver_path);
+    rc = system(cmd);
+    if (rc == -1)
+      RSHIM_DBG("Failed to write device id %04x to %s\n", device_id[i],
+          driver_path);
+  }
+}
+
 /* Enable RSHIM PF and setup memory map. */
 static int rshim_pcie_enable(rshim_backend_t *bd, bool enable)
 {
@@ -1141,6 +1156,7 @@ static int rshim_pcie_enable(rshim_backend_t *bd, bool enable)
       rshim_pcie_bind(dev, false);
       dev->pci_path = SYS_UIO_PCI_PATH;
       dev->mmap_mode = RSHIM_PCIE_MMAP_UIO;
+      rshim_pcie_register_device_ids(SYS_UIO_PCI_PATH);
       rshim_pcie_bind(dev, true);
       rc = rshim_pcie_mmap(dev, true);
     }
@@ -1446,6 +1462,7 @@ int rshim_pcie_init(void)
   if (rshim_pcie_has_vfio()) {
     rshim_pcie_mmap_mode = RSHIM_PCIE_MMAP_VFIO;
     rshim_sys_pci_path = SYS_VFIO_PCI_PATH;
+    rshim_pcie_register_device_ids(SYS_VFIO_PCI_PATH);
   } else {
     /* Linux kernel lock_down requires VFIO. */
     if (kernel_lock_down_enabled()) {
@@ -1456,6 +1473,7 @@ int rshim_pcie_init(void)
     if (rshim_pcie_has_uio()) {
       rshim_pcie_mmap_mode = RSHIM_PCIE_MMAP_UIO;
       rshim_sys_pci_path = SYS_UIO_PCI_PATH;
+      rshim_pcie_register_device_ids(SYS_UIO_PCI_PATH);
     }
   }
 
@@ -1478,6 +1496,22 @@ int rshim_pcie_init(void)
          !rshim_is_bluefield2(dev->device_id) &&
          !rshim_is_bluefield3(dev->device_id)))
       continue;
+
+    /*
+     * If DROP mode is set and this device got auto-bound during ID
+     * registration, unbind it now.
+     */
+    if (rshim_drop_mode > 0 && rshim_sys_pci_path) {
+      char pci_addr[32];
+      char cmd[RSHIM_CMD_MAX];
+      snprintf(pci_addr, sizeof(pci_addr), "%04x:%02x:%02x.%x",
+               dev->domain, dev->bus, dev->dev, dev->func);
+      snprintf(cmd, sizeof(cmd),
+               "[ -e /sys/bus/pci/devices/%s/driver ] && "
+               "echo %s > /sys/bus/pci/devices/%s/driver/unbind 2>/dev/null",
+               pci_addr, pci_addr, pci_addr);
+      system(cmd);
+    }
 
     rc = rshim_pcie_probe(dev);
     if (rc)
