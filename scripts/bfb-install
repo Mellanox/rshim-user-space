@@ -149,6 +149,24 @@ run_cmd_exit()
   fi
 }
 
+rshim_in_drop_mode()
+{
+  local drop_mode
+
+  if [ "$mode" == "local" ]; then
+    drop_mode=$(cat ${rshim_node}/misc | grep "DROP_MODE" | awk '{print $2}')
+  else
+    drop_mode=$(run_cmd_exit remote "cat ${rshim_node}/misc | grep 'DROP_MODE' | awk '{print \$2}'")
+  fi
+
+  if [ "$drop_mode" == "1" ]; then
+    return 0
+  else
+    return 1
+  fi
+
+}
+
 # Return the local IP address
 #
 # Global variables used: $ip
@@ -1000,6 +1018,13 @@ if [ $mode == "remote" ]; then
     fi
   fi
 fi
+
+echo "Checking if rshim is in correct mode..."
+if rshim_in_drop_mode; then
+  echo "Error: rshim is in drop mode. Run 'echo DROP_MODE 0 > ${rshim_node}/misc' to exit drop mode."
+  exit 1
+fi
+# TODO: check Secure NIC mode as well
 
 # Check the pv tool.
 pv=$(which pv 2>/dev/null)
