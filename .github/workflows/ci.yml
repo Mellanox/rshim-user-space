@@ -100,36 +100,71 @@ jobs:
 
       - name: Build & Test ARM64 .deb package in Docker
         run: |
-          set -e
+          set -euo pipefail
+
           docker run --rm --privileged multiarch/qemu-user-static \
             --reset -p yes
-          docker run --rm --platform linux/arm64 \
-            -e HOST_UID="${{ env.HOST_UID }}" \
-            -e HOST_GID="${{ env.HOST_GID }}" \
-            -v "${{ github.workspace }}:/workspace" \
-            -w /workspace \
-            arm64v8/ubuntu:22.04 \
-            /bin/bash -c "
-              . /workspace/retry_apt_update.sh && \
-              apt-get update || retry_apt_get_update && \
-              apt-get install -y build-essential debhelper devscripts \
-                fakeroot gcc git libpci-dev libusb-1.0-0-dev libfuse-dev \
-                pkg-config && \
-              git config --global --add safe.directory /workspace && \
-              version=\$(/workspace/scripts/get-ver) && \
-              sed -i \"1s/(\(.*\))/(\$version)/\" \
-                /workspace/debian/changelog && \
-              mkdir -p /workspace/build && \
-              DEB_BUILD_OPTIONS='nocheck nostrip nolto' \
-                CFLAGS="-fno-lto" LDFLAGS="-fno-lto" \
-                dpkg-buildpackage -us -uc -a arm64 && \
-              mv -v ../*.deb /workspace/build/ && \
-              apt-get install -y libpci3 libusb-1.0-0 fuse || true && \
-              dpkg -i /workspace/build/*.deb || apt-get -f install -y && \
-              echo 'Running rshim --version:' && \
-              rshim --version && \
-              chown -R \$HOST_UID:\$HOST_GID /workspace
-            "
+
+          # Retry function for Docker build
+          retry_count=0
+          max_retries=3
+          delay=20
+
+          while true; do
+            echo "Docker build attempt $((retry_count + 1))/$max_retries"
+
+            if docker run --rm --platform linux/arm64 \
+              -e HOST_UID="${{ env.HOST_UID }}" \
+              -e HOST_GID="${{ env.HOST_GID }}" \
+              -v "${{ github.workspace }}:/workspace" \
+              -w /workspace \
+              arm64v8/ubuntu:22.04 \
+              /bin/bash -c "
+                set -euo pipefail
+                . /workspace/retry_apt_update.sh
+                apt-get update || retry_apt_get_update
+                apt-get install -y \
+                  autoconf automake libtool build-essential debhelper \
+                  devscripts fakeroot gcc git libpci-dev libusb-1.0-0-dev \
+                  libfuse-dev libsystemd-dev libpci3 libusb-1.0-0 fuse \
+                  pkg-config
+                git config --global --add safe.directory /workspace && \
+                version=\$(/workspace/scripts/get-ver)
+                  sed -i \"1s/(\(.*\))/(\$version)/\" /workspace/debian/changelog
+                mkdir -p /workspace/build
+                DEB_BUILD_OPTIONS='nocheck nostrip nolto' \
+                  CFLAGS="-fno-lto" LDFLAGS="-fno-lto" \
+                  dpkg-buildpackage -us -uc -a arm64 || {
+                    echo '--- pkg-config failure diagnostics ---'
+                    pkg-config --modversion libpci || true
+                    pkg-config --modversion libusb-1.0 || true
+                    pkg-config --modversion fuse || true
+                    pkg-config --variable=systemdsystemunitdir systemd || true
+                    echo '--- config.log tails ---'
+                    find . -name config.log -exec sh -c \
+                      'echo ==== {}; tail -n 200 {}' \;
+                    exit 1
+                  }
+                mv -v ../*.deb /workspace/build/ && \
+                dpkg -i /workspace/build/*.deb || apt-get -f install -y
+                echo 'Running rshim --version:'
+                rshim --version
+                chown -R \$HOST_UID:\$HOST_GID /workspace
+              "; then
+                echo "Docker build succeeded on attempt $((retry_count + 1))"
+              break
+            else
+              retry_count=$((retry_count + 1))
+              if [ $retry_count -lt $max_retries ]; then
+                echo "Docker build failed, waiting ${delay}s before retry..."
+                sleep $delay
+              else
+                echo "Docker build failed after $max_retries attempts"
+                exit 1
+              fi
+            fi
+          done
+
           mkdir -p dist
           mv -v build/*.deb dist/
           ls -lh dist
@@ -143,6 +178,7 @@ jobs:
             -w /workspace \
             quay.io/rockylinux/rockylinux:8 \
             /bin/bash -c "
+            set -euo pipefail
               yum -y install gcc make rpm-build git autoconf automake \
                 libtool pkgconfig pciutils-devel libusb1-devel fuse-devel && \
               git config --global --add safe.directory /workspace && \
@@ -159,25 +195,52 @@ jobs:
 
       - name: Build & Test arm64 RPM using Rocky Linux
         run: |
+          set -euo pipefail
+
+          # Prepare QEMU for ARM64 emulation
           docker run --rm --privileged multiarch/qemu-user-static \
             --reset -p yes
-          docker run --rm --platform linux/arm64 \
-            -e HOST_UID="${{ env.HOST_UID }}" \
-            -e HOST_GID="${{ env.HOST_GID }}" \
-            -v "${{ github.workspace }}:/workspace" \
-            -w /workspace \
-            quay.io/rockylinux/rockylinux:8 \
-            /bin/bash -c "
-              yum -y install gcc make rpm-build git autoconf automake \
-                libtool pkgconfig pciutils-devel libusb1-devel fuse-devel && \
-              git config --global --add safe.directory /workspace && \
-              ARCH=aarch64 CFLAGS="-fno-lto" LDFLAGS="-fno-lto" \
-                ./scripts/build-rpm && \
-              yum localinstall -y /workspace/rpmbuild/RPMS/aarch64/*.rpm && \
-              echo 'Running rshim --version:' && \
-              rshim --version && \
-              chown -R \$HOST_UID:\$HOST_GID /workspace
-            "
+
+          # Retry function for Docker build
+          retry_count=0
+          max_retries=3
+          delay=20
+
+          while true; do
+            echo "Docker build attempt $((retry_count + 1))/$max_retries"
+
+            if docker run --rm --platform linux/arm64 \
+              -e HOST_UID="${{ env.HOST_UID }}" \
+              -e HOST_GID="${{ env.HOST_GID }}" \
+              -v "${{ github.workspace }}:/workspace" \
+              -w /workspace \
+              quay.io/rockylinux/rockylinux:8 \
+              /bin/bash -c "
+                set -euo pipefail
+                yum -y install gcc make rpm-build git autoconf automake \
+                  libtool pkgconfig pciutils-devel libusb1-devel fuse-devel && \
+                git config --global --add safe.directory /workspace && \
+                ARCH=aarch64 CFLAGS=\"-fno-lto\" LDFLAGS=\"-fno-lto\" \
+                  ./scripts/build-rpm && \
+                yum localinstall -y /workspace/rpmbuild/RPMS/aarch64/*.rpm && \
+                echo 'Running rshim --version:' && \
+                rshim --version && \
+                chown -R \$HOST_UID:\$HOST_GID /workspace
+              "; then
+              echo "Docker build succeeded on attempt $((retry_count + 1))"
+              break
+            else
+              retry_count=$((retry_count + 1))
+              if [ $retry_count -lt $max_retries ]; then
+                echo "Docker build failed, waiting ${delay}s before retry..."
+                sleep $delay
+              else
+                echo "Docker build failed after $max_retries attempts"
+                exit 1
+              fi
+            fi
+          done
+
           mkdir -p dist
           mv -v $(find rpmbuild/RPMS -name '*.rpm') dist/
           ls -lh dist
