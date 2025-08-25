@@ -278,6 +278,10 @@ if [ "`uname -m`" != "aarch64" ]; then
 	if [ $GET_INFO -ne 1 ]; then
 		if [ ! -x /usr/bin/qemu-aarch64-static ]; then
 			error "qemu-aarch64-static is required"
+			cat << EOF
+To install qemu-aarch64-static, use the following command, or install it via your Linux distribution's package manager if available:
+docker run --rm --entrypoint tar multiarch/qemu-user-static -C /usr/bin -cf- . | sudo tar -C /usr/bin -xf-
+EOF
 			exit 1
 		fi
 
@@ -387,6 +391,11 @@ fi
 
 cp /usr/bin/qemu-aarch64-static ./usr/bin
 
+if [ ! -e ".${BASE_BFB}" ]; then
+	echo "ERROR: ${BASE_BFB} not found. Invalid BFB format"
+	exit 1
+fi
+
 bfver_out="$(chroot ${INITRAMFS_WDIR} /usr/bin/bfver --file ${BASE_BFB} 2> /dev/null)"
 
 ATF_VERSION=$(echo "$bfver_out" | grep -m 1 "ATF" | cut -d':' -f 3 | \
@@ -439,7 +448,6 @@ cleanup_base_initramfs()
 	# Cleanup
 	rm -f ./tmp/*bin
 	rm -f ./usr/lib/firmware/mellanox/boot/capsule/MmcBootCap
-	rm -f ./${BASE_BFB}
 
 	rm -rf ./usr/lib/modules/*/kernel/drivers/net/ethernet/chelsio \
 		./usr/lib/modules/*/kernel/drivers/net/ethernet/broadcom \
@@ -669,7 +677,6 @@ rebuild_bfb_bundle()
 
 	# Remove the extra payload
 	rm -f ./usr/bin/qemu-aarch64-static
-	rm -f ./${BASE_BFB}
 	rm -f ./usr/lib/firmware/mellanox/bmc/*
 	rm -f ./usr/lib/firmware/mellanox/cec/*
 
@@ -804,6 +811,7 @@ handle_opn()
 
 	# Create mlxfwmanager with single FW binary
 	cp $NIC_FW ${INITRAMFS_REPKG_DIR}/opt/mellanox/mlnx-fw-updater/firmware/
+	sed -i -e "s@ 2> /dev/null@@" ${INITRAMFS_REPKG_DIR}/usr/bin/mlx_fwsfx_gen
 	chroot ${INITRAMFS_REPKG_DIR} /usr/bin/mlx_fwsfx_gen --source-dir /opt/mellanox/mlnx-fw-updater/firmware/ --out-dir /opt/mellanox/mlnx-fw-updater/firmware/ --sfx-name ${mlxfwmanager##*/} > /dev/null 2>&1
 	if [ $? -ne 0 ]; then
 		echo "ERROR: Failed to build mlxfwmanager for ${BOARD_ID}"

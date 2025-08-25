@@ -1,4 +1,3 @@
-#!/bin/bash
 
 # Copyright (c) 2020, NVIDIA Corporation
 # All rights reserved.
@@ -205,6 +204,7 @@ push_boot_stream_via_local_rshim()
     # Skip reset when pushing bfb
     echo "BOOT_RESET_SKIP 1" > ${rshim_node}/misc
 
+    echo "1 deferred"
     # Clear the current boot fifo
     clear_boot_fifo
 
@@ -216,22 +216,13 @@ push_boot_stream_via_local_rshim()
     # Set SWINT2.BIT2 for DPU mode
     if [ ${nic_mode} -eq 0 ]; then
       ${BF_REG} $(basename ${rshim_node}) ${RSH_SWINT}.64 0x4 >/dev/null
+      echo ${BF_REG} $(basename ${rshim_node}) ${RSH_SWINT}.64 0x4
     fi
   fi
 
   if ! $sudo_prefix sh -c "cat ${bfb} ${cfg:+$cfg} ${rootfs:+${rootfs}} ${pv:+| ${pv} | cat -} > ${rshim_node}/boot"; then
     echo "Error: Failed to push boot stream via local rshim"
-    return
-  fi
-
-
-  if [ $deferred -eq 1 ]; then
-    echo "BOOT_RESET_SKIP 0" > ${rshim_node}/misc
-
-    # Set SP2.BIT6=1 to issue PLDM ActivateFirmware command that activate new image after reboot
-    sp2=`${BF_REG} $(basename ${rshim_node}) ${RSH_SCRATCHPAD2}.64 | awk '{print $3}'`
-    sp2=$((sp2 | 64))
-    ${BF_REG} $(basename ${rshim_node}) ${RSH_SCRATCHPAD2}.64 $sp2 >/dev/null
+    exit
   fi
 }
 
@@ -550,12 +541,14 @@ cleanup() {
   # Remove the temp directory.
   rm -rf $TMP_DIR
 
+  echo cleanup 1
   # prevent cleanup from being called multiple times
   if [ "$cleanup_started" -eq 1 ]; then
     exit 1
   fi
   cleanup_started=1
 
+  echo cleanup 2
   if [ "$?" -ne 0 ]; then
     echo "BlueField Update Failed"
   fi
@@ -574,18 +567,15 @@ cleanup() {
   fi
 
   if [ $deferred -eq 1 ]; then
+    echo cleanup 3
     # Reset to default state.
     echo "BOOT_RESET_SKIP 0" > ${rshim_node}/misc
 
+    echo cleanup 4
     # Cleanup SP2.BIT2.
     sp2=`${BF_REG} $(basename ${rshim_node}) ${RSH_SCRATCHPAD2}.64 | awk '{print $3}'`
     sp2=$((sp2 & ~4))
     ${BF_REG} $(basename ${rshim_node}) ${RSH_SCRATCHPAD2}.64 $sp2 >/dev/null
-
-    # Set SWINT2.BIT2 for DPU mode
-    if [ ${nic_mode} -eq 0 ]; then
-      ${BF_REG} $(basename ${rshim_node}) ${RSH_SWINT}.64 0x4 >/dev/null
-    fi
   fi
 
   # Disable CLEAR_ON_READ.
@@ -645,7 +635,7 @@ pcie_bd=""        # PCIE Bus-Device
 pf0_bound=0       # PF0 is bound prior to the script run
 pf1_bound=0       # PF1 is bound prior to the script run
 
-options=`getopt -n bfb-install -o a:b:c:d:f:hkm:p:r:Ruv \
+options=`getopt -n bfb-install -o a:b:c:f:dhkm:p:r:Ruv \
         -l apply-lfwp:,bfb:,config:,rootfs:,deferred,help,keep-log,remote-mode:,reverse-nc,rshim:,pldm:,runtime,verbose \
         -- "$@"`
 if [ $? != 0 ]; then echo "Command line error" >&2; exit 1; fi
@@ -1054,6 +1044,21 @@ if [ ${apply_lfwp} -eq 1 ]; then
     exit 1
   fi
 
+  echo "BOOT_RESET_SKIP 0" > ${rshim_node}/misc
+
+  echo "apply lfwp"
+  # Set SP2.BIT6=1 to issue PLDM ActivateFirmware command that activate new image after reboot
+  sp2=`${BF_REG} $(basename ${rshim_node}) ${RSH_SCRATCHPAD2}.64 | awk '{print $3}'`
+  sp2=$((sp2 | 64))
+  ${BF_REG} $(basename ${rshim_node}) ${RSH_SCRATCHPAD2}.64 $sp2 >/dev/null
+  echo RSH_SCRATCHPAD2.BIT2 Activate Runtime ${BF_REG} $(basename ${rshim_node}) ${RSH_SCRATCHPAD2}.64 $sp2 
+  # Set SWINT2.BIT2 for DPU mode
+  if [ ${nic_mode} -eq 0 ]; then
+    ${BF_REG} $(basename ${rshim_node}) ${RSH_SWINT}.64 0x4 >/dev/null
+    echo SWINT2.BIT2 ${BF_REG} $(basename ${rshim_node}) ${RSH_SWINT}.64 0x4
+  fi
+  sleep 60
+  exit 0
   # Best-effort to check and apply L0 reset.
   if (mlxfwreset -d ${pcie_bd}.0 q | grep live-Patch | grep -qw "\-Supported"); then
     echo "Live Patch NIC Firmware reset is supported."
