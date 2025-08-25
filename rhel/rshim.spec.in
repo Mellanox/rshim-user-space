@@ -65,6 +65,21 @@ via the virtual console or network interface.
 %{_mandir}/man8/bf-pldm-ver.8.gz
 
 %changelog
+* Wed Aug 20 2025 Penghe Geng <pgeng@nvidia.com> - 2.5.1
+- Improve GitHub CI robustness for ARM builds
+- Fix rshim drop mode driver binding
+- bfb-tool: Added qemu-aarch64-static installation guidance
+- bfb-tool: Added workaround for mlx_fwsfx_gen
+
+* Tue Jul 22 2025 Penghe Geng <pgeng@nvidia.com> - 2.4.4
+- Added support for bf-fwbundle per OPN
+- Set is_uek64k flag at build time
+- Fix bfdump doesn't return error code in case of success
+
+* Wed Jul 09 2025 Liming Sun <limings@nvidia.com> - 2.4.3
+- bf-pldm-ver: initial version to retrieve image versions from PLDM
+- Fix bfdump doesn't return error code
+
 * Fri Jun 06 2025 Penghe Geng <pgeng@nvidia.com> - 2.4.2
 - Update bfb-tool - support NIC FW replacing
 - Reduce CPU usage by polling optimization

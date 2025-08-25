@@ -1,3 +1,27 @@
+rshim (2.5.1) UNRELEASED; urgency=low
+
+  * Improve GitHub CI robustness for ARM builds
+  * Fix rshim drop mode driver binding
+  * bfb-tool: Added qemu-aarch64-static installation guidance
+  * bfb-tool: Added workaround for mlx_fwsfx_gen
+
+ -- Penghe Geng <pgeng@nvidia.com>  Wed, 20 Aug 2025 11:32:41 -0400
+
+rshim (2.4.4) UNRELEASED; urgency=low
+
+  * Added support for bf-fwbundle per OPN
+  * Set is_uek64k flag at build time
+  * Fix bfdump doesn't return error code in case of success
+
+ -- Penghe Geng <pgeng@nvidia.com>  Tue, 22 Jul 2025 12:13:01 -0400
+
+rshim (2.4.3) UNRELEASED; urgency=low
+
+  * bf-pldm-ver: initial version to retrieve image versions from PLDM
+  * Fix bfdump doesn't return error code
+
+ -- Liming Sun <limings@nvidia.com>  Wed, 09 Jul 2025 19:09:20 -0400
+
 rshim (2.4.2) UNRELEASED; urgency=low
 
   * Update bfb-tool - support NIC FW replacing

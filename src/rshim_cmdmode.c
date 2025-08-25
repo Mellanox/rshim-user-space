@@ -280,6 +280,7 @@ static int bfdump(void)
       printf("Failed to write: %m\n");
       goto done;
     }
+    rc = 0;
     cur_len += sizeof(uint64_t);
     if (cur_len >= max_len)
       break;
@@ -412,7 +413,7 @@ int rshim_cmdmode_run(int argc, char *argv[])
         break;
 
     case 'm':
-        bfdump();
+        rc = bfdump();
         break;
 
     case 'r':
