@@ -230,6 +230,9 @@ static const int bf3_rshim_pcie_chan_map[] = {
 	[YU_CHANNEL] = 0x400000,
 };
 
+static uint16_t bf_device_id[] = {BLUEFIELD1_DEVICE_ID, BLUEFIELD2_DEVICE_ID,
+  BLUEFIELD3_DEVICE_ID, BLUEFIELD3_DEVICE_ID2};
+
 static bool rshim_is_bluefield1(uint16_t device_id)
 {
   return (device_id == BLUEFIELD1_DEVICE_ID);
@@ -1102,19 +1105,36 @@ static void rshim_pcie_delete(rshim_backend_t *bd)
 
 static void rshim_pcie_register_device_ids(const char *driver_path)
 {
-  uint16_t device_id[] = {BLUEFIELD1_DEVICE_ID, BLUEFIELD2_DEVICE_ID,
-                          BLUEFIELD3_DEVICE_ID, BLUEFIELD3_DEVICE_ID2};
   char cmd[RSHIM_CMD_MAX];
   int i, rc;
 
   /* Register all BF vendor IDs with the driver */
-  for (i = 0; i < sizeof(device_id) / sizeof(uint16_t); i++) {
+  for (i = 0; i < sizeof(bf_device_id) / sizeof(uint16_t); i++) {
     snprintf(cmd, sizeof(cmd), "echo '%x %x' > %s/new_id 2>/dev/null",
-             TILERA_VENDOR_ID, device_id[i], driver_path);
+             TILERA_VENDOR_ID, bf_device_id[i], driver_path);
     rc = system(cmd);
     if (rc == -1)
-      RSHIM_DBG("Failed to write device id %04x to %s\n", device_id[i],
-          driver_path);
+      RSHIM_DBG("Failed to write device id %04x to %s\n", bf_device_id[i], driver_path);
+  }
+}
+
+static void rshim_pcie_deregister_device_ids(const char *driver_path)
+{
+  char cmd[RSHIM_CMD_MAX];
+  int i;
+
+  snprintf(cmd, sizeof(cmd), "[ -d %s ] 2>/dev/null", driver_path);
+  if (system(cmd) != 0) {
+    RSHIM_DBG("Driver path %s does not exist, skipping deregistration\n", driver_path);
+    return;
+  }
+
+  /* Deregister each device ID - continue even if some fail (ID might not be registered) */
+  for (i = 0; i < sizeof(bf_device_id) / sizeof(uint16_t); i++) {
+    snprintf(cmd, sizeof(cmd),
+             "echo '%04x %04x' > %s/remove_id 2>/dev/null || true",
+             TILERA_VENDOR_ID, bf_device_id[i], driver_path);
+    system(cmd);
   }
 }
 
@@ -1462,7 +1482,6 @@ int rshim_pcie_init(void)
   if (rshim_pcie_has_vfio()) {
     rshim_pcie_mmap_mode = RSHIM_PCIE_MMAP_VFIO;
     rshim_sys_pci_path = SYS_VFIO_PCI_PATH;
-    rshim_pcie_register_device_ids(SYS_VFIO_PCI_PATH);
   } else {
     /* Linux kernel lock_down requires VFIO. */
     if (kernel_lock_down_enabled()) {
@@ -1473,8 +1492,20 @@ int rshim_pcie_init(void)
     if (rshim_pcie_has_uio()) {
       rshim_pcie_mmap_mode = RSHIM_PCIE_MMAP_UIO;
       rshim_sys_pci_path = SYS_UIO_PCI_PATH;
-      rshim_pcie_register_device_ids(SYS_UIO_PCI_PATH);
     }
+  }
+
+  if (rshim_sys_pci_path) {
+    if (strcmp(rshim_sys_pci_path, SYS_VFIO_PCI_PATH) == 0) {
+      rshim_pcie_deregister_device_ids(SYS_UIO_PCI_PATH);
+    } else if (strcmp(rshim_sys_pci_path, SYS_UIO_PCI_PATH) == 0) {
+      rshim_pcie_deregister_device_ids(SYS_VFIO_PCI_PATH);
+    }
+    RSHIM_INFO("Registering device IDs with driver: %s\n", rshim_sys_pci_path);
+    rshim_pcie_register_device_ids(rshim_sys_pci_path);
+  } else {
+    rshim_pcie_deregister_device_ids(SYS_VFIO_PCI_PATH);
+    rshim_pcie_deregister_device_ids(SYS_UIO_PCI_PATH);
   }
 
 #endif /* __linux__ */
@@ -1526,4 +1557,10 @@ int rshim_pcie_init(void)
     return -ENODEV;
 
   return 0;
+}
+
+void rshim_pcie_exit(void)
+{
+  rshim_pcie_deregister_device_ids(SYS_VFIO_PCI_PATH);
+  rshim_pcie_deregister_device_ids(SYS_UIO_PCI_PATH);
 }
