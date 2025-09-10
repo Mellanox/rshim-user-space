@@ -778,9 +778,17 @@ handle_opn()
 		BMC_FW_VERSION=$(cat ./usr/lib/firmware/mellanox/bmc/bf3-bmc-fw.version 2> /dev/null)
 		CEC_FW="./usr/lib/firmware/mellanox/cec/bf3-cec-fw.fwpkg"
 		CEC_FW_VERSION=$(cat ./usr/lib/firmware/mellanox/cec/bf3-cec-fw.version 2> /dev/null)
-		DPU_GI="./usr/lib/firmware/mellanox/bmc/bf3-bmc-preboot-install.bfb"
+		if [ -e ./usr/lib/firmware/mellanox/bmc/bf3-bmc-preboot-install.pldm ]; then
+			DPU_GI="./usr/lib/firmware/mellanox/bmc/bf3-bmc-preboot-install.pldm"
+		elif [ -e ./usr/lib/firmware/mellanox/bmc/bf3-bmc-preboot-install.bfb ]; then
+			DPU_GI="./usr/lib/firmware/mellanox/bmc/bf3-bmc-preboot-install.bfb"
+		fi
 		DPU_GI_VERSION=$(cat ./usr/lib/firmware/mellanox/bmc/bf3-bmc-preboot-install.version 2> /dev/null)
-		NIC_FW_GI=$(/bin/ls -1 ./usr/lib/firmware/mellanox/bmc/fw-BlueField-3-rel-*-${OPN}-*.bfb 2> /dev/null)
+		if [ -e "$(/bin/ls -1 ./usr/lib/firmware/mellanox/bmc/fw-BlueField-3-rel-*-${OPN}-*.pldm 2> /dev/null)" ]; then
+			NIC_FW_GI="$(/bin/ls -1 ./usr/lib/firmware/mellanox/bmc/fw-BlueField-3-rel-*-${OPN}-*.pldm 2> /dev/null)"
+		elif [ -e "$(/bin/ls -1 ./usr/lib/firmware/mellanox/bmc/fw-BlueField-3-rel-*-${OPN}-*.bfb 2> /dev/null)" ]; then
+			NIC_FW_GI="$(/bin/ls -1 ./usr/lib/firmware/mellanox/bmc/fw-BlueField-3-rel-*-${OPN}-*.bfb 2> /dev/null)"
+		fi
 		NIC_FW_GI_VERSION=$(echo $NIC_FW_GI | grep -oP '(?<=BlueField-3-rel-)\d+_\d+_\d+')
 	fi
 
@@ -789,12 +797,21 @@ handle_opn()
 			echo "ERROR: Profile not found: $profile"
 			exit 1
 		fi
-		PROFILE_VERSION=$(echo $profile | grep -oP '(?<=config-image-)[0-9.-]+(?=\.bfb)')
-		PROFILE=./usr/lib/firmware/mellanox/bmc/config-image.bfb
+		if [[ "$profile" =~ "pldm" ]]; then
+			PROFILE_VERSION=$(echo $profile | grep -oP '(?<=config-image-)[0-9.-]+(?=\.pldm)')
+			PROFILE="./usr/lib/firmware/mellanox/bmc/config-image.pldm"
+		elif [[ "$profile" =~ "bfb" ]]; then
+			PROFILE_VERSION=$(echo $profile | grep -oP '(?<=config-image-)[0-9.-]+(?=\.bfb)')
+			PROFILE="./usr/lib/firmware/mellanox/bmc/config-image.bfb"
+		fi
 		cp $profile $PROFILE
 	else
-		if [ -e ./usr/lib/firmware/mellanox/bmc/config-image.bfb ]; then
-			PROFILE=./usr/lib/firmware/mellanox/bmc/config-image.bfb
+		if [ -e ./usr/lib/firmware/mellanox/bmc/config-image.pldm ]; then
+			PROFILE="./usr/lib/firmware/mellanox/bmc/config-image.pldm"
+		elif [ -e ./usr/lib/firmware/mellanox/bmc/config-image.bfb ]; then
+			PROFILE="./usr/lib/firmware/mellanox/bmc/config-image.bfb"
+		fi
+		if [ -n "$PROFILE" ]; then
 			PROFILE_VERSION=$(cat ./usr/lib/firmware/mellanox/bmc/config-image.version 2> /dev/null)
 			profile="${TARGET_DIR}/${PROFILE##*/}"
 		fi
