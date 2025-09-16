@@ -1042,8 +1042,6 @@ if [ ${apply_lfwp} -eq 1 ]; then
     exit 1
   fi
 
-  echo "BOOT_RESET_SKIP 0" > ${rshim_node}/misc
-
   # Set SP2.BIT6=1 to issue PLDM ActivateFirmware command that activate new image after reboot
   sp2=`${BF_REG} $(basename ${rshim_node}) ${RSH_SCRATCHPAD2}.64 | awk '{print $3}'`
   sp2=$((sp2 | 64))
