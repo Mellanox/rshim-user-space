@@ -541,14 +541,12 @@ cleanup() {
   # Remove the temp directory.
   rm -rf $TMP_DIR
 
-  echo cleanup 1
   # prevent cleanup from being called multiple times
   if [ "$cleanup_started" -eq 1 ]; then
     exit 1
   fi
   cleanup_started=1
 
-  echo cleanup 2
   if [ "$?" -ne 0 ]; then
     echo "BlueField Update Failed"
   fi
@@ -567,11 +565,9 @@ cleanup() {
   fi
 
   if [ $deferred -eq 1 ]; then
-    echo cleanup 3
     # Reset to default state.
     echo "BOOT_RESET_SKIP 0" > ${rshim_node}/misc
 
-    echo cleanup 4
     # Cleanup SP2.BIT2.
     sp2=`${BF_REG} $(basename ${rshim_node}) ${RSH_SCRATCHPAD2}.64 | awk '{print $3}'`
     sp2=$((sp2 & ~4))
@@ -1057,8 +1053,6 @@ if [ ${apply_lfwp} -eq 1 ]; then
     ${BF_REG} $(basename ${rshim_node}) ${RSH_SWINT}.64 0x4 >/dev/null
     echo SWINT2.BIT2 ${BF_REG} $(basename ${rshim_node}) ${RSH_SWINT}.64 0x4
   fi
-  sleep 60
-  exit 0
   # Best-effort to check and apply L0 reset.
   if (mlxfwreset -d ${pcie_bd}.0 q | grep live-Patch | grep -qw "\-Supported"); then
     echo "Live Patch NIC Firmware reset is supported."
