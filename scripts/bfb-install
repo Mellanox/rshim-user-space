@@ -1,4 +1,4 @@
-
+#!/bin/bash
 # Copyright (c) 2020, NVIDIA Corporation
 # All rights reserved.
 #
@@ -224,7 +224,6 @@ push_boot_stream_via_local_rshim()
   fi
   if [ $deferred -eq 1 ]; then
     echo "BOOT_RESET_SKIP 0" > ${rshim_node}/misc
-    exit
   fi
 }
 
@@ -574,6 +573,10 @@ cleanup() {
     sp2=`${BF_REG} $(basename ${rshim_node}) ${RSH_SCRATCHPAD2}.64 | awk '{print $3}'`
     sp2=$((sp2 & ~4))
     ${BF_REG} $(basename ${rshim_node}) ${RSH_SCRATCHPAD2}.64 $sp2 >/dev/null
+    # Set SWINT2.BIT2 for DPU mode
+    if [ ${nic_mode} -eq 0 ]; then
+      ${BF_REG} $(basename ${rshim_node}) ${RSH_SWINT}.64 0x4 >/dev/null
+    fi
   fi
 
   # Disable CLEAR_ON_READ.
