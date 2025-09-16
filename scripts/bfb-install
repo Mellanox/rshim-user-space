@@ -204,7 +204,6 @@ push_boot_stream_via_local_rshim()
     # Skip reset when pushing bfb
     echo "BOOT_RESET_SKIP 1" > ${rshim_node}/misc
 
-    echo "1 deferred"
     # Clear the current boot fifo
     clear_boot_fifo
 
@@ -216,12 +215,15 @@ push_boot_stream_via_local_rshim()
     # Set SWINT2.BIT2 for DPU mode
     if [ ${nic_mode} -eq 0 ]; then
       ${BF_REG} $(basename ${rshim_node}) ${RSH_SWINT}.64 0x4 >/dev/null
-      echo ${BF_REG} $(basename ${rshim_node}) ${RSH_SWINT}.64 0x4
     fi
   fi
 
   if ! $sudo_prefix sh -c "cat ${bfb} ${cfg:+$cfg} ${rootfs:+${rootfs}} ${pv:+| ${pv} | cat -} > ${rshim_node}/boot"; then
     echo "Error: Failed to push boot stream via local rshim"
+    return
+  fi
+  if [ $deferred -eq 1 ]; then
+    echo "BOOT_RESET_SKIP 0" > ${rshim_node}/misc
     exit
   fi
 }
@@ -1042,16 +1044,13 @@ if [ ${apply_lfwp} -eq 1 ]; then
 
   echo "BOOT_RESET_SKIP 0" > ${rshim_node}/misc
 
-  echo "apply lfwp"
   # Set SP2.BIT6=1 to issue PLDM ActivateFirmware command that activate new image after reboot
   sp2=`${BF_REG} $(basename ${rshim_node}) ${RSH_SCRATCHPAD2}.64 | awk '{print $3}'`
   sp2=$((sp2 | 64))
   ${BF_REG} $(basename ${rshim_node}) ${RSH_SCRATCHPAD2}.64 $sp2 >/dev/null
-  echo RSH_SCRATCHPAD2.BIT2 Activate Runtime ${BF_REG} $(basename ${rshim_node}) ${RSH_SCRATCHPAD2}.64 $sp2 
   # Set SWINT2.BIT2 for DPU mode
   if [ ${nic_mode} -eq 0 ]; then
     ${BF_REG} $(basename ${rshim_node}) ${RSH_SWINT}.64 0x4 >/dev/null
-    echo SWINT2.BIT2 ${BF_REG} $(basename ${rshim_node}) ${RSH_SWINT}.64 0x4
   fi
   # Best-effort to check and apply L0 reset.
   if (mlxfwreset -d ${pcie_bd}.0 q | grep live-Patch | grep -qw "\-Supported"); then
