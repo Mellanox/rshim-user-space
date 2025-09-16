@@ -1,5 +1,4 @@
 #!/bin/bash
-
 # Copyright (c) 2020, NVIDIA Corporation
 # All rights reserved.
 #
@@ -48,18 +47,18 @@ usage ()
 {
   echo "Usage: $0 [options]"
   echo "Options:"
-  echo "  -a, --activate <0|1>           Activate the upgrade."
+  echo "  -a, --apply-lfwp <0|1>         Apply the upgrade. Default is 0: not to apply."
   echo "  -b, --bfb <bfb_file>           BFB image file to use."
   echo "  -c, --config <config_file>     Optional configuration file."
+  echo "  -d, --deferred                 Deferred activation (local rshim only: formerly runtime)."
   echo "  -f, --rootfs <rootfs_file>     Optional rootfs file."
   echo "  -h, --help                     Show help message."
   echo "  -k, --keep-log                 Do not clear the log after reading during bfb install."
-  echo "  -l, --lfwp                     Enable LFWP upgrade."
   echo "  -m, --remote-mode <mode>       Remote mode to use (scp, nc, ncpipe)."
-  echo "  -p, --pldm <pldm_file>         PLDM image for runtime upgrade."
+  echo "  -p, --pldm <pldm_file>         PLDM image for deferred upgrade."
   echo "  -r, --rshim <device>           Rshim device, format [<ip>:<port>:]rshim<N>."
   echo "  -R, --reverse-nc               Reverse netcat mode."
-  echo "  -u, --runtime                  Runtime upgrade (local rshim only)."
+  echo "  -u, --runtime                  Runtime upgrade (local rshim only: same as deferred)."
   echo "  -v, --verbose                  Enable verbose output."
 }
 
@@ -201,7 +200,7 @@ push_boot_stream_via_local_rshim()
   # Push the boot stream to local rshim
   echo "Pushing bfb${cfg:+ + cfg}${rootfs:+ + rootfs}"
 
-  if [ $runtime -eq 1 ]; then
+  if [ $deferred -eq 1 ]; then
     # Skip reset when pushing bfb
     echo "BOOT_RESET_SKIP 1" > ${rshim_node}/misc
 
@@ -223,9 +222,7 @@ push_boot_stream_via_local_rshim()
     echo "Error: Failed to push boot stream via local rshim"
     return
   fi
-
-
-  if [ $runtime -eq 1 ]; then
+  if [ $deferred -eq 1 ]; then
     echo "BOOT_RESET_SKIP 0" > ${rshim_node}/misc
   fi
 }
@@ -444,7 +441,7 @@ wait_for_update_to_finish()
 
   filter0="Rebooting\.\.\.|finished|DPU is ready|Linux up|CRITICAL ERROR"
 
-  if [ $runtime -eq 0 ]; then
+  if [ $deferred -eq 0 ]; then
     filter0="$filter0|In Enhanced NIC mode"
     if [ $nic_mode -eq 1 ]; then
       filter="In Enhanced NIC mode"
@@ -568,7 +565,7 @@ cleanup() {
     fi
   fi
 
-  if [ $runtime -eq 1 ]; then
+  if [ $deferred -eq 1 ]; then
     # Reset to default state.
     echo "BOOT_RESET_SKIP 0" > ${rshim_node}/misc
 
@@ -576,7 +573,6 @@ cleanup() {
     sp2=`${BF_REG} $(basename ${rshim_node}) ${RSH_SCRATCHPAD2}.64 | awk '{print $3}'`
     sp2=$((sp2 & ~4))
     ${BF_REG} $(basename ${rshim_node}) ${RSH_SCRATCHPAD2}.64 $sp2 >/dev/null
-
     # Set SWINT2.BIT2 for DPU mode
     if [ ${nic_mode} -eq 0 ]; then
       ${BF_REG} $(basename ${rshim_node}) ${RSH_SWINT}.64 0x4 >/dev/null
@@ -592,7 +588,7 @@ cleanup() {
   fi
 
   # Restore the original binding states for PF0 and PF1
-  if [ $nic_mode -eq 1 -a -n "${pcie_bd}" -a ${runtime} -eq 0 ]; then
+  if [ $nic_mode -eq 1 -a -n "${pcie_bd}" -a ${deferred} -eq 0 ]; then
     for i in 0 1; do
       if eval "[ \${pf${i}_bound} -eq 0 ]"; then
         [ $verbose -eq 1 ] && echo "Re-binding: skipping originally unbound pf${i} (${pcie_bd}.${i})"
@@ -618,7 +614,7 @@ rootfs=
 mode=local        # Values can be local or remote
 remote_mode=      # Values can be scp, nc, or ncpipe
 rshim=            # rshim device string, format [<ip>:<port>:]rshim<N>
-runtime=0         # Values can be 0 or 1.
+deferred=0        # Values can be 0 or 1.
 verbose=0         # Values can be 0 or 1.
 reverse_nc=0      # Values can be 0 or 1.
 clear_on_read=1   # Values can be 0 or 1.
@@ -626,8 +622,7 @@ num_bfb=0
 num_rshim=0
 max_bfb=1
 max_rshim=1
-lfwp=0
-activate=
+apply_lfwp=0      # Values can be 0 or 1.
 
 rshim_node=       # rshim device identifier, e.g. rshim0
 ip=               # IP address for remote host
@@ -641,25 +636,25 @@ pcie_bd=""        # PCIE Bus-Device
 pf0_bound=0       # PF0 is bound prior to the script run
 pf1_bound=0       # PF1 is bound prior to the script run
 
-options=`getopt -n bfb-install -o a:b:c:f:hklm:p:r:Ruv \
-        -l activate:,bfb:,config:,rootfs:,help,keep-log,lfwp,remote-mode:,reverse-nc,rshim:,pldm:,runtime,verbose \
+options=`getopt -n bfb-install -o a:b:c:f:dhkm:p:r:Ruv \
+        -l apply-lfwp:,bfb:,config:,rootfs:,deferred,help,keep-log,remote-mode:,reverse-nc,rshim:,pldm:,runtime,verbose \
         -- "$@"`
 if [ $? != 0 ]; then echo "Command line error" >&2; exit 1; fi
 eval set -- $options
 while [ "$1" != -- ]; do
   case $1 in
-    --activate|-a) shift; activate=$1 ;;
+    --apply-lfwp|-a) shift; apply_lfwp=$1 ;;
     --bfb|-b) shift; bfb=$(readlink -f $1) num_bfb=$((num_bfb + 1));;
     --config|-c) shift; cfg=$1 ;;
+    --deferred|-d) deferred=1 ;;
     --rootfs|-f) shift; rootfs=$1 ;;
     --help|-h) usage; exit 0 ;;
     --keep-log|-k) clear_on_read=0 ;;
-    --lfwp|-l) lfwp=1; runtime=1 ;;
     --pldm|-p) shift; pldm=$(readlink -f $1) ;;
     --remote-mode|-m) shift; remote_mode=$1 ;;
     --rshim|-r) shift; rshim=$1 num_rshim=$((num_rshim + 1));;
     --reverse-nc|-R) reverse_nc=1 ;;
-    --runtime|-u) runtime=1 ;;
+    --runtime|-u) deferred=1 ;;
     --verbose|-v) verbose=1 ;;
     --) shift; break;;
     *) echo "Error: Invalid argument: $1" >&2; usage >&2; exit 1 ;;
@@ -669,10 +664,7 @@ done
 
 # Parameter checks
 
-# Default activate to the lfwp value.
-activate=${activate:-$lfwp}
-
-if [ -z "${bfb}" -a -z "${pldm}" -a ${activate} -eq 0 ]; then
+if [ -z "${bfb}" -a -z "${pldm}" -a ${apply_lfwp} -eq 0 ]; then
   echo "Error: Need to provide either bfb or pldm file."
   usage >&2
   exit 1
@@ -752,8 +744,8 @@ if [ $mode == "local" ] && [ -n "$remote_mode" ]; then
 fi
 
 if [ $mode == "remote" ] ; then
-  if [ $runtime -eq 1 ]; then
-    echo "Error: runtime upgrade is only supported for local rshim."
+  if [ $deferred -eq 1 ]; then
+    echo "Error: deferred upgrade is only supported for local rshim."
     exit 1
   fi
 
@@ -845,8 +837,8 @@ if [ -n "${pldm}" ]; then
     exit 1
   fi
 
-  # PLDM automatically indicate runtime.
-  runtime=1
+  # PLDM automatically indicate deferred upgrade.
+  deferred=1
 
   pldm_nicfw=""
   pldm_bfb=""
@@ -885,12 +877,12 @@ if [ -n "${pldm}" ]; then
 
   pldm=""
   bfb="${TMP_DIR}/pldm/pldm.bfb"
-elif [ ${runtime} -eq 1 -a -e "${bfb}" ]; then
+elif [ ${deferred} -eq 1 -a -e "${bfb}" ]; then
   # Convert bundle BFB to flat BFB if needed.
   # This conversion is only supported on PCIe host.
   is_bundle=$(mlx-mkbfb -d "${bfb}" | grep "In-memory filesystem")
   if [ -n "${is_bundle}" -a -n "$pcie_bd" ]; then
-    echo "Convert $(basename "${bfb}") to flat format for runtime upgrade"
+    echo "Convert $(basename "${bfb}") to flat format for deferred upgrade"
     if ! which flint &> /dev/null; then
       echo "Error: flint not found."
       exit 1
@@ -926,7 +918,7 @@ elif [ ${runtime} -eq 1 -a -e "${bfb}" ]; then
 fi
 
 # Check again if bfb file exists (if not activate-only).
-if [ ! -e "${bfb}" -a ${activate} -eq 0 ]; then
+if [ ! -e "${bfb}" -a ${apply_lfwp} -eq 0 ]; then
   echo "Error: ${bfb} not found."
   exit 1
 fi
@@ -1007,7 +999,7 @@ if [ -z "${pv}" ]; then
   echo "Warn: 'pv' command not found. Continue without showing BFB progress."
 fi
 
-if [ ${nic_mode} -eq 1 -a -n "${pcie_bd}" -a ${runtime} -eq 0 ]; then
+if [ ${nic_mode} -eq 1 -a -n "${pcie_bd}" -a ${deferred} -eq 0 ]; then
   # Set BREADCRUMB.BIT32 to indicate NIC mode.
   breadcrumb1=$(${BF_REG} $(basename ${rshim_node}) ${RSH_BREADCRUMB1}.64 | awk '{print $3}')
   breadcrumb1=$((breadcrumb1 | (0x1 << 32)))
@@ -1025,10 +1017,10 @@ if [ ${nic_mode} -eq 1 -a -n "${pcie_bd}" -a ${runtime} -eq 0 ]; then
   done
 fi
 
-# Reactivate NIC_FW if runtime but not LFWP.
-if [ ${lfwp} -eq 0 -a -n "${pcie_bd}" -a ${runtime} -eq 1 ]; then
+# Reactivate NIC_FW if deferred.
+if [ -n "${pcie_bd}" -a ${deferred} -eq 1 ]; then
   if which flint &> /dev/null; then
-    # Suppress errors if already activated.
+    # Suppress errors if already applied.
     flint -d ${pcie_bd}.0 ir >&/dev/null
   else
     echo "Flint not found. Skip NIC_FW reactivation."
@@ -1042,7 +1034,7 @@ if [ -e "${bfb}" ]; then
 fi
 
 # LFWP activation on PCIe host.
-if [ ${lfwp} -eq 1 -a ${activate} -eq 1 ]; then
+if [ ${apply_lfwp} -eq 1 ]; then
   if [ -z "${pcie_bd}" ]; then
     echo "ERROR: Failed to activate LFWP, PCIe device not found."
     exit 1
@@ -1053,6 +1045,14 @@ if [ ${lfwp} -eq 1 -a ${activate} -eq 1 ]; then
     exit 1
   fi
 
+  # Set SP2.BIT6=1 to issue PLDM ActivateFirmware command that activate new image after reboot
+  sp2=`${BF_REG} $(basename ${rshim_node}) ${RSH_SCRATCHPAD2}.64 | awk '{print $3}'`
+  sp2=$((sp2 | 64))
+  ${BF_REG} $(basename ${rshim_node}) ${RSH_SCRATCHPAD2}.64 $sp2 >/dev/null
+  # Set SWINT2.BIT2 for DPU mode
+  if [ ${nic_mode} -eq 0 ]; then
+    ${BF_REG} $(basename ${rshim_node}) ${RSH_SWINT}.64 0x4 >/dev/null
+  fi
   # Best-effort to check and apply L0 reset.
   if (mlxfwreset -d ${pcie_bd}.0 q | grep live-Patch | grep -qw "\-Supported"); then
     echo "Live Patch NIC Firmware reset is supported."
