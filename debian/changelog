@@ -1,3 +1,11 @@
+rshim (2.5.2) UNRELEASED; urgency=low
+
+  * No service interrupt for DPU-BMC flow
+  * Support Golden Images in PLDM format
+  * Deregister driver when not in use
+
+ -- Penghe Geng <pgeng@nvidia.com>  Wed, 24 Sep 2025 14:13:11 -0400
+
 rshim (2.5.1) UNRELEASED; urgency=low
 
   * Improve GitHub CI robustness for ARM builds
