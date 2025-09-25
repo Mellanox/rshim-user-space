@@ -580,11 +580,13 @@ cleanup() {
   fi
 
   # Disable CLEAR_ON_READ.
-  if [ $mode == "local" ] && [ $run_cmd_local_ready -eq 1 ]; then
-    run_cmd_exit local "echo 'CLEAR_ON_READ 0' > ${rshim_node}/misc"
-  fi
-  if [ $mode == "remote" ] && [ $run_cmd_remote_ready -eq 1 ]; then
-    run_cmd_exit remote "echo 'CLEAR_ON_READ 0' > ${rshim_node}/misc"
+  if [ $rshim_device_exist -eq 1 ]; then
+    if [ $mode == "local" ] && [ $run_cmd_local_ready -eq 1 ]; then
+      run_cmd_exit local "echo 'CLEAR_ON_READ 0' > ${rshim_node}/misc"
+    fi
+    if [ $mode == "remote" ] && [ $run_cmd_remote_ready -eq 1 ]; then
+      run_cmd_exit remote "echo 'CLEAR_ON_READ 0' > ${rshim_node}/misc"
+    fi
   fi
 
   # Restore the original binding states for PF0 and PF1
@@ -635,6 +637,7 @@ nic_mode=0     # Flag to indicate whether DPU in NIC mod or not
 pcie_bd=""        # PCIE Bus-Device
 pf0_bound=0       # PF0 is bound prior to the script run
 pf1_bound=0       # PF1 is bound prior to the script run
+rshim_device_exist=0 # Rshim is exist
 
 options=`getopt -n bfb-install -o a:b:c:f:dhkm:p:r:Ruv \
         -l apply-lfwp:,bfb:,config:,rootfs:,deferred,help,keep-log,remote-mode:,reverse-nc,rshim:,pldm:,runtime,verbose \
@@ -814,11 +817,6 @@ run_cmd_local_ready=1
 
 # Setup checks
 
-# Check BF chip version and adjust register offsets.
-apply_chip_settings
-
-# Check NIC mode and unbind mlx5_core driver in NIC mode.
-check_nic_mode
 
 # Check PLDM and convert it into BFB.
 if [ -n "${pldm}" ]; then
@@ -944,6 +942,7 @@ if [ $mode == "local" ]; then
   echo "Checking if rshim driver is running locally..."
   run_cmd_exit local "$rshim_check_cmd" \
     "Error: rshim driver not found at $rshim"
+  rshim_device_exist=1
 fi
 
 if [ $mode == "remote" ]; then
@@ -966,6 +965,7 @@ if [ $mode == "remote" ]; then
   echo "Checking if rshim driver is running remotely..."
   run_cmd_exit remote "$rshim_check_cmd" \
     "Error: remote rshim driver not found"
+  rshim_device_exist=1
 
   echo "Lowering the priority of the remote rshim process..."
   run_cmd_exit remote "renice -n 19 -p \$(pgrep rshim)"  \
@@ -998,6 +998,12 @@ pv=$(which pv 2>/dev/null)
 if [ -z "${pv}" ]; then
   echo "Warn: 'pv' command not found. Continue without showing BFB progress."
 fi
+
+# Check BF chip version and adjust register offsets.
+apply_chip_settings
+
+# Check NIC mode and unbind mlx5_core driver in NIC mode.
+check_nic_mode
 
 if [ ${nic_mode} -eq 1 -a -n "${pcie_bd}" -a ${deferred} -eq 0 ]; then
   # Set BREADCRUMB.BIT32 to indicate NIC mode.
