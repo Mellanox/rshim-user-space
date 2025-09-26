@@ -580,11 +580,13 @@ cleanup() {
   fi
 
   # Disable CLEAR_ON_READ.
-  if [ $mode == "local" ] && [ $run_cmd_local_ready -eq 1 ]; then
-    run_cmd_exit local "echo 'CLEAR_ON_READ 0' > ${rshim_node}/misc"
-  fi
-  if [ $mode == "remote" ] && [ $run_cmd_remote_ready -eq 1 ]; then
-    run_cmd_exit remote "echo 'CLEAR_ON_READ 0' > ${rshim_node}/misc"
+  if [ $rshim_device_exist -eq 1 ]; then
+    if [ $mode == "local" ] && [ $run_cmd_local_ready -eq 1 ]; then
+      run_cmd_exit local "echo 'CLEAR_ON_READ 0' > ${rshim_node}/misc"
+    fi
+    if [ $mode == "remote" ] && [ $run_cmd_remote_ready -eq 1 ]; then
+      run_cmd_exit remote "echo 'CLEAR_ON_READ 0' > ${rshim_node}/misc"
+    fi
   fi
 
   # Restore the original binding states for PF0 and PF1
@@ -635,6 +637,7 @@ nic_mode=0     # Flag to indicate whether DPU in NIC mod or not
 pcie_bd=""        # PCIE Bus-Device
 pf0_bound=0       # PF0 is bound prior to the script run
 pf1_bound=0       # PF1 is bound prior to the script run
+rshim_device_exist=0 #rshim is exist
 
 options=`getopt -n bfb-install -o a:b:c:f:dhkm:p:r:Ruv \
         -l apply-lfwp:,bfb:,config:,rootfs:,deferred,help,keep-log,remote-mode:,reverse-nc,rshim:,pldm:,runtime,verbose \
@@ -814,6 +817,66 @@ run_cmd_local_ready=1
 
 # Setup checks
 
+# Check if rshim_node exist
+rshim_check_cmd="[ -e ${rshim_node}/boot ]"
+
+if [ $mode == "local" ]; then
+  run_cmd_exit local "$check_root_cmd" \
+    "Error: current login does not have sudo"
+
+  echo "Checking if rshim driver is running locally..."
+  run_cmd_exit local "$rshim_check_cmd" \
+    "Error: rshim driver not found at $rshim"
+fi
+
+
+if [ $mode == "remote" ]; then
+  echo "Checking if remote host is reachable..."
+  ping_cmd="ping -c 1 $ip >/dev/null 2>&1"
+  run_cmd_exit local "$ping_cmd"
+
+  echo "Checking if Remote has SSH server running..."
+  run_cmd_exit local "nc -z $ip 22" \
+    "Error: Remote does not have SSH server running"
+
+  echo "Checking if Remote has password-less root SSH access..."
+  if ! ssh -o BatchMode=yes -o ConnectTimeout=5 root@$ip "exit"; then
+    echo "Error: Remote does not have password-less (public key authentication) root SSH access"
+    exit 1
+  fi
+
+  run_cmd_remote_ready=1
+
+  echo "Checking if rshim driver is running remotely..."
+  run_cmd_exit remote "$rshim_check_cmd" \
+    "Error: remote rshim driver not found"
+
+  echo "Lowering the priority of the remote rshim process..."
+  run_cmd_exit remote "renice -n 19 -p \$(pgrep rshim)"  \
+    "Error: Failed to lower the priority of the remote rshim process"
+
+  if [ $remote_mode == "nc" ] || [ $remote_mode == "ncpipe" ]; then
+    echo "Checking if local netcat is installed..."
+    run_cmd_exit local "command -v nc > /dev/null" \
+      "Error in $mode mode: Netcat is not installed locally"
+
+    echo "Checking if remote netcat is installed..."
+    run_cmd_exit remote "command -v nc > /dev/null" \
+      "Error in $mode mode: Netcat is not installed remotely"
+
+    # Try to test-connect the netcat port to see if it's available
+    if [ $reverse_nc -eq 1 ]; then
+      echo "Checking if remote netcat port $port is available..."
+      run_cmd_exit remote "! nc -z $ip $port" \
+        "Error: remote netcat port $port is not available"
+    else
+      echo "Checking if local netcat port $port is available..."
+      run_cmd_exit local "! nc -z localhost $port" \
+        "Error: local netcat port $port is not available"
+    fi
+  fi
+fi
+
 # Check BF chip version and adjust register offsets.
 apply_chip_settings
 
@@ -933,64 +996,6 @@ fi
 if [ -n "${cfg}" ] && [ ! -e "${cfg}" ]; then
   echo "Error: ${cfg} not found."
   exit 1
-fi
-
-rshim_check_cmd="[ -e ${rshim_node}/boot ]"
-
-if [ $mode == "local" ]; then
-  run_cmd_exit local "$check_root_cmd" \
-    "Error: current login does not have sudo"
-
-  echo "Checking if rshim driver is running locally..."
-  run_cmd_exit local "$rshim_check_cmd" \
-    "Error: rshim driver not found at $rshim"
-fi
-
-if [ $mode == "remote" ]; then
-  echo "Checking if remote host is reachable..."
-  ping_cmd="ping -c 1 $ip >/dev/null 2>&1"
-  run_cmd_exit local "$ping_cmd"
-
-  echo "Checking if Remote has SSH server running..."
-  run_cmd_exit local "nc -z $ip 22" \
-    "Error: Remote does not have SSH server running"
-
-  echo "Checking if Remote has password-less root SSH access..."
-  if ! ssh -o BatchMode=yes -o ConnectTimeout=5 root@$ip "exit"; then
-    echo "Error: Remote does not have password-less (public key authentication) root SSH access"
-    exit 1
-  fi
-
-  run_cmd_remote_ready=1
-
-  echo "Checking if rshim driver is running remotely..."
-  run_cmd_exit remote "$rshim_check_cmd" \
-    "Error: remote rshim driver not found"
-
-  echo "Lowering the priority of the remote rshim process..."
-  run_cmd_exit remote "renice -n 19 -p \$(pgrep rshim)"  \
-    "Error: Failed to lower the priority of the remote rshim process"
-
-  if [ $remote_mode == "nc" ] || [ $remote_mode == "ncpipe" ]; then
-    echo "Checking if local netcat is installed..."
-    run_cmd_exit local "command -v nc > /dev/null" \
-      "Error in $mode mode: Netcat is not installed locally"
-
-    echo "Checking if remote netcat is installed..."
-    run_cmd_exit remote "command -v nc > /dev/null" \
-      "Error in $mode mode: Netcat is not installed remotely"
-
-    # Try to test-connect the netcat port to see if it's available
-    if [ $reverse_nc -eq 1 ]; then
-      echo "Checking if remote netcat port $port is available..."
-      run_cmd_exit remote "! nc -z $ip $port" \
-        "Error: remote netcat port $port is not available"
-    else
-      echo "Checking if local netcat port $port is available..."
-      run_cmd_exit local "! nc -z localhost $port" \
-        "Error: local netcat port $port is not available"
-    fi
-  fi
 fi
 
 # Check the pv tool.
