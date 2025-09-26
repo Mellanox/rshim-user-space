@@ -676,6 +676,12 @@ if [ -n "${bfb}" -a -n "${pldm}" ]; then
   exit 1
 fi
 
+# Check if bfb file exists.
+if [ -n "${bfb}" -a ! -e "${bfb}" ]; then
+  echo "Error: ${bfb} not found."
+  exit 1
+fi
+
 # Check if bfb and rshim are set and non-empty
 if [ -z "${rshim}" ]; then
   echo "Error: Need to provide rshim device name."
