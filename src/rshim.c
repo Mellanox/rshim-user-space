@@ -3059,9 +3059,12 @@ static void rshim_main(int argc, char *argv[])
     }
   }
 
-  if (!strcmp(rshim_backend_name, "pcie-lf") ||
-      !strcmp(rshim_backend_name, "pcie")) {
-    rshim_pcie_exit();
+  for (i = 0; i < RSHIM_MAX_DEV; i++) {
+    bd = rshim_devs[i];
+    if (bd && bd->type == RSH_BACKEND_PCIE) {
+      rshim_pcie_exit();
+      break;
+    }
   }
 
   rshim_stop();
