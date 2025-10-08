@@ -165,6 +165,10 @@ fi
 %{_datadir}/selinux/packages/rshim-fix.te
 
 %changelog
+* Wed Oct 08 2025 Penghe Geng <pgeng@nvidia.com> - 2.5.3
+- Fix SIGTERM segfault when rshim exits
+- bfb-install: add check for bfb file presence
+
 * Wed Sep 24 2025 Penghe Geng <pgeng@nvidia.com> - 2.5.2
 - No service interrupt for DPU-BMC flow
 - Support Golden Images in PLDM format

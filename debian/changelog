@@ -1,3 +1,10 @@
+rshim (2.5.3) UNRELEASED; urgency=low
+
+  * Fix SIGTERM segfault when rshim exits
+  * bfb-install: add check for bfb file presence
+
+ -- Penghe Geng <pgeng@nvidia.com> Wed, 08 Oct 2025 13:58:01 -0400
+
 rshim (2.5.2) UNRELEASED; urgency=low
 
   * No service interrupt for DPU-BMC flow
