@@ -14,6 +14,15 @@ Source0: https://github.com/mellanox/rshim-user-space/archive/%{name}-%{version}
 
 BuildRequires: gcc, autoconf, automake, pkgconfig, make
 BuildRequires: pkgconfig(libpci), pkgconfig(libusb-1.0)
+BuildRequires: fuse-devel
+BuildRequires: pciutils-devel
+
+%if 0%{?suse_version}
+# SLES-specific package names
+BuildRequires: libusb-1_0-devel
+%else
+BuildRequires: libusbx-devel
+%endif
 
 %if (0%{?oraclelinux} >= 9)
 %define is_uek64k 0
