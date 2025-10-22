@@ -1,3 +1,11 @@
+rshim (2.5.4) UNRELEASED; urgency=low
+
+  * Some enhancement for the command mode
+  * Update rshim.spec.in to include additional build requirements
+  * bfb-install: Fix no proper output for missing rshim device
+
+ -- Liming Sun <limings@nvidia.com>  Wed, 22 Oct 2025 19:41:20 -0400
+
 rshim (2.5.3) UNRELEASED; urgency=low
 
   * Fix SIGTERM segfault when rshim exits
