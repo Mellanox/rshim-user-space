@@ -12,6 +12,8 @@
 
 #include "rshim.h"
 
+#define RSHIM_BFDUMP_TIMEOUT 10
+
 int rshim_cmd_fd = -1;
 rshim_backend_t *rshim_cmd_bd = NULL;
 
@@ -191,7 +193,7 @@ static int bfdump_poll(rsh_scratchpad3_t *sp)
       break;
 
     time(&t1);
-    if (difftime(t1, t0) > 2)
+    if (difftime(t1, t0) > RSHIM_BFDUMP_TIMEOUT)
       return -ETIMEDOUT;
 
     usleep(1000);
@@ -352,6 +354,34 @@ static void set_signals(void)
   sigaction(SIGPIPE, &sa, NULL);
 }
 
+static int dump_config(char *name)
+{
+  if (!name) {
+    printf("Invalid command\n");
+    return -EINVAL;
+  }
+
+  if (!strcmp(name, "USB_TIMEOUT")) {
+    printf("%d\n", rshim_usb_timeout);
+  } else if (!strcmp(name, "BOOT_TIMEOUT")) {
+    printf("%d\n", rshim_boot_timeout);
+  } else if (!strcmp(name, "PCIE_RESET_DELAY")) {
+    printf("%d\n", rshim_pcie_reset_delay);
+  } else if (!strcmp(name, "USB_RESET_DELAY")) {
+    printf("%d\n", rshim_usb_reset_delay);
+  } else if (!strcmp(name, "all")) {
+    printf("BOOT_TIMEOUT      %d\n", rshim_boot_timeout);
+    printf("PCIE_RESET_DELAY  %d\n", rshim_pcie_reset_delay);
+    printf("USB_RESET_DELAY   %d\n", rshim_usb_reset_delay);
+    printf("USB_TIMEOUT       %d\n", rshim_usb_timeout);
+  } else {
+    printf("Invalid command\n");
+    return -EINVAL;
+  }
+
+  return 0;
+}
+
 static void print_help(void)
 {
   printf("Usage: rshim [options]\n");
@@ -361,6 +391,7 @@ static void print_help(void)
   printf("    -g, --get-debug         get debug code\n");
   printf("    -m, --bfdump            debug dump\n");
   printf("    -r, --reg <addr.[32|64] [value]> read/write register\n");
+  printf("    -p, --get-config <NAME | all> get config value\n");
   printf("    -s, --set-debug <0 | 1> set debug code\n");
   printf("  -h, --help                show help info\n");
   printf("  -i, --index               use device path /dev/rshim<i>/\n");
@@ -368,7 +399,7 @@ static void print_help(void)
 
 int rshim_cmdmode_run(int argc, char *argv[])
 {
-  static const char short_options[] = "cghimr:s:";
+  static const char short_options[] = "cghimp:r:s:";
   static struct option long_options[] = {
     { "get-debug", no_argument, NULL, 'g' },
     { "help", no_argument, NULL, 'h' },
@@ -376,6 +407,7 @@ int rshim_cmdmode_run(int argc, char *argv[])
     { "bfdump", no_argument, NULL, 'm' },
     { "reg", required_argument, NULL, 'r' },
     { "set-debug", required_argument, NULL, 's' },
+    { "get-config", required_argument, NULL, 'p' },
     { NULL, 0, NULL, 0 }
   };
   uint64_t addr = 0, value = 0;
@@ -414,6 +446,10 @@ int rshim_cmdmode_run(int argc, char *argv[])
 
     case 'm':
         rc = bfdump();
+        break;
+
+    case 'p':
+        rc = dump_config(optarg);
         break;
 
     case 'r':

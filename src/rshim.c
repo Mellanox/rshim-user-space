@@ -224,7 +224,7 @@ char *rshim_static_dev_name;
 /* Default configuration file. */
 const char *rshim_cfg_file = DEFAULT_RSHIM_CONFIG_FILE;
 static int rshim_display_level;
-static int rshim_boot_timeout = 300;
+int rshim_boot_timeout = 300;
 int rshim_drop_mode = -1;
 int rshim_usb_reset_delay = 1;
 bool rshim_has_usb_reset_delay;
@@ -3446,6 +3446,9 @@ int main(int argc, char *argv[])
     }
   }
 
+  /* Load configuration. */
+  rshim_load_cfg();
+
   /* Handle command mode separately. */
   if (rshim_cmdmode) {
     return rshim_cmdmode_run(argc, argv);
@@ -3490,8 +3493,6 @@ int main(int argc, char *argv[])
       exit(EXIT_FAILURE);
     }
   }
-
-  rshim_load_cfg();
 
   /* In force mode, we will send a one-time ownership request command for each
    * rshim backend if they are found to be detached (aka. in drop mode) */
