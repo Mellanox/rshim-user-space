@@ -1,3 +1,9 @@
+rshim (2.5.5) UNRELEASED; urgency=low
+
+  * Add systemd-dev build dependency for Debian
+
+ -- Penghe Geng <pgeng@nvidia.com>  Thu, 23 Oct 2025 11:28:37 -0400
+
 rshim (2.5.4) UNRELEASED; urgency=low
 
   * Some enhancement for the command mode
@@ -11,7 +17,7 @@ rshim (2.5.3) UNRELEASED; urgency=low
   * Fix SIGTERM segfault when rshim exits
   * bfb-install: add check for bfb file presence
 
- -- Penghe Geng <pgeng@nvidia.com> Wed, 08 Oct 2025 13:58:01 -0400
+ -- Penghe Geng <pgeng@nvidia.com>  Wed, 08 Oct 2025 13:58:01 -0400
 
 rshim (2.5.2) UNRELEASED; urgency=low
 
