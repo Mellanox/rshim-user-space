@@ -220,7 +220,7 @@ char *rshim_static_dev_name;
 /* Default configuration file. */
 const char *rshim_cfg_file = DEFAULT_RSHIM_CONFIG_FILE;
 static int rshim_display_level;
-static int rshim_boot_timeout = 300;
+int rshim_boot_timeout = 300;
 int rshim_drop_mode = -1;
 int rshim_usb_reset_delay = 1;
 bool rshim_has_usb_reset_delay;
@@ -3303,6 +3303,7 @@ static void print_help(void)
   printf("  -b, --backend             backend name (usb, pcie or pcie-lf)\n");
   printf("  -c, --cmdmode             run in command line mode\n");
   printf("    -g, --get-debug         get debug mode\n");
+  printf("    -p, --get-config <NAME | all> get config value\n");
   printf("    -s, --set-debug <0 | 1> set debug mode\n");
   printf("  -d, --device              device to attach\n");
   printf("  -f, --foreground          run in foreground\n");
@@ -3316,7 +3317,7 @@ static void print_help(void)
 
 int main(int argc, char *argv[])
 {
-  static const char short_options[] = "b:cd:fgFhi:l:nsv";
+  static const char short_options[] = "b:cd:fgFhi:l:np:sv";
   static struct option long_options[] = {
     { "backend", required_argument, NULL, 'b' },
     { "cmdmode", no_argument, NULL, 'c' },
@@ -3324,6 +3325,7 @@ int main(int argc, char *argv[])
     { "foreground", no_argument, NULL, 'f' },
     { "force", no_argument, NULL, 'F' },
     { "get-debug", no_argument, NULL, 'g' },
+    { "get-config", required_argument, NULL, 'p' },
     { "help", no_argument, NULL, 'h' },
     { "index", required_argument, NULL, 'i' },
     { "log-level", required_argument, NULL, 'l' },
