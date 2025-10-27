@@ -41,6 +41,7 @@ extern int rshim_log_level;
 extern bool rshim_daemon_mode;
 extern int rshim_drop_mode;
 extern bool rshim_force_mode;
+extern int rshim_boot_timeout;
 extern int rshim_usb_timeout;
 extern int rshim_usb_reset_delay;
 extern bool rshim_has_usb_reset_delay;

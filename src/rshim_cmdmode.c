@@ -42,11 +42,40 @@ static int rshim_getset_debug(rshim_backend_t *bd, bool get, uint32_t *setting)
   return 0;
 }
 
+static int dump_config(char *name)
+{
+  if (!name) {
+    printf("Invalid command\n");
+    return -EINVAL;
+  }
+
+  if (!strcmp(name, "USB_TIMEOUT")) {
+    printf("%d\n", rshim_usb_timeout);
+  } else if (!strcmp(name, "BOOT_TIMEOUT")) {
+    printf("%d\n", rshim_boot_timeout);
+  } else if (!strcmp(name, "PCIE_RESET_DELAY")) {
+    printf("%d\n", rshim_pcie_reset_delay);
+  } else if (!strcmp(name, "USB_RESET_DELAY")) {
+    printf("%d\n", rshim_usb_reset_delay);
+  } else if (!strcmp(name, "all")) {
+    printf("BOOT_TIMEOUT      %d\n", rshim_boot_timeout);
+    printf("PCIE_RESET_DELAY  %d\n", rshim_pcie_reset_delay);
+    printf("USB_RESET_DELAY   %d\n", rshim_usb_reset_delay);
+    printf("USB_TIMEOUT       %d\n", rshim_usb_timeout);
+  } else {
+    printf("Invalid command\n");
+    return -EINVAL;
+  }
+
+  return 0;
+}
+
 int rshim_cmdmode_run(int argc, char *argv[])
 {
-  static const char short_options[] = "cgs:";
+  static const char short_options[] = "cgp:s:";
   static struct option long_options[] = {
     { "get-debug", no_argument, NULL, 'g' },
+    { "get-config", required_argument, NULL, 'p' },
     { "set-debug", required_argument, NULL, 's' },
     { NULL, 0, NULL, 0 }
   };
@@ -80,6 +109,10 @@ int rshim_cmdmode_run(int argc, char *argv[])
         goto done;
       }
       printf("0x%x\n", setting);
+      break;
+
+    case 'p':
+      rc = dump_config(optarg);
       break;
 
     case 's':
