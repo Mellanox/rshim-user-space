@@ -202,7 +202,7 @@ clear_sp2_267_swint2_2()
 
   # reset SWINT2.BIT2 for DPU mode
   sw2=`${BF_REG} $(basename ${rshim_node}) ${RSH_SWINT2}.64 | awk '{print $3}'`
-  if [ ${nic_mode} -eq 0 & $sw2 -ne 0 ] ; then
+  if [ ${nic_mode} -eq 0 ] && [ $sw2 -ne 0 ] ; then
     ${BF_REG} $(basename ${rshim_node}) ${RSH_SWINT2}.64 0x0 >/dev/null
   fi
   sleep 1
@@ -915,7 +915,9 @@ elif [ ${deferred} -eq 1 -a -e "${bfb}" ]; then
       echo "Error: flint not found."
       exit 1
     fi
+    echo "pcie_bd: $pcie_bd"
     psid=$(flint -d "$pcie_bd".0 q | grep PSID | awk '{print $2}')
+    echo "psi: $psid"
     if [ -z "${psid}" ]; then
       echo "Error: failed to get PSID."
       exit 1
@@ -925,6 +927,7 @@ elif [ ${deferred} -eq 1 -a -e "${bfb}" ]; then
       --output-dir ${TMP_DIR}/bfb --output-format flat \
       --output-bfb flat.bfb
     if [ $? -ne 0 ]; then
+        echo $?
         echo "Error: Failed to create BFB in flat format"
         exit 1
     fi
