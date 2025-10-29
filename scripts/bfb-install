@@ -200,11 +200,8 @@ clear_sp2_267_swint2_2()
   sp2=$((sp2 & ~196))
   ${BF_REG} $(basename ${rshim_node}) ${RSH_SCRATCHPAD2}.64 $sp2 >/dev/null
 
-  # reset SWINT2.BIT2 for DPU mode
-  sw2=`${BF_REG} $(basename ${rshim_node}) ${RSH_SWINT}.64 | awk '{print $3}'`
-  if [ ${nic_mode} -eq 0 ] && [ $sw2 -ne 0 ] ; then
-    ${BF_REG} $(basename ${rshim_node}) ${RSH_SWINT}.64 0x0 >/dev/null
-  fi
+  # reset SWINT2 for DPU mode
+  ${BF_REG} $(basename ${rshim_node}) ${RSH_SWINT}.64 0x1 >/dev/null
   sleep 1
 }
 
@@ -924,7 +921,6 @@ elif [ ${deferred} -eq 1 -a -e "${bfb}" ]; then
       --output-dir ${TMP_DIR}/bfb --output-format flat \
       --output-bfb flat.bfb
     if [ $? -ne 0 ]; then
-        echo $?
         echo "Error: Failed to create BFB in flat format"
         exit 1
     fi
@@ -942,15 +938,15 @@ elif [ ${deferred} -eq 1 -a -e "${bfb}" ]; then
       mlx-mkbfb --boot-args ${cfg} ${bfb} "${bfb_path}"/flat-cfg.bfb
       bfb="${bfb_path}"/flat-cfg.bfb
     fi
-  fi
-else
-  mkdir ${TMP_DIR}/bfb
-  bfb=$(basename "${bfb}")
-  bfb_path=${TMP_DIR}/bfb
-  # Replace config file if provided.
-  if [ -n "${cfg}" -a -e "${cfg}" ]; then
-    mlx-mkbfb --boot-args ${cfg} ${bfb} "${bfb_path}"/flat-cfg.bfb
-    bfb="${bfb_path}"/flat-cfg.bfb
+  else
+    mkdir ${TMP_DIR}/bfb
+    bfb=$(basename "${bfb}")
+    bfb_path=${TMP_DIR}/bfb
+    # Replace config file if provided.
+    if [ -n "${cfg}" -a -e "${cfg}" ]; then
+      mlx-mkbfb --boot-args ${cfg} ${bfb} "${bfb_path}"/flat-cfg.bfb
+      bfb="${bfb_path}"/flat-cfg.bfb
+    fi
   fi
 fi
 
@@ -1087,12 +1083,9 @@ clear_sp2_267_swint2_2
 
 sp2=`${BF_REG} $(basename ${rshim_node}) ${RSH_SCRATCHPAD2}.64 | awk '{print $3}'`
 sp2=$((sp2 | 64))
-echo "SP2 $sp2"
 ${BF_REG} $(basename ${rshim_node}) ${RSH_SCRATCHPAD2}.64 $sp2 >/dev/null
 # Set SWINT2.BIT2 for DPU mode
-if [ ${nic_mode} -eq 0 ]; then
-  ${BF_REG} $(basename ${rshim_node}) ${RSH_SWINT}.64 0x4 >/dev/null
-fi
+${BF_REG} $(basename ${rshim_node}) ${RSH_SWINT}.64 0x4 >/dev/null
 
 # LFWP activation(reset) on PCIe host.
 if [ ${apply_lfwp} -eq 1 ]; then
