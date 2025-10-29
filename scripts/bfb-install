@@ -201,7 +201,7 @@ clear_sp2_267_swint2_2()
   ${BF_REG} $(basename ${rshim_node}) ${RSH_SCRATCHPAD2}.64 $sp2 >/dev/null
 
   # reset SWINT2 for DPU mode
-  ${BF_REG} $(basename ${rshim_node}) ${RSH_SWINT}.64 0x1 >/dev/null
+  ${BF_REG} $(basename ${rshim_node}) ${RSH_SWINT}.64 0x4 >/dev/null
   sleep 1
 }
 
@@ -940,7 +940,6 @@ elif [ ${deferred} -eq 1 -a -e "${bfb}" ]; then
     fi
   else
     mkdir ${TMP_DIR}/bfb
-    bfb=$(basename "${bfb}")
     bfb_path=${TMP_DIR}/bfb
     # Replace config file if provided.
     if [ -n "${cfg}" -a -e "${cfg}" ]; then
@@ -1079,13 +1078,15 @@ fi
 # For DPU mode, need to set SWINT2.BIT2 additionally.
 # Always reset the BITs before setting them
 
-clear_sp2_267_swint2_2
+if [ ${deferred} -eq 0 ]; then
+  clear_sp2_267_swint2_2
 
-sp2=`${BF_REG} $(basename ${rshim_node}) ${RSH_SCRATCHPAD2}.64 | awk '{print $3}'`
-sp2=$((sp2 | 64))
-${BF_REG} $(basename ${rshim_node}) ${RSH_SCRATCHPAD2}.64 $sp2 >/dev/null
-# Set SWINT2.BIT2 for DPU mode
-${BF_REG} $(basename ${rshim_node}) ${RSH_SWINT}.64 0x4 >/dev/null
+  sp2=`${BF_REG} $(basename ${rshim_node}) ${RSH_SCRATCHPAD2}.64 | awk '{print $3}'`
+  sp2=$((sp2 | 64))
+  ${BF_REG} $(basename ${rshim_node}) ${RSH_SCRATCHPAD2}.64 $sp2 >/dev/null
+  # Set SWINT2.BIT2 for DPU mode
+  ${BF_REG} $(basename ${rshim_node}) ${RSH_SWINT}.64 0x4 >/dev/null
+fi
 
 # LFWP activation(reset) on PCIe host.
 if [ ${apply_lfwp} -eq 1 ]; then
