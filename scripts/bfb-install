@@ -944,20 +944,9 @@ elif [ ${deferred} -eq 1 -a -e "${bfb}" ]; then
     fi
   fi
 else
-  if ! which flint &> /dev/null; then
-    echo "Error: flint not found."
-    exit 1
-  fi
-  psid=$(flint -d "$pcie_bd".0 q | grep PSID | awk '{print $2}')
   mkdir ${TMP_DIR}/bfb
   bfb=$(basename "${bfb}")
-  bfb=${bfb%.*}
-  bfb_path=${TMP_DIR}/bfb/"${bfb}"/${psid}
-  bfb="${bfb_path}"/flat.bfb
-  if [ ! -e "${bfb}" ]; then
-    echo "Error: ${bfb} not found"
-    exit 1
-  fi
+  bfb_path=${TMP_DIR}/bfb
   # Replace config file if provided.
   if [ -n "${cfg}" -a -e "${cfg}" ]; then
     mlx-mkbfb --boot-args ${cfg} ${bfb} "${bfb_path}"/flat-cfg.bfb
