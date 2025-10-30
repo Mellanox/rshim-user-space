@@ -219,7 +219,6 @@ push_boot_stream_via_local_rshim()
 
     # Clear the current boot fifo
     clear_boot_fifo
-    clear_sp2_267_swint2_2
 
     # Set SP2.BIT2=1
     sp2=`${BF_REG} $(basename ${rshim_node}) ${RSH_SCRATCHPAD2}.64 | awk '{print $3}'`
