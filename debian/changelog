@@ -1,3 +1,9 @@
+rshim (2.5.6) UNRELEASED; urgency=low
+
+  * bfb-install: fix deferred upgrade & BMC credential issue
+
+ -- Penghe Geng <pgeng@nvidia.com>  Wed, 29 Oct 2025 20:30:58 -0400
+
 rshim (2.5.5) UNRELEASED; urgency=low
 
   * Add systemd-dev build dependency for Debian
