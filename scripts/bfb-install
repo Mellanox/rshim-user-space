@@ -1077,7 +1077,7 @@ fi
 # For DPU mode, need to set SWINT2.BIT2 additionally.
 # Always reset the BITs before setting them
 
-if [ ${deferred} -eq 0 ]; then
+if [ ${deferred} -eq 1 ]; then
   clear_sp2_267_swint2_2
 
   sp2=`${BF_REG} $(basename ${rshim_node}) ${RSH_SCRATCHPAD2}.64 | awk '{print $3}'`
