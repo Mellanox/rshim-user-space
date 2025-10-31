@@ -1072,21 +1072,22 @@ if [ -e "${bfb}" ]; then
   wait_for_update_to_finish
 fi
 
-# Got here after wait_for_update_to_finish() returns from polling. The transfer and verify
-# is done.
+# Got here after wait_for_update_to_finish() returns from polling. The transfer and 
+# verify is done.
  
 if [ ${deferred} -eq 1 ]; then
-# Set SP2.BIT6=1 to issue PLDM ActivateFirmware command that activate new images after reboot
-# Note: OS bf-upgrade script will wait and check SP2.BITS right after successful
-#       upgrade/staging. No need to trigger ACPI. This also solves an issue that
-#       ActivationFirmware event will not have bfb and the associated bf.cfg for
-#       BMC credentialt.
+  # Note: OS bf-upgrade script will wait and check SP2.BITS right after successful
+  #       upgrade/staging. No need to trigger ACPI. This also solves an issue that
+  #       ActivationFirmware event will not have bfb and the associated bf.cfg for
+  #       BMC credentialt.
 
   echo "Send ActivateFirmware"
   sp2=`${BF_REG} $(basename ${rshim_node}) ${RSH_SCRATCHPAD2}.64 | awk '{print $3}'`
 
-# Note: check SP2.BIT11|12 for success: 10b. Send Activation only it's a success.
+  # Note: check SP2.BIT11|12 for success: 10b. Send Activation only it's a success.
   if [ $((sp2 & 6144)) -eq 4096 ]; then
+    # Set SP2.BIT6=1 to issue PLDM ActivateFirmware command that activate new images 
+    # after reboot
     sp2=$((sp2 | 64))
     ${BF_REG} $(basename ${rshim_node}) ${RSH_SCRATCHPAD2}.64 $sp2 >/dev/null
   fi
