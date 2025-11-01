@@ -1081,7 +1081,6 @@ fi
 if [ ${deferred} -eq 1 ]; then
   # Note: OS bf-upgrade script will wait and check SP2.BITS right after successful
   #       upgrade/staging.
-
   sp2=`${BF_REG} $(basename ${rshim_node}) ${RSH_SCRATCHPAD2}.64 | awk '{print $3}'`
 
   # Note: check SP2.BIT11|12 for success: 10b. Send Activation only it's a success.
