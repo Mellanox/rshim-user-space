@@ -192,7 +192,7 @@ clear_boot_fifo()
   done
 }
 
-clear_sp2_267_swint2_2()
+clear_sp2_267()
 {
   sp2=`${BF_REG} $(basename ${rshim_node}) ${RSH_SCRATCHPAD2}.64 | awk '{print $3}'`
 
@@ -200,7 +200,7 @@ clear_sp2_267_swint2_2()
   sp2=$((sp2 & ~196))
   ${BF_REG} $(basename ${rshim_node}) ${RSH_SCRATCHPAD2}.64 $sp2 >/dev/null
 
-  # reset SWINT2 for DPU mode
+  # set SWINT2 for DPU mode
   ${BF_REG} $(basename ${rshim_node}) ${RSH_SWINT}.64 0x4 >/dev/null
   sleep 1
 }
@@ -479,7 +479,6 @@ wait_for_update_to_finish()
     filter="$filter0"
   fi
 
-
   echo "Collecting BlueField booting status. Press Ctrl+C to stop…"
 
   # Enable CLEAR_ON_READ, so rshim log will be cleared after read.
@@ -577,6 +576,7 @@ cleanup() {
     echo "BlueField Update Failed"
   fi
 
+
   # Kill all netcat related processes on both ends
   if [ $run_cmd_local_ready -eq 1 ]; then
     run_cmd local "pgrep -x nc >/dev/null && pgrep -x nc | xargs kill -9"
@@ -593,8 +593,8 @@ cleanup() {
   if [ $deferred -eq 1 ]; then
     # Reset to default state.
     echo "BOOT_RESET_SKIP 0" > ${rshim_node}/misc
-
-    clear_sp2_267_swint2_2
+    sleep 5
+    clear_sp2_267
   fi
 
   # Disable CLEAR_ON_READ.
@@ -1038,6 +1038,9 @@ apply_chip_settings
 # Check NIC mode and unbind mlx5_core driver in NIC mode.
 check_nic_mode
 
+# clear SP2 BITs to handle the case when ACPI events have been triggered before.
+clear_sp2_267
+
 if [ ${nic_mode} -eq 1 -a -n "${pcie_bd}" -a ${deferred} -eq 0 ]; then
   # Set BREADCRUMB.BIT32 to indicate NIC mode.
   breadcrumb1=$(${BF_REG} $(basename ${rshim_node}) ${RSH_BREADCRUMB1}.64 | awk '{print $3}')
@@ -1072,19 +1075,31 @@ if [ -e "${bfb}" ]; then
   wait_for_update_to_finish
 fi
 
-
-# Set SP2.BIT6=1 to issue PLDM ActivateFirmware command that activate new images after reboot
-# For DPU mode, need to set SWINT2.BIT2 additionally.
-# Always reset the BITs before setting them
-
+# Got here after wait_for_update_to_finish() returns from polling. The transfer and 
+# verify is done.
+ 
 if [ ${deferred} -eq 1 ]; then
-  clear_sp2_267_swint2_2
-
+  # Note: OS bf-upgrade script will wait and check SP2.BITS right after successful
+  #       upgrade/staging.
   sp2=`${BF_REG} $(basename ${rshim_node}) ${RSH_SCRATCHPAD2}.64 | awk '{print $3}'`
-  sp2=$((sp2 | 64))
-  ${BF_REG} $(basename ${rshim_node}) ${RSH_SCRATCHPAD2}.64 $sp2 >/dev/null
-  # Set SWINT2.BIT2 for DPU mode
-  ${BF_REG} $(basename ${rshim_node}) ${RSH_SWINT}.64 0x4 >/dev/null
+
+  # Note: check SP2.BIT11|12 for success: 10b. Send Activation only it's a success.
+  if [ $((sp2 & 6144)) -eq 4096 ]; then
+    clear_sp2_267
+
+    # Set SP2.BIT6=1 to issue PLDM ActivateFirmware command that activate new images 
+    # after reboot
+    echo "Sending ActivateFirmware"
+    sp2=$((sp2 | 64))
+    ${BF_REG} $(basename ${rshim_node}) ${RSH_SCRATCHPAD2}.64 $sp2 >/dev/null
+    # set SWINT2 for DPU mode
+    if [ ${nic_mode} -eq 0 ]; then
+      ${BF_REG} $(basename ${rshim_node}) ${RSH_SWINT}.64 0x4 >/dev/null
+    fi
+  else
+    echo "Transfer/Verify failed"
+    exit -1
+  fi
 fi
 
 # LFWP activation(reset) on PCIe host.
@@ -1112,3 +1127,26 @@ if [ ${apply_lfwp} -eq 1 ]; then
     echo "Live Patch NIC Firmware reset not supported."
   fi
 fi
+
+if [ ${deferred} -eq 1 ]; then
+  end=$((SECONDS + 60))
+
+  while [ $SECONDS -lt $end ]; do
+    sp2=`${BF_REG} $(basename ${rshim_node}) ${RSH_SCRATCHPAD2}.64 | awk '{print $3}'`
+    if [ $((sp2 & 6144)) -eq 4096 ]; then
+      # 10b
+      echo "ActivateFirmware Succeeded"
+      break
+    elif [ $((sp2 & 6144)) -eq 6144 ]; then
+      # 11b
+      echo "ActivateFirmware Failed"
+      break
+    elif [ $((sp2 & 6144)) -eq 0 ]; then
+      # idle
+      break
+    fi
+    sleep 1
+  done
+  echo "Upgrade Finished"
+fi
+
