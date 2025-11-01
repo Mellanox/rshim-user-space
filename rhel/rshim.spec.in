@@ -65,6 +65,9 @@ via the virtual console or network interface.
 %{_mandir}/man8/bf-pldm-ver.8.gz
 
 %changelog
+* Fri Oct 31 2025 Penghe Geng <pgeng@nvidia.com> - 2.5.7
+- bfb-install: fix deferred upgrade & BMC credential issue
+
 * Wed Oct 29 2025 Penghe Geng <pgeng@nvidia.com> - 2.5.6
 - bfb-install: fix deferred upgrade & BMC credential issue
 
