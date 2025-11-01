@@ -1098,6 +1098,7 @@ if [ ${deferred} -eq 1 ]; then
     fi
   else
     echo "Transfer/Verify failed"
+    exit -1
   fi
 fi
 
