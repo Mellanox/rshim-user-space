@@ -1082,14 +1082,12 @@ fi
 if [ ${deferred} -eq 1 ]; then
   # Note: OS bf-upgrade script will wait and check SP2.BITS right after successful
   #       upgrade/staging.
-
   sp2=`${BF_REG} $(basename ${rshim_node}) ${RSH_SCRATCHPAD2}.64 | awk '{print $3}'`
 
   # Note: check SP2.BIT11|12 for success: 10b. Send Activation only it's a success.
   if [ $((sp2 & 6144)) -eq 4096 ]; then
     # Set SP2.BIT6=1 to issue PLDM ActivateFirmware command that activate new images 
     # after reboot
-    echo "Send ActivateFirmware"
     sp2=$((sp2 | 64))
     ${BF_REG} $(basename ${rshim_node}) ${RSH_SCRATCHPAD2}.64 $sp2 >/dev/null
     # set SWINT2 for DPU mode
