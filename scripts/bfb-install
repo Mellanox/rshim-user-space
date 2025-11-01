@@ -576,9 +576,6 @@ cleanup() {
     echo "BlueField Update Failed"
   fi
 
-  sleep 5
-
-  clear_sp2_267
 
   # Kill all netcat related processes on both ends
   if [ $run_cmd_local_ready -eq 1 ]; then
@@ -596,6 +593,8 @@ cleanup() {
   if [ $deferred -eq 1 ]; then
     # Reset to default state.
     echo "BOOT_RESET_SKIP 0" > ${rshim_node}/misc
+    sleep 5
+    clear_sp2_267
   fi
 
   # Disable CLEAR_ON_READ.
@@ -1087,9 +1086,11 @@ if [ ${deferred} -eq 1 ]; then
 
   # Note: check SP2.BIT11|12 for success: 10b. Send Activation only it's a success.
   if [ $((sp2 & 6144)) -eq 4096 ]; then
+    clear_sp2_267
+
     # Set SP2.BIT6=1 to issue PLDM ActivateFirmware command that activate new images 
     # after reboot
-    echo "Send ActivateFirmware"
+    echo "Sending ActivateFirmware"
     sp2=$((sp2 | 64))
     ${BF_REG} $(basename ${rshim_node}) ${RSH_SCRATCHPAD2}.64 $sp2 >/dev/null
     # set SWINT2 for DPU mode
@@ -1128,8 +1129,6 @@ if [ ${apply_lfwp} -eq 1 ]; then
 fi
 
 if [ ${deferred} -eq 1 ]; then
-  sleep 5
-
   end=$((SECONDS + 60))
 
   while [ $SECONDS -lt $end ]; do
@@ -1137,16 +1136,16 @@ if [ ${deferred} -eq 1 ]; then
       # 10b
       echo "ActivateFirmware Succeeded"
       break
-    else if [ $((sp2 & 6144)) -eq 6144 ]; then
+    elif [ $((sp2 & 6144)) -eq 6144 ]; then
       # 11b
       echo "ActivateFirmware Failed"
       break
-    else if [ $((sp2 & 6144)) -eq 0 ]; then
+    elif [ $((sp2 & 6144)) -eq 0 ]; then
       # idle
       break
     fi
     sleep 1
   done
+  echo "Upgrade Finished"
 fi
 
-echo "Upgrade Finished"
