@@ -657,7 +657,7 @@ pf0_bound=0       # PF0 is bound prior to the script run
 pf1_bound=0       # PF1 is bound prior to the script run
 rshim_device_exists=0
 
-options=`getopt -n bfb-install -o a:b:c:f:dhkm:p:r:Ruv \
+options=`getopt -n bfb-install -o +a:b:c:f:dhkm:p:r:Ruv \
         -l apply-lfwp:,bfb:,config:,rootfs:,deferred,help,keep-log,remote-mode:,reverse-nc,rshim:,pldm:,runtime,verbose \
         -- "$@"`
 if [ $? != 0 ]; then echo "Command line error" >&2; exit 1; fi
@@ -683,6 +683,9 @@ while [ "$1" != -- ]; do
   shift
 done
 
+if [ "$#" -ne 1 ]; then 
+  echo "Unexpected arguments: $2" >&2; usage >&2; exit 1 
+fi
 # Parameter checks
 
 if [ -z "${bfb}" -a -z "${pldm}" -a ${apply_lfwp} -eq 0 ]; then
