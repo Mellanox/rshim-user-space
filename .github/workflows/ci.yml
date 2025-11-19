@@ -56,10 +56,19 @@ jobs:
       - name: Install dependencies (for .deb)
         run: |
           . ./retry_apt_update.sh
-          sudo apt-get update || retry_apt_get_update && \
-          sudo apt-get install -y \
-            build-essential debhelper devscripts fakeroot git \
-            libpci-dev libusb-1.0-0-dev libfuse-dev pkg-config
+          if sudo apt-get update || retry_apt_get_update; then
+            systemd_dep="systemd"
+            if apt-cache show systemd-dev >/dev/null 2>&1; then
+              systemd_dep="systemd-dev"
+            fi
+            sudo apt-get install -y \
+              build-essential debhelper devscripts fakeroot git \
+              libpci-dev libusb-1.0-0-dev libfuse-dev pkg-config \
+              "$systemd_dep"
+          else
+            echo "Unable to refresh apt cache"
+            exit 1
+          fi
 
       - name: Prepare release body
         id: changelog
@@ -123,11 +132,15 @@ jobs:
                 set -euo pipefail
                 . /workspace/retry_apt_update.sh
                 apt-get update || retry_apt_get_update
+                systemd_dep="systemd"
+                if apt-cache show systemd-dev >/dev/null 2>&1; then
+                  systemd_dep="systemd-dev"
+                fi
                 apt-get install -y \
                   autoconf automake libtool build-essential debhelper \
                   devscripts fakeroot gcc git libpci-dev libusb-1.0-0-dev \
                   libfuse-dev libsystemd-dev libpci3 libusb-1.0-0 fuse \
-                  pkg-config
+                  pkg-config "\$systemd_dep"
                 git config --global --add safe.directory /workspace && \
                 version=\$(/workspace/scripts/get-ver)
                   sed -i \"1s/(\(.*\))/(\$version)/\" /workspace/debian/changelog
