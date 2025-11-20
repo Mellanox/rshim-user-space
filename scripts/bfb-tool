@@ -30,15 +30,15 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 info() {
-	echo >&2 "INFO: $*"
+	echo >&1 "INFO: $*"
 }
 
 note() {
-	echo >&2 "NOTE: $*"
+	echo >&1 "NOTE: $*"
 }
 
 warn() {
-	echo >&2 "WARNING: $*"
+	echo >&1 "WARNING: $*"
 }
 
 error() {
