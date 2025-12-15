@@ -418,7 +418,7 @@ check_pcie_bdf()
 
   # Only needs to check for BF3.
   str=`cat ${rshim_node}/misc | grep DEV_INFO | grep BlueField-3`
-  [ -z "$str" ] && return
+  [ -z "$str" ] && exit 1
 
   # Get PCIE BDF
   str=`cat ${rshim_node}/misc | grep DEV_NAME | awk '{print $2}'`
