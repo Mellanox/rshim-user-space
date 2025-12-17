@@ -57,6 +57,9 @@ via the virtual console or network interface.
 %{_mandir}/man8/rshim.8.gz
 
 %changelog
+* Fri Dec 10 2025 Penghe Geng <pgeng@nvidia.com> - 2.1.16
+- RPM pkg: Apply selinux workaround to RHEL 9.5 or later
+
 * Mon Oct 27 2025 Liming Sun <limings@nvidia.com> - 2.1.15
 - Some enhancement for the command mode
 
