@@ -1,3 +1,9 @@
+rshim (2.1.17) UNRELEASED; urgency=low
+
+  * bfb-tool capsule flow replace and bf.cfg extract flows
+
+ -- Penghe Geng <pgeng@nvidia.com>  Thu, 25 Dec 2025 12:37:47 -0500
+
 rshim (2.1.16) UNRELEASED; urgency=low
 
   * RPM pkg: Apply selinux workaround to RHEL 9.5 or later

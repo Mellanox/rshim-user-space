@@ -140,6 +140,9 @@ fi
 %{_datadir}/selinux/packages/rshim-fix.te
 
 %changelog
+* Thu Dec 25 2025 Penghe Geng <pgeng@nvidia.com> - 2.1.17
+- bfb-tool capsule flow replace and bf.cfg extract flows
+
 * Fri Dec 10 2025 Penghe Geng <pgeng@nvidia.com> - 2.1.16
 - RPM pkg: Apply selinux workaround to RHEL 9.5 or later
 
