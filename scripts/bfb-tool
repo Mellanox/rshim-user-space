@@ -47,7 +47,7 @@ error() {
 
 usage() {
 	cat << EOF
-	Usage: $(basename $0) <action> --bfb <BFB> --psid <PSID>|--opn <OPN>|--all [-p|--profile <Profile>] [-o|--output-dir <dir>] [-f|--output-format <format>] [-B|--output-bfb] [-r|--replace-fw <path>] [-v|--verbose] [-j|--json]
+	Usage: $(basename $0) <action> --bfb <BFB> --psid <PSID>|--opn <OPN>|--all [-p|--profile <Profile>] [-o|--output-dir <dir>] [-f|--output-format <format>] [-B|--output-bfb] [-r|--replace-fw <path>] [--replace-capsule <capsule>] [--extract-bfcfg] [-v|--verbose] [-j|--json]
 
 	action:                 extract, repack or info. The repack action includes extracting and building a new BFB for a specific OPN/PSID
 
@@ -62,6 +62,10 @@ usage() {
 	                        Flat format is the format for NIC mode.
 	--output-bfb <bfb>      Output BFB name
 	--replace-fw <path>     Path to extracted mlnx-fw-updater directory
+	--replace-capsule <cap> Capsule file (.cap) to replace the configuration capsule
+	                        The capsule will be merged with the existing config-image.bfb
+	                        preserving the rest of the components.
+	--extract-bfcfg         Extract bf.cfg text file from config-image.bfb if exists.
 	-j|--json               Print version info in JSON format
 	-v|--verbose            Verbose mode
 EOF
@@ -69,6 +73,152 @@ EOF
 
 finish() {
 	[ -n "$WDIR" ] && rm -rf "$WDIR"
+}
+
+extract_bf_cfg_from_config_image() {
+	local config_image_bfb=$1
+	local output_dir=$2
+	local initramfs_dir=$3
+	local config_extract_dir
+	local capsule_file
+	local bf_cfg_bin
+	local bf_cfg_file
+
+	if [ ! -f "$config_image_bfb" ]; then
+		warn "Config image not found: $config_image_bfb"
+		return 1
+	fi
+
+	# Only process .bfb config images (not .pldm)
+	if [[ ! "$config_image_bfb" =~ \.bfb$ ]]; then
+		if [ $verbose -eq 1 ]; then
+			info "Skipping bf.cfg extraction for non-BFB config image"
+		fi
+		return 0
+	fi
+
+	info "Extracting bf.cfg from config image: $config_image_bfb"
+
+	# Create temporary extraction directory inside WDIR for automatic cleanup on exit
+	config_extract_dir=$(mktemp -d "${WDIR}/config_extract.XXXXXX")
+
+	# Extract only the capsule from config-image.bfb (more efficient than full extraction)
+	if ! pushd "$config_extract_dir" > /dev/null; then
+		warn "Failed to change to extraction directory: $config_extract_dir"
+		rm -rf "$config_extract_dir"
+		return 1
+	fi
+	if ! $MLX_MKBFB -x -n "capsule-v0" "$config_image_bfb" > /dev/null 2>&1; then
+		warn "Failed to extract capsule from config image BFB"
+		popd > /dev/null
+		rm -rf "$config_extract_dir"
+		return 1
+	fi
+
+	# Look for the capsule containing the config
+	capsule_file="$config_extract_dir/dump-capsule-v0"
+	if [ ! -f "$capsule_file" ]; then
+		if [ $verbose -eq 1 ]; then
+			warn "No capsule found in config image"
+		fi
+		popd > /dev/null
+		rm -rf "$config_extract_dir"
+		return 1
+	fi
+
+	# Extract the binary config (skip 168-byte capsule header)
+	bf_cfg_bin="$config_extract_dir/bf.cfg.bin"
+	dd if="$capsule_file" of="$bf_cfg_bin" bs=1 skip=168 2>/dev/null
+
+	# Check for valid config data (magic B^F^^PCH at offset 0x1000)
+	if ! hexdump -C "$bf_cfg_bin" 2>/dev/null | grep -q "B.F..PCH"; then
+		if [ $verbose -eq 1 ]; then
+			warn "No valid bf.cfg data found in capsule"
+		fi
+		popd > /dev/null
+		rm -rf "$config_extract_dir"
+		return 1
+	fi
+
+	# Use bfcfg from initramfs via chroot
+	if [ -z "$initramfs_dir" ] || [ ! -d "$initramfs_dir" ]; then
+		popd > /dev/null
+		warn "initramfs directory not provided - cannot extract bf.cfg"
+		rm -rf "$config_extract_dir"
+		return 0
+	fi
+	
+	if [ ! -x "$initramfs_dir/usr/bin/bfcfg" ]; then
+		popd > /dev/null
+		warn "bfcfg not found in initramfs - cannot extract bf.cfg text file"
+		rm -rf "$config_extract_dir"
+		return 0
+	fi
+	
+	if [ $verbose -eq 1 ]; then
+		info "Using bfcfg from initramfs via chroot"
+	fi
+	
+	# Use bfcfg -b to convert binary to text
+	bf_cfg_file="$output_dir/bf.cfg"
+	
+	# Copy bf.cfg.bin into initramfs and run bfcfg via chroot
+	cp "$bf_cfg_bin" "$initramfs_dir/tmp/bf.cfg.bin"
+	chroot "$initramfs_dir" bash -c "cd /tmp && /usr/bin/bfcfg -b bf.cfg.bin --skip-mfg" > /dev/null 2>&1
+	if [ -f "$initramfs_dir/tmp/bf.cfg.bin.cfg" ]; then
+		mv "$initramfs_dir/tmp/bf.cfg.bin.cfg" "$bf_cfg_file"
+	fi
+	rm -f "$initramfs_dir/tmp/bf.cfg.bin" "$initramfs_dir/tmp/bf.cfg.bin.cfg" 2>/dev/null
+	
+	popd > /dev/null
+	
+	if [ -f "$bf_cfg_file" ]; then
+		info "Extracted bf.cfg to: $bf_cfg_file"
+	else
+		warn "Failed to extract bf.cfg from config-image.bfb"
+	fi
+	
+	rm -rf "$config_extract_dir"
+	return 0
+}
+
+create_config_image_from_capsule() {
+	local capsule_file=$1
+	local output_bfb=$2
+	local existing_config_image=""
+
+	if [ ! -f "$capsule_file" ]; then
+		error "Capsule file not found: $capsule_file"
+		return 1
+	fi
+
+	info "Creating config-image.bfb from capsule: $capsule_file"
+
+	# Find existing config-image.bfb to preserve all other components
+	if [ -f "./usr/lib/firmware/mellanox/bmc/config-image.bfb" ]; then
+		existing_config_image="./usr/lib/firmware/mellanox/bmc/config-image.bfb"
+	fi
+
+	if [ -z "$existing_config_image" ]; then
+		# Cannot replace capsule if there's no existing config-image.bfb
+		error "No existing config-image.bfb found in this bundle"
+		error "Cannot replace capsule - the bundle does not contain a configuration image"
+		error "Use --profile to add a complete config-image.bfb instead"
+		return 1
+	fi
+
+	# Replace capsule in existing config-image.bfb while preserving all other components
+	# (PSC, BL2, BL31, BL32, BL33, DDR images, certificates, boot settings, etc.)
+	info "Replacing capsule in config-image.bfb while preserving other components"
+	$MLX_MKBFB --capsule "$capsule_file" "$existing_config_image" "$output_bfb"
+
+	if [ ! -f "$output_bfb" ]; then
+		error "Failed to create config-image.bfb from capsule"
+		return 1
+	fi
+
+	info "Successfully created new config-image.bfb with replaced capsule"
+	return 0
 }
 
 replace_mlnx_fw_updater() {
@@ -162,7 +312,7 @@ case "$action" in
 		;;
 esac
 
-options=$(getopt -l "output-dir:,psid:,opn:,bfb:,profile:,output-format:,output-bfb:,replace-fw:,all,help,json,verbose" -o "o:p:O:b:p:f:B:r:ahjv" -a -- "$@")
+options=$(getopt -l "output-dir:,psid:,opn:,bfb:,profile:,output-format:,output-bfb:,replace-fw:,replace-capsule:,extract-bfcfg,all,help,json,verbose" -o "o:p:O:b:p:f:B:r:ahjv" -a -- "$@")
 
 eval set -- "$options"
 
@@ -217,6 +367,13 @@ do
 			shift
 			REPLACE_FW_PATH=$1
 			;;
+		--replace-capsule)
+			shift
+			REPLACE_CAPSULE=$1
+			;;
+		--extract-bfcfg)
+			EXTRACT_BFCFG=1
+			;;
 		--)
 			shift
 			break;;
@@ -225,6 +382,7 @@ do
 done
 
 BUILD_ALL=${BUILD_ALL:-0}
+EXTRACT_BFCFG=${EXTRACT_BFCFG:-0}
 
 unset BSP_CAPSULE
 unset BMC_FW
@@ -256,6 +414,24 @@ if [ -z "$MLX_MKBFB" ]; then
 	error "mlx-mkbfb is required"
 	exit 1
 fi
+
+# Validate --profile and --replace-capsule are not both provided
+if [ -n "$profile" ] && [ -n "$REPLACE_CAPSULE" ]; then
+	error "Cannot use both --profile and --replace-capsule. Choose one."
+	exit 1
+fi
+
+# Convert paths to absolute before we change directories
+bfb=$(realpath "$bfb")
+if [ -n "$REPLACE_CAPSULE" ]; then
+	if [ ! -f "$REPLACE_CAPSULE" ]; then
+		error "User requested replacement capsule but file not found: $REPLACE_CAPSULE"
+		exit 1
+	fi
+	REPLACE_CAPSULE=$(realpath "$REPLACE_CAPSULE")
+fi
+[ -n "$profile" ] && profile=$(realpath "$profile")
+[ -n "$REPLACE_FW_PATH" ] && REPLACE_FW_PATH=$(realpath "$REPLACE_FW_PATH")
 
 if ! jq --version > /dev/null 2>&1; then
 	error "jq is required"
@@ -364,6 +540,16 @@ fi
 
 if [ -n "$REPLACE_FW_PATH" ]; then
 	replace_mlnx_fw_updater "${INITRAMFS_WDIR}" "${REPLACE_FW_PATH}"
+fi
+
+# Handle --replace-capsule: convert capsule to config-image.bfb
+if [ -n "$REPLACE_CAPSULE" ]; then
+	CAPSULE_BFB="${WDIR}/config-image.bfb"
+	if ! create_config_image_from_capsule "$REPLACE_CAPSULE" "$CAPSULE_BFB"; then
+		exit 1
+	fi
+	# Use this as the profile (will be copied to config-image.bfb location)
+	profile="$CAPSULE_BFB"
 fi
 
 BSP_CAPSULE="./usr/lib/firmware/mellanox/boot/capsule/boot_update2.cap"
@@ -860,6 +1046,11 @@ handle_opn()
 	if [ $? -ne 0 ]; then
 		echo "ERROR: Failed to copy FW binaries to the target dir"
 		exit 1
+	fi
+
+	# Extract bf.cfg from config-image.bfb if --extract-bfcfg flag is set
+	if [ $EXTRACT_BFCFG -eq 1 ] && [ -n "$PROFILE" ] && [[ "$PROFILE" =~ \.bfb$ ]]; then
+		extract_bf_cfg_from_config_image "${TARGET_DIR}/${PROFILE##*/}" "${TARGET_DIR}" "${INITRAMFS_WDIR}"
 	fi
 
 	if [ $REPACK -eq 1 ]; then
