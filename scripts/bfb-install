@@ -468,7 +468,7 @@ wait_for_update_to_finish()
   filter0="Rebooting\.\.\.|finished|DPU is ready|Linux up|CRITICAL ERROR"
 
   if [ $deferred -eq 0 ]; then
-    filter0="$filter0|In Enhanced NIC mode|NIC Firmware reset "
+    filter0="$filter0|In Enhanced NIC mode"
     if [ $nic_mode -eq 1 ]; then
       filter="In Enhanced NIC mode"
     else
@@ -1151,8 +1151,29 @@ if [ ${deferred} -eq 1 ]; then
     sleep 1
   done
   echo "Upgrade Finished"
-else 
-  # Non-deferred mode: Wait for NIC Firmware reset result or Rebooting
-  wait_for_update_to_finish
 fi
 
+if [ ${deferred} -eq 0 -a ${nic_mode} -eq 0 ]; then
+  # non-deferred mode: Wait for reboot.
+  filter=" PSC BL1 START|[BL2]: start"
+  finished=0
+
+  end=$((SECONDS + 30))
+  run_cmd_exit $mode "echo 'CLEAR_ON_READ 1' > ${rshim_node}/misc"
+
+  while [ $SECONDS -lt $end -a $finished -eq 0 ]; do
+    cmd_get_log="cat ${rshim_node}/misc | sed -n '/^ INFO/,\$p'"
+    cur=$(run_cmd_exit $mode "$cmd_get_log")
+    sleep 1
+    if echo ${cur} | grep -Ei "$filter" >/dev/null; then
+      finished=1
+    fi
+  done
+
+  run_cmd_exit $mode "echo 'CLEAR_ON_READ 0' > ${rshim_node}/misc"
+  if [ $finished -eq 1 ]; then
+    echo "System rebooted"
+  else
+    echo "Reset failed or unsupported"
+  fi
+fi
