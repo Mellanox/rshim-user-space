@@ -474,7 +474,7 @@ wait_for_update_to_finish()
   finished=0
   while [ $finished -eq 0 ]; do
     last_len=${#last}
-    cmd_get_log="cat ${rshim_node}/misc | sed -n '/^ INFO/,\$p'"
+    cmd_get_log="cat ${rshim_node}/misc | sed -n '/^ INFO\|^ ERR\|^ WARN/,\$p'"
     cur=$(run_cmd_exit $mode "$cmd_get_log")
     cur_len=${#cur}
 
