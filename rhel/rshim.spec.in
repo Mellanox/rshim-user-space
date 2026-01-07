@@ -57,6 +57,9 @@ via the virtual console or network interface.
 %{_mandir}/man8/rshim.8.gz
 
 %changelog
+* Wed Jan 07 2026 Penghe Geng <pgeng@nvidia.com> - 2.1.18
+- bfb-install: print error and warning messages during installation
+
 * Thu Dec 25 2025 Penghe Geng <pgeng@nvidia.com> - 2.1.17
 - bfb-tool capsule flow replace and bf.cfg extract flows
 
