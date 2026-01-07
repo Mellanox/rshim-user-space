@@ -1,3 +1,9 @@
+rshim (2.1.18) UNRELEASED; urgency=low
+
+  * bfb-install: print error and warning messages during installation
+
+ -- Penghe Geng <pgeng@nvidia.com>  Wed, 07 Jan 2026 17:22:56 -0500
+
 rshim (2.1.17) UNRELEASED; urgency=low
 
   * bfb-tool capsule flow replace and bf.cfg extract flows
