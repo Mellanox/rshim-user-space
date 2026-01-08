@@ -1,3 +1,9 @@
+rshim (2.6.1) UNRELEASED; urgency=low
+
+  * Provide local struct termio for console ioctl
+
+ -- Penghe Geng <pgeng@nvidia.com>  Thu, 08 Jan 2026 14:41:54 -0500
+
 rshim (2.5.8) UNRELEASED; urgency=low
 
   * bfb-install: print error and warning messages during installation
