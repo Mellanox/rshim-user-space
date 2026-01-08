@@ -1,6 +1,11 @@
 rshim (2.5.8) UNRELEASED; urgency=low
 
   * bfb-install: print error and warning messages during installation
+  * bfb-tool capsule flow replace and bf.cfg extract flows
+  * bfb-install: Fix no proper output for missing rshim device
+  * bfb-tool: Redirect output to standard output
+  * Fix CI systemd dependency detection
+  * Handle extra/wrong parameter
 
  -- Penghe Geng <pgeng@nvidia.com>  Wed, 07 Jan 2026 18:01:54 -0500
 
