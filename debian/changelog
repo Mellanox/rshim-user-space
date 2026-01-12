@@ -1,3 +1,20 @@
+rshim (2.6.1) UNRELEASED; urgency=low
+
+  * Provide local struct termio for console ioctl
+
+ -- Penghe Geng <pgeng@nvidia.com>  Thu, 08 Jan 2026 14:41:54 -0500
+
+rshim (2.5.8) UNRELEASED; urgency=low
+
+  * bfb-install: print error and warning messages during installation
+  * bfb-tool capsule flow replace and bf.cfg extract flows
+  * bfb-install: Fix no proper output for missing rshim device
+  * bfb-tool: Redirect output to standard output
+  * Fix CI systemd dependency detection
+  * Handle extra/wrong parameter
+
+ -- Penghe Geng <pgeng@nvidia.com>  Wed, 07 Jan 2026 18:01:54 -0500
+
 rshim (2.5.7) UNRELEASED; urgency=low
 
   * bfb-install: fix deferred upgrade & BMC credential issue

@@ -65,6 +65,17 @@ via the virtual console or network interface.
 %{_mandir}/man8/bf-pldm-ver.8.gz
 
 %changelog
+* Thu Jan 08 2026 Penghe Geng <pgeng@nvidia.com> - 2.6.1
+- Provide local struct termio for console ioctl
+
+* Wed Jan 07 2026 Penghe Geng <pgeng@nvidia.com> - 2.5.8
+- bfb-install: print error and warning messages during installation
+- bfb-tool capsule flow replace and bf.cfg extract flows
+- bfb-install: Fix no proper output for missing rshim device
+- bfb-tool: Redirect output to standard output
+- Fix CI systemd dependency detection
+- Handle extra/wrong parameter
+
 * Fri Oct 31 2025 Penghe Geng <pgeng@nvidia.com> - 2.5.7
 - bfb-install: fix deferred upgrade & BMC credential issue
 

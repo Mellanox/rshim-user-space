@@ -26,7 +26,27 @@
 #include <fuse/cuse_lowlevel.h>
 #include <fuse/fuse_opt.h>
 #endif
+#include <features.h>
 #include <unistd.h>
+/*
+ * glibc 2.42+ no longer pulls in struct termio; provide a minimal definition so
+ * we can keep using the legacy layout expected by existing userspace tools.
+ */
+#if !__GLIBC_PREREQ(2, 42)   // if glibc is before 2.42
+#include <termio.h>
+#else
+#ifndef NCC
+#define NCC 8
+#endif
+struct termio {
+  unsigned short c_iflag;
+  unsigned short c_oflag;
+  unsigned short c_cflag;
+  unsigned short c_lflag;
+  unsigned char c_line;
+  unsigned char c_cc[NCC];
+};
+#endif
 #elif defined(__FreeBSD__)
 #include <termios.h>
 #include <sys/stat.h>
