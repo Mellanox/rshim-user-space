@@ -1,0 +1,6 @@
+[Match]
+OriginalName=tmfifo_net*
+
+[Link]
+MACAddressPolicy=none
+
