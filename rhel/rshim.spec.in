@@ -55,6 +55,9 @@ via the virtual console or network interface.
 %{_mandir}/man1/mlx-mkbfb.1.gz
 %{_unitdir}/rshim.service
 %{_mandir}/man8/rshim.8.gz
+%if "%{with_systemd}" == "1"
+  %config(noreplace) %{_sysconfdir}/systemd/network/10-tmfifo-net.link
+%endif
 
 %changelog
 * Wed Apr 15 2026 Penghe Geng <pgeng@nvidia.com> - 2.1.20
