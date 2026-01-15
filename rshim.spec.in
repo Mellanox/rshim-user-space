@@ -71,26 +71,7 @@ make
 
 %install
 %undefine _missing_build_ids_terminate_build
-%makeinstall -C src INSTALL_DIR="%{buildroot}%{_sbindir}"
-%if "%{with_systemd}" == "1"
-  %{__install} -d %{buildroot}%{_unitdir}
-  %{__install} -m 0644 rshim.service %{buildroot}%{_unitdir}
-%endif
-%{__install} -d %{buildroot}%{_mandir}/man1
-%{__install} -m 0644 man/mlx-mkbfb.1 %{buildroot}%{_mandir}/man1
-%{__install} -d %{buildroot}%{_mandir}/man8
-%{__install} -m 0644 man/rshim.8 %{buildroot}%{_mandir}/man8
-%{__install} -m 0644 man/bfb-install.8 %{buildroot}%{_mandir}/man8
-%{__install} -m 0644 man/bfb-tool.8 %{buildroot}%{_mandir}/man8
-%{__install} -m 0644 man/bf-reg.8 %{buildroot}%{_mandir}/man8
-%{__install} -m 0644 man/bf-pldm-ver.8 %{buildroot}%{_mandir}/man8
-%{__install} -d %{buildroot}%{_sysconfdir}
-%{__install} -m 0644 etc/rshim.conf %{buildroot}%{_sysconfdir}
-%{__install} -m 0755 scripts/bfb-install %{buildroot}%{_sbindir}
-%{__install} -m 0755 scripts/bfb-tool %{buildroot}%{_sbindir}
-%{__install} -m 0755 scripts/mlx-mkbfb %{buildroot}%{_sbindir}
-%{__install} -m 0755 third_party/PLDM-unpack/fwpkg_unpack.py %{buildroot}%{_sbindir}
-%{__install} -m 0755 scripts/bf-reg %{buildroot}%{_sbindir}
+%make_install
 %{__install} -d %{buildroot}%{_datadir}/selinux/packages
 %{__install} -m 0644 scripts/rshim-fix.te %{buildroot}%{_datadir}/selinux/packages/rshim-fix.te
 %{__install} -m 0755 scripts/bf-pldm-ver %{buildroot}%{_sbindir}
@@ -156,6 +137,7 @@ fi
 %config(noreplace) %{_sysconfdir}/rshim.conf
 %if "%{with_systemd}" == "1"
   %{_unitdir}/rshim.service
+  %config(noreplace) %{_sysconfdir}/systemd/network/10-tmfifo-net.link
 %endif
 %{_sbindir}/rshim
 %{_sbindir}/bfb-install

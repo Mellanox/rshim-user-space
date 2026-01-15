@@ -9,6 +9,8 @@ rshim is the user-space rshim driver for BlueField SoC. It provides ways to acce
 
 This driver will probe the rshim backend and create directory /dev/rshim<N> for each of them with the following device files.
 
+A systemd link file (/etc/systemd/network/10-tmfifo-net.link) is installed to disable persistent MAC assignment for tmfifo_net\* interfaces so the MAC addresses set by rshim are not overridden by udev defaults.
+
 .SS /dev/rshim<N>/boot
 Boot device file used to push boot stream to the target, for example,
 
