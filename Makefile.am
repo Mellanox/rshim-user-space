@@ -24,3 +24,8 @@ init_d_SCRIPTS = freebsd/rshim
 endif
 endif
 
+install-data-hook:
+if HAVE_SYSTEMD
+	$(MKDIR_P) $(DESTDIR)$(sysconfdir)/systemd/network
+	$(INSTALL_DATA) $(srcdir)/10-tmfifo-net.link $(DESTDIR)$(sysconfdir)/systemd/network/10-tmfifo-net.link
+endif
