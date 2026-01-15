@@ -63,6 +63,9 @@ via the virtual console or network interface.
 %{_mandir}/man8/bfb-tool.8.gz
 %{_mandir}/man8/bf-reg.8.gz
 %{_mandir}/man8/bf-pldm-ver.8.gz
+%if "%{with_systemd}" == "1"
+  %config(noreplace) %{_sysconfdir}/systemd/network/10-tmfifo-net.link
+%endif
 
 %changelog
 * Fri Jan 09 2026 Penghe Geng <pgeng@nvidia.com> - 2.6.2

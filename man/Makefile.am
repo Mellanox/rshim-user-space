@@ -3,4 +3,4 @@
 #
 
 man1_MANS = mlx-mkbfb.1
-man8_MANS = rshim.8 bfb-install.8 bf-reg.8 bfb-tool.8
+man8_MANS = rshim.8 bfb-install.8 bf-reg.8 bfb-tool.8 bf-pldm-ver.8
