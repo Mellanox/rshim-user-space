@@ -68,6 +68,9 @@ via the virtual console or network interface.
 %endif
 
 %changelog
+* Fri Jan 16 2026 Penghe Geng <pgeng@nvidia.com> - 2.6.3
+- Add 10-tmfifo.link to disable udev assigning MAC to tmfifo_netN
+
 * Fri Jan 09 2026 Penghe Geng <pgeng@nvidia.com> - 2.6.2
 - Fix commit f41306d ("Provide local struct termio for console ioctl")
 

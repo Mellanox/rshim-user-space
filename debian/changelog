@@ -1,3 +1,9 @@
+rshim (2.6.3) UNRELEASED; urgency=low
+
+  * Add 10-tmfifo.link to disable udev assigning MAC to tmfifo_netN
+
+ -- Penghe Geng <pgeng@nvidia.com>  Fri, 16 Jan 2026 13:34:41 -0500
+
 rshim (2.6.2) UNRELEASED; urgency=low
 
   * Fix commit f41306d ("Provide local struct termio for console ioctl")
