@@ -62,7 +62,7 @@ tar -axf %{SOURCE0} -C %{name}-%{version} --strip-components 1
 
 %build
 ./bootstrap.sh
-%configure
+%configure --docdir=%{_datadir}/doc/%{name}
 %if %{?make_build:1}%{!?make_build:0}
 %make_build
 %else
@@ -74,7 +74,6 @@ make
 %make_install
 %{__install} -d %{buildroot}%{_datadir}/selinux/packages
 %{__install} -m 0644 scripts/rshim-fix.te %{buildroot}%{_datadir}/selinux/packages/rshim-fix.te
-%{__install} -m 0755 scripts/bf-pldm-ver %{buildroot}%{_sbindir}
 
 %pre
 %if "%{with_systemd}" == "1"
@@ -133,7 +132,7 @@ fi
 %{!?_licensedir:%global license %%doc}
 %license LICENSE
 %defattr(-,root,root,-)
-%doc README.md
+%doc %{_datadir}/doc/%{name}/README.md
 %config(noreplace) %{_sysconfdir}/rshim.conf
 %if "%{with_systemd}" == "1"
   %{_unitdir}/rshim.service
@@ -146,7 +145,6 @@ fi
 %{_sbindir}/bf-reg
 %{_sbindir}/bf-pldm-ver
 %{_sbindir}/fwpkg_unpack.py
-%{_sbindir}/bf-pldm-ver
 %{_mandir}/man1/mlx-mkbfb.1.gz
 %{_mandir}/man8/rshim.8.gz
 %{_mandir}/man8/bfb-install.8.gz
