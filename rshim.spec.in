@@ -154,6 +154,10 @@ fi
 %{_datadir}/selinux/packages/rshim-fix.te
 
 %changelog
+* Tue Jan 20 2026 Penghe Geng <pgeng@nvidia.com> - 2.6.4
+- Fix rpm build issues on SLES 15/16
+- Fix bfb-install exit incorrectly on BlueField-2
+
 * Fri Jan 16 2026 Penghe Geng <pgeng@nvidia.com> - 2.6.3
 - Add 10-tmfifo.link to disable udev assigning MAC to tmfifo_netN
 
