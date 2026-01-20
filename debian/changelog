@@ -1,3 +1,10 @@
+rshim (2.6.4) UNRELEASED; urgency=low
+
+  * Fix rpm build issues on SLES 15/16
+  * Fix bfb-install exit incorrectly on BlueField-2
+
+ -- Penghe Geng <pgeng@nvidia.com>  Tue, 20 Jan 2026 16:19:56 -0500
+
 rshim (2.6.3) UNRELEASED; urgency=low
 
   * Add 10-tmfifo.link to disable udev assigning MAC to tmfifo_netN
