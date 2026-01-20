@@ -30,7 +30,7 @@ via the virtual console or network interface.
 
 %build
 ./bootstrap.sh
-%configure
+%configure --docdir=%{_datadir}/doc/%{name}
 %make_build
 
 %install
@@ -47,7 +47,7 @@ via the virtual console or network interface.
 
 %files
 %license LICENSE
-%doc README.md
+%doc %{_datadir}/doc/%{name}/README.md
 %config(noreplace) %{_sysconfdir}/rshim.conf
 %{_sbindir}/rshim
 %{_sbindir}/mlx-mkbfb
