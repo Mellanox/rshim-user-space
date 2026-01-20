@@ -11,6 +11,7 @@ dist_sbin_SCRIPTS = scripts/bfb-install \
                     scripts/bf-reg \
                     scripts/bfb-tool \
                     scripts/mlx-mkbfb \
+                    scripts/bf-pldm-ver \
                     third_party/PLDM-unpack/fwpkg_unpack.py
 
 AM_DISTCHECK_CONFIGURE_FLAGS = \
