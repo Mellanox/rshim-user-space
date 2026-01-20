@@ -409,16 +409,12 @@ push_boot_stream()
   fi
 }
 
-# pcie_bd is needed by check_nic_mode and other places. Shall be called eary
+# pcie_bd is needed by check_nic_mode and other places. Shall be called early
 check_pcie_bdf()
 {
   local str
 
   [ "$mode" != "local" ] && return
-
-  # Only needs to check for BF3.
-  str=`cat ${rshim_node}/misc | grep DEV_INFO | grep BlueField-3`
-  [ -z "$str" ] && exit 1
 
   # Get PCIE BDF
   str=`cat ${rshim_node}/misc | grep DEV_NAME | awk '{print $2}'`
@@ -843,6 +839,11 @@ fi
 run_cmd_local_ready=1
 
 # Setup checks
+
+if [ $mode == "local" ] && [ ! -e ${rshim_node}/boot ]; then
+  echo "Error: ${rshim_node} is not a valid rshim device."
+  exit 1
+fi
 
 check_pcie_bdf
 
