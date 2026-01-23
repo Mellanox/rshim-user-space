@@ -921,6 +921,9 @@ int rshim_boot_write(rshim_backend_t *bd, const char *user_buffer, size_t count,
   bd->is_in_boot_write = 0;
   pthread_mutex_unlock(&bd->mutex);
 
+  if (rc == -ETIMEDOUT)
+    return rc;
+
   if (bytes_written > 0 || count == 0)
     return bytes_written;
   else
