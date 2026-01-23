@@ -263,9 +263,8 @@ static ssize_t rshim_usb_bf3_boot_write(rshim_backend_t *bd, const char *buf,
      * there is free space. The BOOT FIFO has a max size of
      * is 0x400 (lines) * 8 = 8192 (bytes).
      */
+    time(&t0);
     do {
-      time(&t0);
-
       rc = bd->read_rshim(bd, RSHIM_CHANNEL, size_addr, &reg,
                           RSHIM_REG_SIZE_8B);
       if (rc < 0) {
@@ -301,8 +300,8 @@ static ssize_t rshim_usb_bf3_boot_write(rshim_backend_t *bd, const char *buf,
       transferred += tmp_tsfr;
 
     } else {
-      RSHIM_ERR("rshim%d timeout boot fifo count\n", bd->index);
-      return transferred;
+      RSHIM_ERR("rshim%d boot write timeout\n", bd->index);
+      return -ETIMEDOUT;
     }
   }
 
