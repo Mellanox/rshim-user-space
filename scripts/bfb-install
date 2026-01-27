@@ -604,7 +604,7 @@ cleanup() {
   fi
 
   # Restore the original binding states for PF0 and PF1
-  if [ $nic_mode -eq 1 -a -n "${pcie_bd}" -a ${deferred} -eq 0 ]; then
+  if [ -n "${pcie_bd}" -a ${deferred} -eq 0 ]; then
     for i in 0 1; do
       if eval "[ \${pf${i}_bound} -eq 0 ]"; then
         [ $verbose -eq 1 ] && echo "Re-binding: skipping originally unbound pf${i} (${pcie_bd}.${i})"
@@ -1039,18 +1039,20 @@ fi
 # Check BF chip version and adjust register offsets.
 apply_chip_settings
 
-# Check NIC mode and unbind mlx5_core driver in NIC mode.
+# Check NIC mode and unbind mlx5_core driver as needed.
 check_nic_mode
 
 # clear SP2 BITs to handle the case when ACPI events have been triggered before.
 clear_sp2_267
 
-if [ ${nic_mode} -eq 1 -a -n "${pcie_bd}" -a ${deferred} -eq 0 ]; then
-  # Set BREADCRUMB.BIT32 to indicate NIC mode.
-  breadcrumb1=$(${BF_REG} $(basename ${rshim_node}) ${RSH_BREADCRUMB1}.64 | awk '{print $3}')
-  breadcrumb1=$((breadcrumb1 | (0x1 << 32)))
-  breadcrumb1=$(printf "0x%x\n" $breadcrumb1)
-  ${BF_REG} $(basename ${rshim_node}) ${RSH_BREADCRUMB1}.64 ${breadcrumb1} >/dev/null
+if [ -n "${pcie_bd}" -a ${deferred} -eq 0 ]; then
+  if [ ${nic_mode} -eq 1 ]; then
+    # Set BREADCRUMB.BIT32 to indicate NIC mode.
+    breadcrumb1=$(${BF_REG} $(basename ${rshim_node}) ${RSH_BREADCRUMB1}.64 | awk '{print $3}')
+    breadcrumb1=$((breadcrumb1 | (0x1 << 32)))
+    breadcrumb1=$(printf "0x%x\n" $breadcrumb1)
+    ${BF_REG} $(basename ${rshim_node}) ${RSH_BREADCRUMB1}.64 ${breadcrumb1} >/dev/null
+  fi
 
   for i in 0 1; do
     if [[ ! -e /sys/bus/pci/drivers/mlx5_core/${pcie_bd}.${i} ]]; then
@@ -1153,4 +1155,3 @@ if [ ${deferred} -eq 1 ]; then
   done
   echo "Upgrade Finished"
 fi
-
