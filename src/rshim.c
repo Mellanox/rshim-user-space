@@ -2773,6 +2773,15 @@ void rshim_deregister(rshim_backend_t *bd)
   rshim_fifo_free(bd);
 
   rshim_devs[bd->index] = NULL;
+
+#ifdef __arm__
+  // Clear the device name to allow index reuse on BMC.
+  if ((bd->type == RSH_BACKEND_USB) && rshim_dev_names[bd->index]) {
+    free(rshim_dev_names[bd->index]);
+    rshim_dev_names[bd->index] = NULL;
+  }
+#endif
+
   bd->registered = 0;
 }
 
