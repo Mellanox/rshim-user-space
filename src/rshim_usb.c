@@ -18,7 +18,7 @@
 #define USB_BLUEFIELD_2_PRODUCT_ID  0x0214   /* Mellanox Bluefield-2 */
 #define USB_BLUEFIELD_3_PRODUCT_ID  0x021c   /* Mellanox Bluefield-3 */
 
-#define READ_RETRIES       5
+#define READ_RETRIES       2
 #define WRITE_RETRIES      5
 
 #define BF_MMIO_BASE 0x1000
@@ -341,6 +341,7 @@ static void rshim_usb_fifo_read_callback(struct libusb_transfer *urb)
   rshim_usb_t *dev = urb->user_data;
   rshim_backend_t *bd = &dev->bd;
   bool lock;
+  int rc;
 
   RSHIM_DBG("rshim%d(fifo_read_callback) %s urb completed, status %d, "
             "actual length %d, intr buf 0x%x\n",
@@ -389,8 +390,6 @@ static void rshim_usb_fifo_read_callback(struct libusb_transfer *urb)
        * handle partial reads; it's hard, and we haven't really
        * seen them.
        */
-      int rc;
-
       dev->read_or_intr_retries++;
       rc = libusb_submit_transfer(urb);
       if (rc) {
@@ -403,6 +402,17 @@ static void rshim_usb_fifo_read_callback(struct libusb_transfer *urb)
         rshim_notify(bd, RSH_EVENT_FIFO_ERR, rc > 0 ? -rc : rc);
       } else {
         bd->spin_flags |= RSH_SFLG_READING;
+      }
+      break;
+    } else {
+      RSHIM_ERR("rshim%d(fifo_read_callback) retry timeout\n", bd->index);
+      dev->read_or_intr_retries = 0;
+      rc = libusb_clear_halt(dev->handle, urb->endpoint);
+      if (rc) {
+        RSHIM_ERR("rshim%d clear_halt failed: %s\n",
+                  bd->index, libusb_error_name(rc));
+        rshim_notify(bd, RSH_EVENT_FIFO_ERR,
+                     urb->status > 0 ? -urb->status : urb->status);
       }
       break;
     }
@@ -1016,6 +1026,10 @@ static void rshim_usb_disconnect(struct libusb_device *usb_dev)
   dev->read_or_intr_urb = NULL;
   libusb_cancel_transfer(dev->write_urb);
   dev->write_urb = NULL;
+
+  pthread_mutex_lock(&bd->ringlock);
+  bd->spin_flags &= ~RSH_SFLG_READING;
+  pthread_mutex_unlock(&bd->ringlock);
 
   free(dev->intr_buf);
   dev->intr_buf = NULL;
