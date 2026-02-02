@@ -18,7 +18,7 @@
 #define USB_BLUEFIELD_2_PRODUCT_ID  0x0214   /* Mellanox Bluefield-2 */
 #define USB_BLUEFIELD_3_PRODUCT_ID  0x021c   /* Mellanox Bluefield-3 */
 
-#define READ_RETRIES       5
+#define READ_RETRIES       3
 #define WRITE_RETRIES      5
 
 #define BF_MMIO_BASE 0x1000
@@ -57,7 +57,7 @@ typedef struct {
 
 static libusb_context *rshim_usb_ctx;
 static int rshim_usb_epoll_fd;
-static bool rshim_usb_need_probe;
+static volatile bool rshim_usb_need_probe;
 
 int rshim_usb_timeout = RSHIM_USB_TIMEOUT;
 #define RSHIM_USB_TIMEOUT_MS (rshim_usb_timeout * 1000)
@@ -341,6 +341,7 @@ static void rshim_usb_fifo_read_callback(struct libusb_transfer *urb)
   rshim_usb_t *dev = urb->user_data;
   rshim_backend_t *bd = &dev->bd;
   bool lock;
+  int rc;
 
   RSHIM_DBG("rshim%d(fifo_read_callback) %s urb completed, status %d, "
             "actual length %d, intr buf 0x%x\n",
@@ -383,18 +384,17 @@ static void rshim_usb_fifo_read_callback(struct libusb_transfer *urb)
   case LIBUSB_TRANSFER_STALL:
   case LIBUSB_TRANSFER_OVERFLOW:
     if (dev->read_or_intr_retries < READ_RETRIES && urb->actual_length == 0) {
+      RSHIM_INFO("rshim%d(fifo_read_callback) retry\n", bd->index);
       /*
        * We got an error which could benefit from being retried.
        * Just submit the same urb again.  Note that we don't
        * handle partial reads; it's hard, and we haven't really
        * seen them.
        */
-      int rc;
-
       dev->read_or_intr_retries++;
       rc = libusb_submit_transfer(urb);
       if (rc) {
-        RSHIM_DBG("rshim%d(fifo_read_callback) failed to resubmit urb(%d)\n",
+        RSHIM_DBG("rshim%d(fifo_read_callback) failed to retry(%d)\n",
                   bd->index, rc);
         /*
          * In this case, we won't try again; signal the
@@ -403,6 +403,17 @@ static void rshim_usb_fifo_read_callback(struct libusb_transfer *urb)
         rshim_notify(bd, RSH_EVENT_FIFO_ERR, rc > 0 ? -rc : rc);
       } else {
         bd->spin_flags |= RSH_SFLG_READING;
+      }
+      break;
+    } else {
+      RSHIM_ERR("rshim%d(fifo_read_callback) retry timeout\n", bd->index);
+      dev->read_or_intr_retries = 0;
+      rc = libusb_clear_halt(dev->handle, urb->endpoint);
+      if (rc) {
+        RSHIM_ERR("rshim%d clear_halt failed: %s\n",
+                  bd->index, libusb_error_name(rc));
+        rshim_notify(bd, RSH_EVENT_FIFO_ERR,
+                     urb->status > 0 ? -urb->status : urb->status);
       }
       break;
     }
@@ -1017,6 +1028,10 @@ static void rshim_usb_disconnect(struct libusb_device *usb_dev)
   libusb_cancel_transfer(dev->write_urb);
   dev->write_urb = NULL;
 
+  pthread_mutex_lock(&bd->ringlock);
+  bd->spin_flags &= ~RSH_SFLG_READING;
+  pthread_mutex_unlock(&bd->ringlock);
+
   free(dev->intr_buf);
   dev->intr_buf = NULL;
 
@@ -1118,11 +1133,36 @@ static int rshim_hotplug_callback(struct libusb_context *ctx,
 }
 #endif
 
+#ifdef __arm__
+static int rshim_usb_reset(libusb_device *dev)
+{
+  libusb_device_handle *handle = NULL;
+  int rc;
+
+  rc = libusb_open(dev, &handle);
+  if (rc < 0 || !handle)
+    return rc;
+
+  rc = libusb_reset_device(handle);
+  if (rc < 0) {
+    RSHIM_WARN("Failed to reset: %s\n", libusb_error_name(rc));
+  }
+
+  libusb_close(handle);
+
+  return rc;
+}
+#endif
+
 static bool rshim_usb_probe(void)
 {
   libusb_context *ctx = rshim_usb_ctx;
   libusb_device **devs, *dev;
-  int rc, i = 0, j, num;
+  int rc, i = 0, j, num, speed;
+#ifdef __arm__
+  bool need_retry = false;
+  static int retries;
+#endif
 
   rc = libusb_get_device_list(ctx, &devs);
   if (rc < 0) {
@@ -1140,12 +1180,35 @@ static bool rshim_usb_probe(void)
     if (desc.idVendor != USB_TILERA_VENDOR_ID)
       continue;
 
+    speed = libusb_get_device_speed(dev);
+    if (speed < LIBUSB_SPEED_HIGH) {
+      RSHIM_INFO("Detect low-speed rshim USB: %d-%d, speed = %d\n",
+                 libusb_get_bus_number(dev),
+                 libusb_get_device_address(dev), speed);
+#ifdef __arm__
+      need_retry = true;
+      if (retries < 3) {
+        retries++;
+        rshim_usb_reset(dev);
+        rshim_usb_need_probe = true;
+        sleep(1);
+        rshim_work_signal(NULL);
+        return true;
+      }
+#endif
+    }
+
     num = sizeof(rshim_usb_product_ids) / sizeof(rshim_usb_product_ids[0]);
     for (j = 0; j < num; j++) {
       if (desc.idProduct == rshim_usb_product_ids[j])
         rshim_usb_probe_one(ctx, dev, &desc);
     }
   }
+
+#ifdef __arm__
+  if (!need_retry)
+    retries = 0;
+#endif
 
   rc = rshim_usb_add_poll(ctx);
   if (rc)
