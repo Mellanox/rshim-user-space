@@ -2908,7 +2908,7 @@ int rshim_init(int *epollfd, int *timerfd)
   }
 
   /* Add periodic timer. */
-  timer_fd = timerfd_create(CLOCK_MONOTONIC, 0);
+  timer_fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
   if (timer_fd == -1) {
     RSHIM_ERR("timerfd_create failed\n");
     exit(1);
