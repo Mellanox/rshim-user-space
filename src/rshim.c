@@ -3526,7 +3526,8 @@ int main(int argc, char *argv[])
 
   cleanup_pid_file(PID_FILE, pid_fd);
 
+#ifdef HAVE_SYSLOG_H
   closelog();
-
+#endif
   return 0;
 }
