@@ -2979,7 +2979,10 @@ static void rshim_main(int argc, char *argv[])
       rshim_backend_name = "pcie";
   }
   if (!rshim_backend_name) {
-    rshim_pcie_init();
+    int pcie_rc = rshim_pcie_init();
+    if (pcie_rc == -ENODEV) {
+      RSHIM_INFO("No PCIe rshim devices found, waiting for USB hotplug\n");
+    }
     rshim_usb_init(epoll_fd);
   } else {
     if (!strcmp(rshim_backend_name, "usb"))

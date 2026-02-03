@@ -1551,10 +1551,19 @@ int rshim_pcie_init(void)
     dev_present = true;
   }
 
-  pci_cleanup(pci);
-
-  if (!dev_present)
+  if (!dev_present) {
+    /*
+     * Skip pci_cleanup() when no devices are found to avoid hanging.
+     * This can occur on specific setups where the rshim PCIe PF device
+     * doesn't show up in the PCI scan, leaving the PCI subsystem in a
+     * state where pci_cleanup() blocks indefinitely.
+     * This allows the process to continue and support USB hotplug even
+     * when no PCIe devices are found.
+     */
     return -ENODEV;
+  }
+
+  pci_cleanup(pci);
 
   return 0;
 }
