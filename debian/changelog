@@ -1,3 +1,9 @@
+rshim (2.6.6) UNRELEASED; urgency=low
+
+  * Revert 268fcc8d1d87
+
+ -- Liming Sun <limings@nvidia.com>  Wed, 04 Feb 2026 09:45:20 -0400
+
 rshim (2.6.5) UNRELEASED; urgency=low
 
   * Unbind mlx5_core driver efore bfb push

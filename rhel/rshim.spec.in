@@ -68,6 +68,9 @@ via the virtual console or network interface.
 %endif
 
 %changelog
+* Wed Feb 04 2026 Liming Sun <limings@nvidia.com> - 2.6.6
+- Revert 268fcc8d1d87
+
 * Fri Jan 30 2026 Penghe Geng <pgeng@nvidia.com> - 2.6.5
 - Unbind mlx5_core driver efore bfb push
 - Fix USB boot timeout handling
