@@ -1,5 +1,6 @@
 rshim (2.5.9) UNRELEASED; urgency=low
 
+  * Fix rpm build issues on SLES 15/16
   * Fix USB boot timeout handling
   * Fix commit f41306d ("Provide local struct termio for console ioctl")
   * Add 10-tmfifo.link to disable udev assigning MAC to tmfifo_netN
