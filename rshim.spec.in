@@ -155,6 +155,7 @@ fi
 
 %changelog
 * Fri Feb 13 2026 Penghe Geng <pgeng@nvidia.com> - 2.5.9
+- Fix rpm build issues on SLES 15/16
 - Fix USB boot timeout handling
 - Fix commit f41306d ("Provide local struct termio for console ioctl")
 - Add 10-tmfifo.link to disable udev assigning MAC to tmfifo_netN
