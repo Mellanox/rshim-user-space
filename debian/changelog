@@ -1,3 +1,12 @@
+rshim (2.5.9) UNRELEASED; urgency=low
+
+  * Fix USB boot timeout handling
+  * Fix commit f41306d ("Provide local struct termio for console ioctl")
+  * Add 10-tmfifo.link to disable udev assigning MAC to tmfifo_netN
+  * Provide local struct termio for console ioctl
+
+ -- Penghe Geng <pgeng@nvidia.com>  Fri, 13 Feb 2026 12:31:02 -0500
+
 rshim (2.5.8) UNRELEASED; urgency=low
 
   * bfb-install: print error and warning messages during installation
