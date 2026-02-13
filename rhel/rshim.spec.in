@@ -68,6 +68,12 @@ via the virtual console or network interface.
 %endif
 
 %changelog
+* Fri Feb 13 2026 Penghe Geng <pgeng@nvidia.com> - 2.5.9
+- Fix USB boot timeout handling
+- Fix commit f41306d ("Provide local struct termio for console ioctl")
+- Add 10-tmfifo.link to disable udev assigning MAC to tmfifo_netN
+- Provide local struct termio for console ioctl
+
 * Wed Jan 07 2026 Penghe Geng <pgeng@nvidia.com> - 2.5.8
 - bfb-install: print error and warning messages during installation
 - bfb-tool capsule flow replace and bf.cfg extract flows
