@@ -26,27 +26,9 @@
 #include <fuse/cuse_lowlevel.h>
 #include <fuse/fuse_opt.h>
 #endif
+#include <asm/termios.h>
 #include <features.h>
 #include <unistd.h>
-/*
- * glibc 2.42+ no longer pulls in struct termio; provide a minimal definition so
- * we can keep using the legacy layout expected by existing userspace tools.
- */
-#if !__GLIBC_PREREQ(2, 42)   // if glibc is before 2.42
-#include <termio.h>
-#else
-#ifndef NCC
-#define NCC 8
-#endif
-struct termio {
-  unsigned short c_iflag;
-  unsigned short c_oflag;
-  unsigned short c_cflag;
-  unsigned short c_lflag;
-  unsigned char c_line;
-  unsigned char c_cc[NCC];
-};
-#endif
 #elif defined(__FreeBSD__)
 #include <termios.h>
 #include <sys/stat.h>
@@ -398,6 +380,13 @@ static void rshim_fuse_console_ioctl(fuse_req_t req, int cmd, void *arg,
                                      size_t in_bufsz, size_t out_bufsz)
 {
   rshim_backend_t *bd = fuse_req_userdata(req);
+  /* dummy data, needed for stty to work */
+  static const struct winsize ws = {
+        .ws_row = 24,
+        .ws_col = 80,
+        .ws_xpixel = 0,
+        .ws_ypixel = 0,
+  };
 
   if (!bd) {
     fuse_reply_err(req, ENODEV);
@@ -407,21 +396,71 @@ static void rshim_fuse_console_ioctl(fuse_req_t req, int cmd, void *arg,
   pthread_mutex_lock(&bd->mutex);
 
   switch (cmd) {
-  case TCGETS:
+  /* ------ */
+  /* TERMIO */
+  /* -------*/
+  case TCGETA:
     if (!out_bufsz) {
       struct iovec iov = { arg, sizeof(struct termio) };
 
       fuse_reply_ioctl_retry(req, NULL, 0, &iov, 1);
     } else {
-      fuse_reply_ioctl(req, 0, &bd->cons_termios, sizeof(struct termio));
+      struct termio cons_termio = {
+        .c_iflag = bd->cons_termios.c_iflag & 0xffff,
+        .c_oflag = bd->cons_termios.c_oflag & 0xffff,
+        .c_cflag = bd->cons_termios.c_cflag & 0xffff,
+        .c_lflag = bd->cons_termios.c_lflag & 0xffff,
+        .c_line = bd->cons_termios.c_line,
+      };
+
+      memcpy(&cons_termio.c_cc, &bd->cons_termios.c_cc, sizeof(cons_termio.c_cc));
+      fuse_reply_ioctl(req, 0, &bd->cons_termios, sizeof(bd->cons_termios));
+    }
+    break;
+
+  case TCSETA:
+  case TCSETAW:
+  case TCSETAF:
+    if (!in_bufsz) {
+      struct iovec iov = { arg, sizeof(struct termio)};
+
+      fuse_reply_ioctl_retry(req, &iov, 1, NULL, 0);
+    } else {
+      struct termio cons_termio = { 0 };
+
+      memcpy(&cons_termio, in_buf, sizeof(struct termio));
+      bd->cons_termios.c_iflag = cons_termio.c_iflag;
+      bd->cons_termios.c_oflag = cons_termio.c_oflag;
+      bd->cons_termios.c_cflag = cons_termio.c_cflag;
+      bd->cons_termios.c_lflag = cons_termio.c_lflag;
+      memset(&bd->cons_termios.c_cc, 0, sizeof(bd->cons_termios.c_cc));
+      memcpy(&bd->cons_termios.c_cc, &cons_termio.c_cc, sizeof(cons_termio.c_cc));
+      fuse_reply_ioctl(req, 0, NULL, 0);
+    }
+    break;
+
+  /* ---------------- */
+  /* TERMIOS/TERMIOS2 */
+  /* ---------------- */
+  case TCGETS:
+  case TCGETS2:
+    if (!out_bufsz) {
+      struct iovec iov = { arg, sizeof(bd->cons_termios) };
+
+      fuse_reply_ioctl_retry(req, NULL, 0, &iov, 1);
+    } else {
+      fuse_reply_ioctl(req, 0, &bd->cons_termios, sizeof(bd->cons_termios));
     }
     break;
 
   case TCSETS:
+  case TCSETS2:
   case TCSETSW:
+  case TCSETSW2:
   case TCSETSF:
+  case TCSETSF2:
     if (!in_bufsz) {
-      struct iovec iov = {arg, sizeof(bd->cons_termios)};
+      struct iovec iov = { arg, sizeof(bd->cons_termios)};
 
       fuse_reply_ioctl_retry(req, &iov, 1, NULL, 0);
     } else {
@@ -430,6 +469,21 @@ static void rshim_fuse_console_ioctl(fuse_req_t req, int cmd, void *arg,
     }
     break;
 
+  /* ---------- */
+  /* BSD IOCTLs */
+  /* ---------- */
+  case TIOCGWINSZ:
+    if (out_bufsz == 0) {
+        struct iovec iov = { arg, sizeof(struct winsize) };
+        fuse_reply_ioctl_retry(req, NULL, 0, &iov, 1);
+    } else {
+        fuse_reply_ioctl(req, 0, &ws, sizeof(ws));
+    }
+    break;
+
+  /* ------- */
+  /* Default */
+  /* ------- */
   default:
     fuse_reply_err(req, ENOSYS);
     break;
