@@ -1,3 +1,9 @@
+rshim (2.5.10) UNRELEASED; urgency=low
+
+  * Fix bfb-install exit incorrectly on BlueField-2
+
+ -- Penghe Geng <pgeng@nvidia.com>  Fri, 20 Feb 2026 12:02:18 -0500
+
 rshim (2.5.9) UNRELEASED; urgency=low
 
   * Fix rpm build issues on SLES 15/16

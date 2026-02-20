@@ -68,6 +68,9 @@ via the virtual console or network interface.
 %endif
 
 %changelog
+* Fri Feb 20 2026 Penghe Geng <pgeng@nvidia.com> - 2.5.10
+- Fix bfb-install exit incorrectly on BlueField-2
+
 * Fri Feb 13 2026 Penghe Geng <pgeng@nvidia.com> - 2.5.9
 - Fix rpm build issues on SLES 15/16
 - Fix USB boot timeout handling
