@@ -1,3 +1,9 @@
+rshim (2.1.19) UNRELEASED; urgency=low
+
+  * Fix USB boot timeout handling
+
+ -- Penghe Geng <pgeng@nvidia.com>  Tue, 24 Feb 2026 11:24:12 -0500
+
 rshim (2.1.18) UNRELEASED; urgency=low
 
   * bfb-install: print error and warning messages during installation
