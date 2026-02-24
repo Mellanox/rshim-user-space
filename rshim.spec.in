@@ -140,6 +140,9 @@ fi
 %{_datadir}/selinux/packages/rshim-fix.te
 
 %changelog
+* Tue Feb 24 2026 Penghe Geng <pgeng@nvidia.com> - 2.1.19
+- Fix USB boot timeout handling
+
 * Wed Jan 07 2026 Penghe Geng <pgeng@nvidia.com> - 2.1.18
 - bfb-install: print error and warning messages during installation
 
