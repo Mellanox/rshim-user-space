@@ -73,6 +73,7 @@ via the virtual console or network interface.
 - Avoid rshim1 on DPU-BMC
 - Unbind mlx5_core driver efore bfb push
 - Fix USB boot timeout handling
+- Revert "Unbind mlx5_core driver efore bfb push"
 
 * Tue Jan 20 2026 Penghe Geng <pgeng@nvidia.com> - 2.6.4
 - Fix rpm build issues on SLES 15/16
