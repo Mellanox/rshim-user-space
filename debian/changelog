@@ -1,3 +1,12 @@
+rshim (2.7.1) UNRELEASED; urgency=low
+
+  * Some robust fixes for USB
+  * Avoid rshim1 on DPU-BMC
+  * Unbind mlx5_core driver efore bfb push
+  * Fix USB boot timeout handling
+
+ -- Penghe Geng <pgeng@nvidia.com>  Fri, 06 Mar 2026 14:47:14 -0500
+
 rshim (2.6.4) UNRELEASED; urgency=low
 
   * Fix rpm build issues on SLES 15/16

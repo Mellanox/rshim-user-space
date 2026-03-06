@@ -68,6 +68,12 @@ via the virtual console or network interface.
 %endif
 
 %changelog
+* Fri Mar 06 2026 Penghe Geng <pgeng@nvidia.com> - 2.7.1
+- Some robust fixes for USB
+- Avoid rshim1 on DPU-BMC
+- Unbind mlx5_core driver efore bfb push
+- Fix USB boot timeout handling
+
 * Tue Jan 20 2026 Penghe Geng <pgeng@nvidia.com> - 2.6.4
 - Fix rpm build issues on SLES 15/16
 - Fix bfb-install exit incorrectly on BlueField-2
