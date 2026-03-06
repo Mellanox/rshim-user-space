@@ -4,6 +4,7 @@ rshim (2.7.1) UNRELEASED; urgency=low
   * Avoid rshim1 on DPU-BMC
   * Unbind mlx5_core driver efore bfb push
   * Fix USB boot timeout handling
+  * Revert "Unbind mlx5_core driver efore bfb push"
 
  -- Penghe Geng <pgeng@nvidia.com>  Fri, 06 Mar 2026 14:47:14 -0500
 
