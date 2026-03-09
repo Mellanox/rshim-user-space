@@ -461,7 +461,7 @@ wait_for_update_to_finish()
   # the exit condition of the bfb-install script.
   local filter0 filter
 
-  filter0="Rebooting\.\.\.|finished|DPU is ready|Linux up|CRITICAL ERROR"
+  filter0="Rebooting\.\.\.|DPU is ready|Linux up|CRITICAL ERROR"
 
   if [ $deferred -eq 0 ]; then
     filter0="$filter0|In Enhanced NIC mode"
