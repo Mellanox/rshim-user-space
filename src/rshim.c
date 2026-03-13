@@ -191,7 +191,11 @@ const char *magic_to_str(uint64_t magic)
 
 /* Terminal characteristics for newly created consoles. */
 #define INIT_C_CC "\003\034\177\025\004\0\1\0\021\023\032\0\022\017\027\026\0"
+#ifdef __linux__
+static struct termios2 init_console_termios = {
+#else
 static struct termios init_console_termios = {
+#endif
   .c_iflag = INLCR | ICRNL,
   .c_oflag = OPOST | ONLCR,
   .c_cflag = B115200 | HUPCL | CLOCAL | CREAD | CS8,
