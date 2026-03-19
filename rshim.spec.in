@@ -89,16 +89,44 @@ if [ -f /etc/redhat-release ] && [ -f /etc/os-release ]; then
     RHEL_MINOR=$(echo $VERSION_ID | cut -d '.' -f 2)
     if [ "$RHEL_MAJOR" -gt 9 ] || \
          { [ "$RHEL_MAJOR" -eq 9 ] && [ "$RHEL_MINOR" -ge 5 ]; }; then
-      polver=$(grep "^module" %{_datadir}/selinux/packages/rshim-fix.te | sed 's/;//' | awk '{print $3}')
-      echo "Applying SELinux rshim policy fix $polver for RHEL 9.5..."
-      if [ -x /usr/bin/checkmodule ] && [ -x /usr/bin/semodule_package ]; then
-        mkdir -p /tmp/rshim-selinux
-        checkmodule -M -m -o /tmp/rshim-selinux/rshim-fix.mod %{_datadir}/selinux/packages/rshim-fix.te
-        semodule_package -o /tmp/rshim-selinux/rshim-fix.pp -m /tmp/rshim-selinux/rshim-fix.mod
-        semodule -i /tmp/rshim-selinux/rshim-fix.pp || :
-        rm -rf /tmp/rshim-selinux
-      else
-        echo "SELinux policy tools are not available. rshim policy update failed."
+      selinux_enabled=0
+      if command -v getenforce >/dev/null 2>&1; then
+        case "$(getenforce 2>/dev/null || true)" in
+          Enforcing|Permissive)
+            selinux_enabled=1
+            ;;
+        esac
+      elif [ -d /sys/fs/selinux ]; then
+        selinux_enabled=1
+      fi
+      if [ "$selinux_enabled" -ne 0 ]; then
+        if [ -n "${VERSION_ID:-}" ]; then
+          os_name="${NAME:-RHEL} ${VERSION_ID}"
+        else
+          os_name="${NAME:-RHEL}"
+        fi
+        tmpdir=/tmp/rshim-selinux
+        echo "Applying SELinux rshim policy fix on $os_name..."
+        mkdir -p "$tmpdir"
+        if command -v checkmodule >/dev/null 2>&1 &&
+           command -v semodule_package >/dev/null 2>&1 &&
+           command -v semodule >/dev/null 2>&1 &&
+           checkmodule -M -m -o "$tmpdir/rshim-fix.mod" %{_datadir}/selinux/packages/rshim-fix.te &&
+           semodule_package -o "$tmpdir/rshim-fix.pp" -m "$tmpdir/rshim-fix.mod" &&
+           semodule -i "$tmpdir/rshim-fix.pp"; then
+          echo "Installed SELinux rshim policy fix."
+        else
+          rm -rf "$tmpdir"
+          echo "Error: failed to apply SELinux rshim policy fix."
+          echo \
+            "This may be caused by missing SELinux tools or a host SELinux" \
+            "policy conflict, not by rshim rpm itself."
+          echo \
+            "Reinstalling the host SELinux policy packages or cleaning up" \
+            "stale SELinux modules may help."
+          exit 1
+        fi
+        rm -rf "$tmpdir"
       fi
     fi
 else
