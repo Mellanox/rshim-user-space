@@ -364,7 +364,7 @@ void rshim_work_signal(rshim_backend_t *bd)
     ssize_t n = write(rshim_work_fd[1], &index, sizeof(index));
     (void)n;  /* Best-effort; epoll will still wake on future signals */
   }
-
+}
 /*
  * Read some bytes from RShim.
  *
