@@ -5,6 +5,7 @@
  */
 
 #include <arpa/inet.h>
+#include <errno.h>
 #include <getopt.h>
 #include <netinet/in.h>
 #include <pthread.h>
@@ -32,6 +33,12 @@
 
 /* RShim timer interval in milliseconds. */
 #define RSHIM_TIMER_INTERVAL 1
+
+/* Epoll wait timeout (ms) so the main loop periodically re-checks rshim_run
+ * and runs idle work; -1 would block until an event (fragile for SIGTERM).
+ */
+#define RSHIM_EPOLL_WAIT_MS 1000
+
 
 /* Network polling interval in timer ticks when idle (no network activity) */
 #define RSHIM_NET_POLL_IDLE_INTERVAL_TICKS 10
@@ -3005,7 +3012,7 @@ static void rshim_main(int argc, char *argv[])
   time(&t0);
 
   while (rshim_run) {
-    num = epoll_wait(epoll_fd, events, MAXEVENTS, -1);
+    num = epoll_wait(epoll_fd, events, MAXEVENTS, RSHIM_EPOLL_WAIT_MS);
     if (num <= 0) {
       if (num < 0)
         RSHIM_DBG("epoll_wait failed; %m\n");
@@ -3293,6 +3300,7 @@ static void rshim_sig_handler(int sig)
     rshim_sig_hup(sig);
     break;
 
+  case SIGINT:
   case SIGTERM:
     rshim_run = false;
     __sync_synchronize();
