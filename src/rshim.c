@@ -353,10 +353,18 @@ void rshim_work_signal(rshim_backend_t *bd)
       update = false;
   }
 
-  if (update)
-    rshim_fd_full_write(rshim_work_fd[1], &index, sizeof(index));
+  if (update) {
+    /*
+     * Write directly to the work pipe without holding rshim_fd_mutex.
+     * Pipe writes of 1 byte are atomic; concurrent read (epoll) and write
+     * are safe. This avoids blocking the epoll loop (which would cause
+     * read misc timeouts) and avoids lock contention during boot install
+     * (which would double installation time).
+     */
+    ssize_t n = write(rshim_work_fd[1], &index, sizeof(index));
+    (void)n;  /* Best-effort; epoll will still wake on future signals */
+  }
 }
-
 /*
  * Read some bytes from RShim.
  *
@@ -3276,6 +3284,7 @@ static void rshim_sig_handler(int sig)
     rshim_sig_hup(sig);
     break;
 
+  case SIGINT:
   case SIGTERM:
     rshim_run = false;
     __sync_synchronize();
