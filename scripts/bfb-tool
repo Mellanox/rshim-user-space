@@ -1058,10 +1058,14 @@ handle_opn()
 			target_bfb=${OUTPUT_BFB}
 		else
 			target_bfb=${bfb##*/}
-			if [ "$OUTPUT_FORMAT" == "bundle" ]; then
+			# Append OPN to filename only when the directory uses PSID,
+			# since the OPN is not captured in the directory path.
+			# In --all/--opn modes the OPN is already in the directory.
+			if [ $BUILD_ALL -eq 0 ] && [ "$ID_SET" == "PSID" ]; then
 				target_bfb=${target_bfb/.bfb/-${OPN}.bfb}
-			else
-				target_bfb=${target_bfb/.bfb/-${OPN}.flat.bfb}
+			fi
+			if [ "$OUTPUT_FORMAT" != "bundle" ]; then
+				target_bfb=${target_bfb/.bfb/.flat.bfb}
 			fi
 		fi
 
