@@ -32,6 +32,8 @@ DEBUG=${DEBUG:-0}                             # Debug mode
 BF_REG=bf-reg
 RSHIM_PIPE="/tmp/rshim_pipe"
 LOG_FILE="/tmp/bfb-install.log"
+PF_BIND_RETRY_INTERVAL=2
+PF_BIND_RETRY_TIMEOUT=180
 
 run_cmd_local_ready=0     # whether run_cmd* local functions are ready to use
 run_cmd_remote_ready=0    # whether run_cmd* remote functions are ready to use
@@ -555,6 +557,44 @@ apply_chip_settings()
   fi
 }
 
+restore_pf_bindings()
+{
+  local i bd deadline
+
+  [ -z "${pcie_bd}" ] && return
+  [ ${deferred} -eq 1 ] && return
+
+  for i in 0 1; do
+    bd="${pcie_bd}.${i}"
+
+    if eval "[ \${pf${i}_bound} -eq 0 ]"; then
+      [ $verbose -eq 1 ] && echo "Re-binding: skipping originally unbound pf${i} (${bd})"
+      continue
+    fi
+
+    if [ -e /sys/bus/pci/drivers/mlx5_core/${bd} ]; then
+      [ $verbose -eq 1 ] && echo "Re-binding: pf${i} (${bd}) already bound"
+      continue
+    fi
+
+    echo "Binding pf${i} (${bd})"
+    deadline=$((SECONDS + PF_BIND_RETRY_TIMEOUT))
+    while true; do
+      if run_cmd local "echo ${bd} > /sys/bus/pci/drivers/mlx5_core/bind" >/dev/null 2>&1; then
+        break
+      fi
+      if [ -e /sys/bus/pci/drivers/mlx5_core/${bd} ]; then
+        break
+      fi
+      if [ ${SECONDS} -ge ${deadline} ]; then
+        echo "Error: Timed out binding pf${i} (${bd})"
+        exit 1
+      fi
+      sleep ${PF_BIND_RETRY_INTERVAL}
+    done
+  done
+}
+
 # Clean up function whenever the script exits
 # shellcheck disable=SC2317
 cleanup() {
@@ -603,18 +643,8 @@ cleanup() {
     fi
   fi
 
-  # Restore the original binding states for PF0 and PF1
-  if [ $nic_mode -eq 1 -a -n "${pcie_bd}" -a ${deferred} -eq 0 ]; then
-    for i in 0 1; do
-      if eval "[ \${pf${i}_bound} -eq 0 ]"; then
-        [ $verbose -eq 1 ] && echo "Re-binding: skipping originally unbound pf${i} (${pcie_bd}.${i})"
-        continue
-      fi
-      if [ ! -e /sys/bus/pci/drivers/mlx5_core/${pcie_bd}.${i} ]; then
-        echo "Binding pf${i} (${pcie_bd}.${i})"
-        run_cmd_exit local "echo ${pcie_bd}.${i} > /sys/bus/pci/drivers/mlx5_core/bind"
-      fi
-    done
+  if [ -n "${pcie_bd}" ]; then
+    restore_pf_bindings
   fi
 }
 
@@ -1039,22 +1069,24 @@ fi
 # Check BF chip version and adjust register offsets.
 apply_chip_settings
 
-# Check NIC mode and unbind mlx5_core driver in NIC mode.
+# Check NIC mode and unbind mlx5_core driver as needed.
 check_nic_mode
 
 # clear SP2 BITs to handle the case when ACPI events have been triggered before.
 clear_sp2_267
 
-if [ ${nic_mode} -eq 1 -a -n "${pcie_bd}" -a ${deferred} -eq 0 ]; then
-  # Set BREADCRUMB.BIT32 to indicate NIC mode.
-  breadcrumb1=$(${BF_REG} $(basename ${rshim_node}) ${RSH_BREADCRUMB1}.64 | awk '{print $3}')
-  breadcrumb1=$((breadcrumb1 | (0x1 << 32)))
-  breadcrumb1=$(printf "0x%x\n" $breadcrumb1)
-  ${BF_REG} $(basename ${rshim_node}) ${RSH_BREADCRUMB1}.64 ${breadcrumb1} >/dev/null
+if [ -n "${pcie_bd}" -a ${deferred} -eq 0 ]; then
+  if [ ${nic_mode} -eq 1 ]; then
+    # Set BREADCRUMB.BIT32 to indicate NIC mode.
+    breadcrumb1=$(${BF_REG} $(basename ${rshim_node}) ${RSH_BREADCRUMB1}.64 | awk '{print $3}')
+    breadcrumb1=$((breadcrumb1 | (0x1 << 32)))
+    breadcrumb1=$(printf "0x%x\n" $breadcrumb1)
+    ${BF_REG} $(basename ${rshim_node}) ${RSH_BREADCRUMB1}.64 ${breadcrumb1} >/dev/null
+  fi
 
   for i in 0 1; do
     if [[ ! -e /sys/bus/pci/drivers/mlx5_core/${pcie_bd}.${i} ]]; then
-      [ ${verbose} -eq 1 ] && echo "Unbinding: Skipping originally unbound pf${i} (${pcie_bd}.${i})"
+      [ ${verbose} -eq 1 ] && echo "Unbinding: skipping originally unbound pf${i} (${pcie_bd}.${i})"
       continue
     fi
     eval "pf${i}_bound=1"
@@ -1153,4 +1185,3 @@ if [ ${deferred} -eq 1 ]; then
   done
   echo "Upgrade Finished"
 fi
-
