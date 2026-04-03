@@ -1154,3 +1154,25 @@ if [ ${deferred} -eq 1 ]; then
   echo "Upgrade Finished"
 fi
 
+if [ ${deferred} -eq 0 -a ${nic_mode} -eq 0 ]; then
+  # non-deferred mode: Wait for reboot.
+  filter=" PSC BL1 START|[BL2]: start"
+  finished=0
+
+  end=$((SECONDS + 30))
+
+  while [ $SECONDS -lt $end -a $finished -eq 0 ]; do
+    cmd_get_log="cat ${rshim_node}/misc | sed -n '/^ INFO/,\$p'"
+    cur=$(run_cmd_exit $mode "$cmd_get_log")
+    sleep 1
+    if echo ${cur} | grep -Ei "$filter" >/dev/null; then
+      finished=1
+    fi
+  done
+
+  if [ $finished -eq 1 ]; then
+    echo "System rebooted"
+  else
+    echo "Reset failed or unsupported"
+  fi
+fi
