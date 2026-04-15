@@ -154,6 +154,9 @@ fi
 %{_datadir}/selinux/packages/rshim-fix.te
 
 %changelog
+* Wed Apr 15 2026 Penghe Geng <pgeng@nvidia.com> - 2.5.11
+- Update rshim.c to fix high contention of rshim_fd_mutex + SIGINT not being handle
+
 * Fri Feb 20 2026 Penghe Geng <pgeng@nvidia.com> - 2.5.10
 - Fix bfb-install exit incorrectly on BlueField-2
 

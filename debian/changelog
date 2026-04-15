@@ -1,3 +1,9 @@
+rshim (2.5.11) UNRELEASED; urgency=low
+
+  * Update rshim.c to fix high contention of rshim_fd_mutex + SIGINT not being handle
+
+ -- Penghe Geng <pgeng@nvidia.com>  Wed, 15 Apr 2026 16:17:30 -0400
+
 rshim (2.5.10) UNRELEASED; urgency=low
 
   * Fix bfb-install exit incorrectly on BlueField-2
