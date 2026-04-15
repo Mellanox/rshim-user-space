@@ -57,6 +57,9 @@ via the virtual console or network interface.
 %{_mandir}/man8/rshim.8.gz
 
 %changelog
+* Wed Apr 15 2026 Penghe Geng <pgeng@nvidia.com> - 2.1.20
+- Update rshim.c to fix high contention of rshim_fd_mutex + SIGINT not being handle
+
 * Tue Feb 24 2026 Penghe Geng <pgeng@nvidia.com> - 2.1.19
 - Fix USB boot timeout handling
 
