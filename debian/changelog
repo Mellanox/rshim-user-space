@@ -1,3 +1,11 @@
+rshim (2.8.0) UNRELEASED; urgency=low
+
+  * rpm: simplify selinux overlay handling
+  * Update rshim.c to fix high contention of rshim_fd_mutex + SIGINT not being handle
+  * bfb-install: remove "finished" as exit condition
+
+ -- Penghe Geng <pgeng@nvidia.com>  Mon, 20 Apr 2026 13:48:08 -0400
+
 rshim (2.7.1) UNRELEASED; urgency=low
 
   * Some robust fixes for USB
