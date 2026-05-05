@@ -68,6 +68,9 @@ via the virtual console or network interface.
 %endif
 
 %changelog
+* Tue May 05 2026 Penghe Geng <pgeng@nvidia.com> - 2.7.3
+- bfb-tool: preserve original filename in repack for --all/--opn modes
+
 * Mon Apr 20 2026 Penghe Geng <pgeng@nvidia.com> - 2.7.2
 - rpm: simplify selinux overlay handling
 - Update rshim.c to fix high contention of rshim_fd_mutex + SIGINT not being handle
