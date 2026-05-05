@@ -1,3 +1,9 @@
+rshim (2.7.3) UNRELEASED; urgency=low
+
+  * bfb-tool: preserve original filename in repack for --all/--opn modes
+
+ -- Penghe Geng <pgeng@nvidia.com>  Tue, 05 May 2026 09:27:12 -0400
+
 rshim (2.7.2) UNRELEASED; urgency=low
 
   * rpm: simplify selinux overlay handling
