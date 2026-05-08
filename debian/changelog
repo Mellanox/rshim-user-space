@@ -1,3 +1,10 @@
+rshim (2.1.21) UNRELEASED; urgency=low
+
+  * Add 10-tmfifo.link to disable udev assigning MAC to tmfifo_netN
+  * bfb-tool: preserve original filename in repack for --all/--opn modes (#373)
+
+ -- Penghe Geng <pgeng@nvidia.com>  Fri, 08 May 2026 16:12:04 -0400
+
 rshim (2.1.20) UNRELEASED; urgency=low
 
   * Update rshim.c to fix high contention of rshim_fd_mutex + SIGINT not being handle

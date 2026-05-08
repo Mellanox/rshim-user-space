@@ -60,6 +60,10 @@ via the virtual console or network interface.
 %endif
 
 %changelog
+* Fri May 08 2026 Penghe Geng <pgeng@nvidia.com> - 2.1.21
+- Add 10-tmfifo.link to disable udev assigning MAC to tmfifo_netN
+- bfb-tool: preserve original filename in repack for --all/--opn modes (#373)
+
 * Wed Apr 15 2026 Penghe Geng <pgeng@nvidia.com> - 2.1.20
 - Update rshim.c to fix high contention of rshim_fd_mutex + SIGINT not being handle
 
