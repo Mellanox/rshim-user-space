@@ -35,7 +35,7 @@ tar -axf %{SOURCE0} -C %{name}-%{version} --strip-components 1
 
 %build
 ./bootstrap.sh
-%configure
+%configure --docdir=%{_datadir}/doc/%{name}
 %if %{?make_build:1}%{!?make_build:0}
 %make_build
 %else
@@ -103,7 +103,7 @@ fi
 %{!?_licensedir:%global license %%doc}
 %license LICENSE
 %defattr(-,root,root,-)
-%doc README.md
+%doc %{_datadir}/doc/%{name}/README.md
 %config(noreplace) %{_sysconfdir}/rshim.conf
 %if "%{with_systemd}" == "1"
   %{_unitdir}/rshim.service
