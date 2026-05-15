@@ -83,12 +83,36 @@ make
 %endif
 
 %post
-if [ -f /etc/redhat-release ] && [ -f /etc/os-release ]; then
+apply_selinux_fix=0
+if [ -f /etc/os-release ]; then
     . /etc/os-release
-    RHEL_MAJOR=$(echo $VERSION_ID | cut -d '.' -f 1)
-    RHEL_MINOR=$(echo $VERSION_ID | cut -d '.' -f 2)
-    if [ "$RHEL_MAJOR" -gt 9 ] || \
-         { [ "$RHEL_MAJOR" -eq 9 ] && [ "$RHEL_MINOR" -ge 5 ]; }; then
+    OS_MAJOR=$(echo "${VERSION_ID:-0}" | cut -d '.' -f 1)
+    OS_MINOR=$(echo "${VERSION_ID:-0}" | cut -d '.' -f 2)
+    # If VERSION_ID has no dot, cut returns the whole value for field 2.
+    # Treat versions like "9" as "9.0", not "9.9".
+    [ "$OS_MINOR" = "${VERSION_ID:-0}" ] && OS_MINOR=0
+    case "$OS_MAJOR" in ''|*[!0-9]*) OS_MAJOR=0 ;; esac
+    case "$OS_MINOR" in ''|*[!0-9]*) OS_MINOR=0 ;; esac
+
+    if [ -f /etc/redhat-release ] &&
+       { [ "$OS_MAJOR" -gt 9 ] || \
+         { [ "$OS_MAJOR" -eq 9 ] && [ "$OS_MINOR" -ge 5 ]; }; }; then
+      apply_selinux_fix=1
+    fi
+
+    # TencentOS 4.4 is RHEL 9.5-based and enables SELinux by default, but it
+    # does not ship /etc/redhat-release. Check both ID and ID_LIKE so TencentOS
+    # derivatives that keep the same SELinux behavior use this policy overlay.
+    case " ${ID:-} ${ID_LIKE:-} " in
+      *" tencentos "*)
+        if [ "$OS_MAJOR" -gt 4 ] || \
+           { [ "$OS_MAJOR" -eq 4 ] && [ "$OS_MINOR" -ge 4 ]; }; then
+          apply_selinux_fix=1
+        fi
+        ;;
+    esac
+
+    if [ "$apply_selinux_fix" -ne 0 ]; then
       selinux_enabled=0
       if command -v getenforce >/dev/null 2>&1; then
         case "$(getenforce 2>/dev/null || true)" in
@@ -101,9 +125,9 @@ if [ -f /etc/redhat-release ] && [ -f /etc/os-release ]; then
       fi
       if [ "$selinux_enabled" -ne 0 ]; then
         if [ -n "${VERSION_ID:-}" ]; then
-          os_name="${NAME:-RHEL} ${VERSION_ID}"
+          os_name="${NAME:-Linux} ${VERSION_ID}"
         else
-          os_name="${NAME:-RHEL}"
+          os_name="${NAME:-Linux}"
         fi
         tmpdir=/tmp/rshim-selinux
         echo "Applying SELinux rshim policy fix on $os_name..."
