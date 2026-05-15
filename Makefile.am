@@ -15,7 +15,8 @@ dist_sbin_SCRIPTS = scripts/bfb-install \
                     third_party/PLDM-unpack/fwpkg_unpack.py
 
 AM_DISTCHECK_CONFIGURE_FLAGS = \
-  --with-systemdsystemunitdir=$$dc_install_base/$(systemdsystemunitdir)
+  --with-systemdsystemunitdir=$$dc_install_base/$(systemdsystemunitdir) \
+  --with-systemdutildir=$$dc_install_base/$(systemdutildir)
 if HAVE_SYSTEMD
 systemdsystemunit_DATA = rshim.service
 else
@@ -27,6 +28,6 @@ endif
 
 install-data-hook:
 if HAVE_SYSTEMD
-	$(MKDIR_P) $(DESTDIR)$(sysconfdir)/systemd/network
-	$(INSTALL_DATA) $(srcdir)/10-tmfifo-net.link $(DESTDIR)$(sysconfdir)/systemd/network/10-tmfifo-net.link
+	$(MKDIR_P) $(DESTDIR)$(systemdutildir)/network
+	$(INSTALL_DATA) $(srcdir)/10-tmfifo-net.link $(DESTDIR)$(systemdutildir)/network/10-tmfifo-net.link
 endif

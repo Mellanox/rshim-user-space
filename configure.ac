@@ -34,6 +34,20 @@ AS_IF([test "x$with_systemdsystemunitdir" != "xno"],
       [AC_SUBST([systemdsystemunitdir], [$with_systemdsystemunitdir])])
 AM_CONDITIONAL([HAVE_SYSTEMD], [test "x$with_systemdsystemunitdir" != "xno"])
 
+AC_ARG_WITH([systemdutildir],
+ [AS_HELP_STRING([--with-systemdutildir=DIR], [Directory for systemd utility files (network links)])],,
+ [with_systemdutildir=auto])
+AS_IF([test "x$with_systemdutildir" = "xyes" -o "x$with_systemdutildir" = "xauto"], [
+  def_systemdutildir=$($PKG_CONFIG --variable=systemdutildir systemd)
+  AS_IF([test "x$def_systemdutildir" = "x"],
+  [AS_IF([test "x$with_systemdutildir" = "xyes"],
+  [AC_MSG_ERROR([systemd util dir requested but pkg-config unable to query systemd package])])
+  with_systemdutildir='${sysconfdir}/systemd'],
+  [with_systemdutildir="$def_systemdutildir"])])
+AS_IF([test "x$with_systemdutildir" = "xno"],
+      [with_systemdutildir='${sysconfdir}/systemd'])
+AC_SUBST([systemdutildir], [$with_systemdutildir])
+
 AC_CHECK_HEADERS_ONCE([syslog.h])
 
 AC_ARG_ENABLE([usb],
