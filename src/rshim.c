@@ -236,6 +236,21 @@ int rshim_pcie_intr_poll_interval = 10;  /* Interrupt polling in milliseconds */
 bool rshim_force_mode;                   /* Keep /dev/rshim<N> & send a force cmd */
 bool rshim_cmdmode;                      /* Command mode */
 
+/*
+ * Per-backend DPU log shadow ring capacity, in bytes.  The shadow ring
+ * is a software-side circular buffer that mirrors the DPU's 1 KiB hw
+ * scratch ring, so multiple concurrent misc readers (bfb-install +
+ * watch + redfish) can all see the same log content without racing
+ * each other for a destructive hw read.  Set to 0 to disable.
+ *
+ * Default 65536 ≈ ~1k log lines, plenty for a full bfb install
+ * transcript while costing ~64 KiB per attached rshim.  Override with
+ * a whitespace-separated "LOG_SHADOW_SIZE <bytes>" line in rshim.conf
+ * (same format as all other keys -- no '=' sign, the parser uses
+ * sscanf "%31s%63s").  Set <bytes> to 0 to disable the shadow.
+ */
+int rshim_log_shadow_size = 65536;
+
 /* Array of devices and device names. */
 rshim_backend_t *rshim_devs[RSHIM_MAX_DEV];
 char *rshim_dev_names[RSHIM_MAX_DEV];
@@ -802,6 +817,19 @@ int rshim_boot_open(rshim_backend_t *bd)
   }
 
   bd->is_boot_open = 1;
+
+  /*
+   * A new bfb is being pushed: discard any previously-captured DPU log
+   * lines.  Without this the user sees the pre-install boot session
+   * appended in front of the rshim-boot session that bfb-install is
+   * about to trigger -- two genuine boots, but visually indistinguishable
+   * since both replay the same BL1/BL2 prologue.  Drop the old context
+   * here so the shadow only contains content from this install onward.
+   * The drainer is gated off via is_boot_open/is_booting from this point
+   * until the DPU comes back, so nothing new will land in the shadow
+   * until the rshim boot has actually started logging.
+   */
+  rshim_log_shadow_reset(bd);
 
   /*
    * Disable the watchdog. The channel and offset are the same on all
@@ -1861,6 +1889,15 @@ static void rshim_work_handler(rshim_backend_t *bd)
     rshim_handle_ownership_transfer(bd);
   }
 
+  /*
+   * Drain the DPU log scratch ring into the per-backend shadow ring on
+   * a slow polling cadence (RSHIM_LOG_SHADOW_DRAIN_MS).  Cheap no-op
+   * when the shadow is disabled or the cadence hasn't elapsed.  Runs
+   * here so the daemon keeps the hw ring from saturating even when
+   * nothing is reading from /dev/rshim<N>/misc.
+   */
+  rshim_log_shadow_tick(bd, rshim_timer_ticks);
+
   pthread_mutex_unlock(&bd->mutex);
 }
 
@@ -2734,6 +2771,16 @@ int rshim_register(rshim_backend_t *bd)
   bd->boot_timeout = rshim_boot_timeout;
   bd->display_level = rshim_display_level;
 
+  /* Allocate the DPU log shadow ring (best-effort: a failure here just
+   * disables the shadow for this backend, the legacy direct-ring read
+   * path still works). */
+  if (rshim_log_shadow_size > 0) {
+    rc = rshim_log_shadow_init(bd, (size_t)rshim_log_shadow_size);
+    if (rc)
+      RSHIM_INFO("rshim%d log shadow alloc failed (%d), running without it\n",
+                 bd->index, rc);
+  }
+
   /* Start the keepalive timer. */
   bd->last_keepalive = rshim_timer_ticks;
   bd->timer = rshim_timer_ticks + 1;
@@ -2779,6 +2826,8 @@ void rshim_deregister(rshim_backend_t *bd)
   bd->write_buf = NULL;
 
   rshim_fifo_free(bd);
+
+  rshim_log_shadow_free(bd);
 
   rshim_devs[bd->index] = NULL;
 
@@ -3233,6 +3282,16 @@ static int rshim_load_cfg(void)
       continue;
     } else if (!strcmp(key, "PCIE_HAS_UIO")) {
       rshim_pcie_enable_uio = atoi(value);
+      continue;
+    } else if (!strcmp(key, "LOG_SHADOW_SIZE")) {
+      /* 0 disables the shadow ring; otherwise capped to a sane upper
+       * bound (1 MiB) to keep a misconfig from runaway-allocating. */
+      int sz = atoi(value);
+      if (sz < 0)
+        sz = 0;
+      if (sz > (1 << 20))
+        sz = (1 << 20);
+      rshim_log_shadow_size = sz;
       continue;
     }
 

@@ -823,10 +823,49 @@ static int rshim_fuse_misc_read(struct cuse_dev *cdev, int fflags,
     n = snprintf(p, len, "%-16s%d (0:no, 1:yes)\n", "CLEAR_ON_READ",
                  bd->clear_on_read);
     p += n;
+    len -= n;
+
+    /* Surface the shadow-ring state so users can tell at a glance how
+     * much DPU log history is cached and whether anything has rolled
+     * off the back of the buffer. */
+    if (bd->log_shadow) {
+      n = snprintf(p, len, "%-16s%zu/%zu bytes\n", "LOG_SHADOW",
+                   bd->log_shadow->head - bd->log_shadow->tail,
+                   bd->log_shadow->cap);
+      p += n;
+      len -= n;
+
+      n = snprintf(p, len, "%-16s%llu bytes\n", "LOG_DROPPED",
+                   (unsigned long long)bd->log_shadow->dropped_bytes);
+      p += n;
+      len -= n;
+    }
   } else if (bd->display_level == 2) {
-    n = rshim_log_show(bd, p, len);
+    /* Prefer the shadow ring when it's available: cumulative across
+     * readers, decoupled from the 128-word hw limit, and renders the
+     * same banner + body format as rshim_log_show(). */
+    if (bd->log_shadow)
+      n = rshim_log_shadow_render(bd, p, len);
+    else
+      n = rshim_log_show(bd, p, len);
     p += n;
   }
+
+  /*
+   * Legacy hw-ring drain on misc read, only when the shadow is NOT
+   * active.  With the shadow active the per-backend worker keeps the
+   * hw ring trimmed on a 500 ms cadence (see rshim_log_shadow_tick),
+   * so an additional drain here would just add a semaphore round-trip
+   * for no observable benefit.
+   *
+   * Without the shadow this is the only path that resets the 7-bit
+   * IDX at display_level 0 and 1 -- bfb-install's reset_bmc_rshim_log()
+   * relies on it because the BMC's rshim runs at DISPLAY_LEVEL 0 by
+   * default and the script only flips CLEAR_ON_READ around a plain
+   * "cat /dev/rshim0/misc".
+   */
+  if (bd->clear_on_read && !bd->log_shadow)
+    (void)rshim_log_drain(bd);
 
   rm->len = p - rm->buffer;
 
@@ -927,6 +966,87 @@ static int rshim_fuse_misc_write(struct cuse_dev *cdev, int fflags,
     if (sscanf(p, "%d", &value) != 1)
       goto invalid;
     bd->clear_on_read = !!value;
+  } else if (strcmp(key, "LOG_MSG") == 0) {
+    /*
+     * Append a host-side message to the DPU log scratch ring so it
+     * shows up at DISPLAY_LEVEL 2 alongside the DPU's own entries.
+     *
+     * Accepted forms (the level keyword is optional and case-sensitive,
+     * matching rshim_log_levels[]):
+     *
+     *   echo "LOG_MSG INFO Hello world"   > /dev/rshim0/misc
+     *   echo "LOG_MSG WARN something"     > /dev/rshim0/misc
+     *   echo "LOG_MSG ERR  oh no"         > /dev/rshim0/misc
+     *   echo "LOG_MSG plain text"         > /dev/rshim0/misc   (defaults to INFO)
+     *
+     * Module is always MISC (index 0) so the entry renders as
+     * " INFO[MISC]: <text>", which is what shell-driven diagnostics and
+     * scripted reproducers (e.g. saturating the 7-bit IDX) actually
+     * want.  Callers needing a different module should use the C-level
+     * rshim_log_write() API directly.
+     */
+    {
+      static const char *const log_level_kw[] = {
+          "INFO", "WARN", "ERR", "ASSERT"
+      };
+      int log_level = 0;
+      const char *msg = p;
+      size_t kw_len;
+      unsigned int k;
+
+      while (*msg == ' ' || *msg == '\t')
+        msg++;
+
+      for (k = 0; k < sizeof(log_level_kw) / sizeof(log_level_kw[0]); k++) {
+        kw_len = strlen(log_level_kw[k]);
+        if (!strncmp(msg, log_level_kw[k], kw_len) &&
+            (msg[kw_len] == ' ' || msg[kw_len] == '\t')) {
+          log_level = (int)k;
+          msg += kw_len;
+          while (*msg == ' ' || *msg == '\t')
+            msg++;
+          break;
+        }
+      }
+
+      if (*msg == '\0' || *msg == '\n')
+        goto invalid;
+
+      {
+        /* Strip a single trailing newline so "echo" doesn't pad the entry. */
+        char line[256];
+        size_t n = strlen(msg);
+        if (n >= sizeof(line))
+          n = sizeof(line) - 1;
+        memcpy(line, msg, n);
+        line[n] = '\0';
+        if (n > 0 && line[n - 1] == '\n')
+          line[n - 1] = '\0';
+
+        pthread_mutex_lock(&bd->mutex);
+        /*
+         * Shadow active (the default): bypass the hw scratch ring and
+         * append directly to the shadow.  This avoids the 7-bit IDX
+         * cliff that limits the hw ring to ~21 of these messages, and
+         * removes the cross-side semaphore round-trip per LOG_MSG --
+         * relevant when a shell `for` loop hammers the misc node.
+         *
+         * Shadow disabled: fall back to the legacy path that writes
+         * into the hw ring.  This preserves any setup that relies on
+         * LOG_MSG entries showing up in the live ring itself (e.g.
+         * for direct register inspection).
+         */
+        if (bd->log_shadow)
+          rc = rshim_log_shadow_msg(bd, 0 /* MISC */, log_level, line);
+        else
+          rc = rshim_log_write(bd, 0 /* MISC */, log_level, line);
+        pthread_mutex_unlock(&bd->mutex);
+
+        if (rc && rc != -ENOSPC)
+          goto invalid;
+        rc = 0;
+      }
+    }
   } else if (strcmp(key, "BOOT_MODE") == 0) {
     if (sscanf(p, "%x", &value) != 1)
       goto invalid;
