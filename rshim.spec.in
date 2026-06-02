@@ -112,6 +112,15 @@ if [ -f /etc/os-release ]; then
         ;;
     esac
 
+    # SLES/openSUSE 16 and later may run with SELinux enforcing by default.
+    case " ${ID:-} ${ID_LIKE:-} " in
+      *" sles "*|*" suse "*|*" opensuse "*)
+        if [ "$OS_MAJOR" -ge 16 ]; then
+          apply_selinux_fix=1
+        fi
+        ;;
+    esac
+
     if [ "$apply_selinux_fix" -ne 0 ]; then
       selinux_enabled=0
       if command -v getenforce >/dev/null 2>&1; then
@@ -141,14 +150,14 @@ if [ -f /etc/os-release ]; then
           echo "Installed SELinux rshim policy fix."
         else
           rm -rf "$tmpdir"
-          echo "Error: failed to apply SELinux rshim policy fix."
+          echo "Warning: SELinux rshim policy fix was not applied."
           echo \
-            "This may be caused by missing SELinux tools or a host SELinux" \
-            "policy conflict, not by rshim rpm itself."
+            "If SELinux is enforcing, PCIe rshim may fail until this policy" \
+            "is installed."
           echo \
-            "Reinstalling the host SELinux policy packages or cleaning up" \
-            "stale SELinux modules may help."
-          exit 1
+            "Install checkpolicy and policycoreutils, then reinstall this" \
+            "package or manually apply" \
+            "%{_datadir}/selinux/packages/rshim-fix.te."
         fi
         rm -rf "$tmpdir"
       fi
