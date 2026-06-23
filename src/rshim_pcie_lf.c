@@ -693,7 +693,7 @@ rshim_pcie_read(struct rshim_backend *bd, uint32_t chan, uint32_t addr,
   if (size != 4 && size != 8)
     return -EINVAL;
 
-  if (bd->drop_mode) {
+  if (bd->drop_mode && !bd->requesting_rshim) {
     *result = 0;
     return 0;
   }
@@ -726,7 +726,7 @@ rshim_pcie_write(struct rshim_backend *bd, uint32_t chan, uint32_t addr,
   if (size != 4 && size != 8)
     return -EINVAL;
 
-  if (bd->drop_mode)
+  if (bd->drop_mode && !bd->requesting_rshim)
     return 0;
 
   if (pci_dev->device_id == BLUEFIELD3_DEVICE_ID) {
