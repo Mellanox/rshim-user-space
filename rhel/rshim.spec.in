@@ -68,6 +68,13 @@ via the virtual console or network interface.
 %endif
 
 %changelog
+* Wed Jun 24 2026 Penghe Geng <pgeng@nvidia.com> - 2.8.1
+- Bug fix: Allow ownership transfer request from rshim_pcie_lf DROP_MODE (#400)
+- Fix mft not working in chroot env
+- Support SLES 15.7/16 runtime installs
+- Support TencentOS 4.4 or later for rpm build
+- bfb-tool: preserve original filename in repack for --all/--opn modes (#372)
+
 * Mon Apr 20 2026 Penghe Geng <pgeng@nvidia.com> - 2.8.0
 - rpm: simplify selinux overlay handling
 - Update rshim.c to fix high contention of rshim_fd_mutex + SIGINT not being handle
