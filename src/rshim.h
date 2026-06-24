@@ -473,6 +473,22 @@ struct rshim_backend {
 
   /* Platform specific register addresses */
   const struct rshim_regs *regs;
+
+  /*
+   * DPU log shadow ring.  When non-NULL the rshim worker periodically
+   * drains the 128-word hw scratch ring into this larger software
+   * buffer, so concurrent misc readers (bfb-install + user's watch +
+   * redfish probes) all see the same content without racing each other
+   * for a destructive read of the live ring.  Allocated in
+   * rshim_register() if rshim_log_shadow_size > 0.
+   *
+   * Placed at the end of the struct on purpose: keeps offsets of all
+   * preceding fields (notably the backend function pointers like
+   * read_rshim / write_rshim) stable, so a partial rebuild that misses
+   * a backend translation unit can't silently corrupt those pointers
+   * via offset drift.
+   */
+  struct rshim_log_shadow *log_shadow;
 };
 
 #define RSHIM_REG_SIZE_4B 4
@@ -623,6 +639,139 @@ int rshim_fifo_fsync(rshim_backend_t *bd, int chan);
 
 /* Display the rshim logging buffer. */
 int rshim_log_show(rshim_backend_t *bd, char *buf, int len);
+
+/*
+ * Drain (reset) the DPU log scratch ring without formatting any text.
+ * Used by misc readers that don't render the log themselves but still
+ * need to prevent the 7-bit scratch_buf_ctl IDX from saturating when
+ * clear_on_read is set.  Returns 0 on success, a negative errno on
+ * failure (semaphore wedged or rshim access error).
+ */
+int rshim_log_drain(rshim_backend_t *bd);
+
+/*
+ * Append a host-side message to the DPU log scratch ring so it shows up
+ * alongside the DPU's own entries on a "cat /dev/rshim0/misc" at
+ * DISPLAY_LEVEL 2.  Use to record rshim-daemon events in the same log
+ * stream the user is already watching (e.g. boot stream open/close,
+ * CLEAR_ON_READ transitions, locked-mode events).
+ *
+ * @module is an index into rshim_log_mod[] (0 = "MISC" is the usual
+ *         choice for host-originated messages).
+ * @level  is an index into rshim_log_levels[] (0 = "INFO", 1 = "WARN",
+ *         2 = "ERR", 3 = "ASSERT").
+ * @msg    is a NUL-terminated plain string with no printf-style
+ *         formatting.  Caller may snprintf into a local buffer first.
+ *
+ * Returns 0 on success, -EINVAL on bad arguments, -EIO on rshim access
+ * failure, -EBUSY if the cross-side semaphore is wedged > 3 seconds, or
+ * -ENOSPC if the ring is already saturated.  If the ring has room for
+ * the header but not the full payload, the message body is truncated
+ * to fit and 0 is returned -- mirroring the legacy mlx-bootctl driver.
+ */
+int rshim_log_write(rshim_backend_t *bd, int module, int level,
+                    const char *msg);
+
+/*
+ * DPU log shadow ring.  Producer is the rshim worker (drainer hook),
+ * consumer is rshim_fuse_misc_read() at DISPLAY_LEVEL 2.  Both run
+ * under bd->mutex, so no internal locking is required.
+ *
+ *   buf      : circular byte buffer of pre-formatted " INFO[MOD]: msg\n"
+ *              lines.
+ *   cap      : power-of-2 capacity in bytes.  0 means "shadow disabled,
+ *              fall back to direct hw-ring reads".
+ *   head     : producer cursor (monotonically increasing; wrap via
+ *              head & (cap - 1)).
+ *   tail     : consumer cursor.  Advanced only when CLEAR_ON_READ is
+ *              set on the misc read; otherwise the shadow is a
+ *              non-destructive cumulative view.
+ *   dropped_bytes : monotonic counter, surfaced as LOG_DROPPED in
+ *              the misc summary when > 0.
+ *   next_drain_tick : gates the polling cadence in the worker.
+ */
+struct rshim_log_shadow {
+  char    *buf;
+  size_t   cap;
+  size_t   head;
+  size_t   tail;
+  uint64_t dropped_bytes;
+  int      next_drain_tick;
+};
+
+/*
+ * Allocate / free the shadow ring on a backend.  rshim_log_shadow_init()
+ * may be called with cap == 0 to mean "disabled"; rshim_log_shadow_free()
+ * is safe to call on an already-NULL bd->log_shadow.
+ */
+int  rshim_log_shadow_init(rshim_backend_t *bd, size_t cap);
+void rshim_log_shadow_free(rshim_backend_t *bd);
+
+/*
+ * Discard all pending shadow content (head/tail back to 0, dropped
+ * counter zeroed) without releasing the backing buffer.  Used by the
+ * boot-open path so a new bfb install sees a clean log instead of
+ * inheriting the pre-install boot session.  Safe to call on a backend
+ * with no shadow.  Must be called with bd->mutex held.
+ */
+void rshim_log_shadow_reset(rshim_backend_t *bd);
+
+/*
+ * Drainer hook -- run from the rshim worker every
+ * RSHIM_LOG_SHADOW_DRAIN_MS milliseconds.  Acquires the cross-side
+ * semaphore, pulls anything in the hw scratch ring into the shadow,
+ * and releases.  Cheap no-op when the shadow is disabled, the rshim
+ * is not accessible, or the cadence has not yet elapsed.  Must be
+ * called with bd->mutex held.
+ *
+ * @now_ticks is the caller's view of the millisecond tick counter
+ * (rshim_timer_ticks in the daemon); used for rate-limiting without
+ * exposing the daemon's internal clock to the log subsystem.
+ */
+void rshim_log_shadow_tick(rshim_backend_t *bd, int now_ticks);
+
+/*
+ * Force-drain the hw scratch ring into the shadow right now,
+ * bypassing the cadence rate-limit applied by rshim_log_shadow_tick().
+ * Intended for callers that have just written to the hw ring at high
+ * rate (e.g. the LOG_MSG handler hitting -ENOSPC) and want to make
+ * room for an immediate retry.
+ *
+ * Returns the number of bytes appended to the shadow (>= 0); 0 means
+ * "nothing was waiting in the ring" or "shadow disabled / rshim not
+ * accessible".  Must be called with bd->mutex held.
+ */
+int rshim_log_shadow_flush(rshim_backend_t *bd);
+
+/*
+ * Format @msg as " LEVEL[MOD]: msg\n" (matching the wire format the
+ * drainer produces for DPU-originated entries) and append it directly
+ * to the shadow ring, bypassing the hw scratch ring entirely.
+ *
+ * Used by host-side log injectors (LOG_MSG) so they don't have to
+ * round-trip through the DPU's 1 KiB / 7-bit outbound ring, which
+ * saturates at ~21 messages and trips spurious -ENOSPC under shell-
+ * driven bursts.  The shadow itself is ~64 KiB and won't bottleneck
+ * at realistic LOG_MSG rates.
+ *
+ * Returns 0 on success or -EINVAL on bad arguments / shadow disabled.
+ * Must be called with bd->mutex held.
+ */
+int rshim_log_shadow_msg(rshim_backend_t *bd, int module, int level,
+                         const char *msg);
+
+/*
+ * Render the shadow into @out (up to @max bytes), emitting the same
+ * "--- Log Messages ---" banner that rshim_log_show() produces so
+ * the misc output format is unchanged.  If bd->clear_on_read is set,
+ * advances tail to head as a side-effect (destructive read); otherwise
+ * the shadow contents are preserved for subsequent readers.  Must be
+ * called with bd->mutex held.  Returns bytes written.
+ */
+int  rshim_log_shadow_render(rshim_backend_t *bd, char *out, int max);
+
+/* Configured default capacity of bd->log_shadow.buf (bytes). */
+extern int rshim_log_shadow_size;
 
 bool rshim_allow_device(const char *devname);
 
