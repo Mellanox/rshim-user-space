@@ -1,3 +1,13 @@
+rshim (2.8.1) UNRELEASED; urgency=low
+
+  * Bug fix: Allow ownership transfer request from rshim_pcie_lf DROP_MODE (#400)
+  * Fix mft not working in chroot env
+  * Support SLES 15.7/16 runtime installs
+  * Support TencentOS 4.4 or later for rpm build
+  * bfb-tool: preserve original filename in repack for --all/--opn modes (#372)
+
+ -- Penghe Geng <pgeng@nvidia.com>  Wed, 24 Jun 2026 09:40:03 -0400
+
 rshim (2.8.0) UNRELEASED; urgency=low
 
   * rpm: simplify selinux overlay handling
