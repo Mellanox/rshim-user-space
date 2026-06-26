@@ -16,7 +16,9 @@
 #include <fcntl.h>
 #ifdef __linux__
 #include <linux/virtio_ids.h>
+#include <asm/termios.h>
 #else
+#include <termios.h>
 #define	VIRTIO_ID_NET 1
 #define	VIRTIO_ID_CONSOLE 3
 #endif
@@ -26,7 +28,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mount.h>
-#include <termios.h>
 #include <unistd.h>
 #ifdef HAVE_CONFIG_H
 #include <config.h>
@@ -408,7 +409,11 @@ struct rshim_backend {
   pthread_cond_t ctrl_wait_cond;
 
   /* Current termios settings for the console. */
+#ifdef __linux__
+  struct termios2 cons_termios;
+#else
   struct termios cons_termios;
+#endif
 
   /* Pending boot & fifo request for the worker. */
   uint8_t *boot_work_buf;
