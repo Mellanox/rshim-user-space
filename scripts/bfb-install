@@ -78,6 +78,16 @@ echo_dbg() {
   fi
 }
 
+# BFB-Install deprecation notice. Printed as a header (at startup) and as a
+# footer (on exit) so it is shown for every bfb-install invocation.
+print_deprecation_note() {
+  cat >&2 <<'EOF'
+
+***Note: DOCA 3.5 (July 2026 release) will be the last DOCA version to support BFB-Install. In the following DOCA release (Oct 2026) DOCA-Installer will replace the full functionality provided by BFB-Install, and BFB-Install will no longer be included in future DOCA packages. ***
+
+EOF
+}
+
 # Run a command locally or remotely via SSH
 #
 # $1: mode (local or remote)
@@ -616,9 +626,15 @@ cleanup() {
       fi
     done
   fi
+
+  # Footer: remind the user of the upcoming BFB-Install deprecation.
+  print_deprecation_note
 }
 
 # Main
+
+# Header: remind the user of the upcoming BFB-Install deprecation.
+print_deprecation_note
 
 default_remote_mode=scp
 default_nc_port=9527    # default nc server port for nc* methods
