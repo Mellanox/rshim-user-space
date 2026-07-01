@@ -607,7 +607,8 @@ void rshim_ref(rshim_backend_t *bd);
 void rshim_deref(rshim_backend_t *bd);
 int rshim_boot_open(rshim_backend_t *bd);
 int rshim_boot_write(rshim_backend_t *bd, const char *user_buffer, size_t count,
-                     int (*copy_in)(void *dest, const void *src, int count));
+                     int (*copy_in)(void *dest, const void *src, int count),
+                     int (*interrupted)(void *arg), void *interrupted_arg);
 void rshim_boot_release(rshim_backend_t *bd);
 int rshim_console_open(rshim_backend_t *bd);
 int rshim_console_release(rshim_backend_t *bd,
