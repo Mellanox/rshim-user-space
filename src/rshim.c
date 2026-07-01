@@ -856,7 +856,8 @@ boot_open_done:
 }
 
 int rshim_boot_write(rshim_backend_t *bd, const char *user_buffer, size_t count,
-                     int (*copy_in)(void *dest, const void *src, int count))
+                     int (*copy_in)(void *dest, const void *src, int count),
+                     int (*interrupted)(void *arg), void *interrupted_arg)
 {
   int rc = 0, whichbuf = 0, len;
   time_t tm;
@@ -887,6 +888,11 @@ int rshim_boot_write(rshim_backend_t *bd, const char *user_buffer, size_t count,
                            (count + bd->boot_rem_cnt) & (-((size_t)8)));
     char *buf = bd->boot_buf[whichbuf];
 
+    if (interrupted && interrupted(interrupted_arg)) {
+      rc = -EINTR;
+      break;
+    }
+
     whichbuf ^= 1;
 
     /* Copy the previous remaining data first. */
@@ -911,7 +917,19 @@ int rshim_boot_write(rshim_backend_t *bd, const char *user_buffer, size_t count,
         rc = -ETIMEDOUT;
         RSHIM_INFO("rshim%d boot timeout\n", bd->index);
       } else {
-        rc = -EINTR;
+        /*
+         * No boot FIFO space is available yet. Keep the write pending until
+         * the peer drains space or the boot timeout expires, but don't block
+         * console/network/misc handling while waiting to retry.
+         */
+        pthread_mutex_unlock(&bd->mutex);
+        usleep(1000);
+        pthread_mutex_lock(&bd->mutex);
+        if (interrupted && interrupted(interrupted_arg)) {
+          rc = -EINTR;
+          break;
+        }
+        continue;
       }
       break;
     }

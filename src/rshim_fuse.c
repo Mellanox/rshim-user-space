@@ -111,6 +111,11 @@ static int rshim_fuse_copy_in(void *dest, const void *src, int count)
   return 0;
 }
 
+static int rshim_fuse_boot_write_interrupted(void *arg)
+{
+  return fuse_req_interrupted((fuse_req_t)arg);
+}
+
 static void rshim_fuse_boot_write(fuse_req_t req, const char *user_buffer,
                                   size_t count, off_t off,
                                   struct fuse_file_info *fi)
@@ -119,7 +124,8 @@ static void rshim_fuse_boot_write(fuse_req_t req, const char *user_buffer,
   int rc = -ENODEV;
 
   if (bd)
-    rc = rshim_boot_write(bd, user_buffer, count, rshim_fuse_copy_in);
+    rc = rshim_boot_write(bd, user_buffer, count, rshim_fuse_copy_in,
+                          rshim_fuse_boot_write_interrupted, req);
 
   if (rc >= 0)
     fuse_reply_write(req, rc);
@@ -138,7 +144,8 @@ static int rshim_fuse_boot_write(struct cuse_dev *cdev, int fflags,
   rshim_backend_t *bd = cuse_dev_get_priv0(cdev);
   int rc;
 
-  rc = rshim_boot_write(bd, user_buffer, count, rshim_fuse_copy_in);
+  rc = rshim_boot_write(bd, user_buffer, count, rshim_fuse_copy_in,
+                        NULL, NULL);
 
   switch (rc) {
   case 0:
@@ -1333,14 +1340,37 @@ static const struct cuse_methods rshim_rshim_fops = {
 };
 #endif
 
+#ifdef __linux__
+struct cuse_worker_arg {
+  struct fuse_session *se;
+  int multithreaded;
+};
+#endif
+
 static void *cuse_worker(void *arg)
 {
 #ifdef __linux__
-  struct fuse_session *se = arg;
+  struct cuse_worker_arg *warg = arg;
+  struct fuse_session *se = warg->se;
   int rc;
 
-  rc = fuse_session_loop(se);
+  /*
+   * The boot session runs a multithreaded loop so an idle worker thread can
+   * receive and process a FUSE interrupt (e.g. Ctrl-C on the writer) while a
+   * boot write is stalled waiting for the peer to drain the boot FIFO. Other
+   * sessions keep the single-threaded loop.
+   */
+  if (warg->multithreaded) {
+#if FUSE_USE_VERSION >= 30
+    rc = fuse_session_loop_mt(se, 0);
+#else
+    rc = fuse_session_loop_mt(se);
+#endif
+  } else {
+    rc = fuse_session_loop(se);
+  }
   fuse_session_destroy(se);
+  free(warg);
 
   return (void *)(unsigned long)rc;
 #elif defined(__FreeBSD__)
@@ -1409,10 +1439,17 @@ int rshim_fuse_init(rshim_backend_t *bd)
       return -1;
     }
     fuse_remove_signal_handlers(bd->fuse_session[i]);
-    rc = pthread_create(&bd->fuse_thread[i], NULL, cuse_worker,
-                        bd->fuse_session[i]);
+    struct cuse_worker_arg *warg = calloc(1, sizeof(*warg));
+    if (!warg) {
+      RSHIM_ERR("rshim%d failed to alloc cuse worker arg\n", bd->index);
+      return -1;
+    }
+    warg->se = bd->fuse_session[i];
+    warg->multithreaded = (i == RSH_DEV_TYPE_BOOT);
+    rc = pthread_create(&bd->fuse_thread[i], NULL, cuse_worker, warg);
     if (rc) {
       RSHIM_ERR("rshim%d failed to create cuse thread\n", bd->index);
+      free(warg);
       return rc;
     }
 #elif defined(__FreeBSD__)
