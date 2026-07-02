@@ -215,6 +215,9 @@ fi
 %{_datadir}/selinux/packages/rshim-fix.te
 
 %changelog
+* Thu Jul 02 2026 Penghe Geng <pgeng@nvidia.com> - 2.8.2
+- rshim: retry stalled boot writes
+
 * Wed Jun 24 2026 Penghe Geng <pgeng@nvidia.com> - 2.8.1
 - Bug fix: Allow ownership transfer request from rshim_pcie_lf DROP_MODE (#400)
 - Fix mft not working in chroot env
