@@ -182,6 +182,10 @@ fi
 %{_datadir}/selinux/packages/rshim-fix.te
 
 %changelog
+* Thu Jul 02 2026 Penghe Geng <pgeng@nvidia.com> - 2.7.4
+- rshim: retry stalled boot writes
+- fix mft not working in chroot env
+
 * Tue May 05 2026 Penghe Geng <pgeng@nvidia.com> - 2.7.3
 - bfb-tool: preserve original filename in repack for --all/--opn modes
 
