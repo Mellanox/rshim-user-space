@@ -47,7 +47,7 @@ error() {
 
 usage() {
 	cat << EOF
-	Usage: $(basename $0) <action> --bfb <BFB> --psid <PSID>|--opn <OPN>|--all [-p|--profile <Profile>] [-o|--output-dir <dir>] [-f|--output-format <format>] [-B|--output-bfb] [-r|--replace-fw <path>] [--replace-capsule <capsule>] [--extract-bfcfg] [-v|--verbose] [-j|--json]
+	Usage: $(basename $0) <action> --bfb <BFB> --psid <PSID>|--opn <OPN>|--all [-p|--profile <Profile>] [-o|--output-dir <dir>] [-f|--output-format <format>] [-B|--output-bfb] [-r|--replace-fw <path>] [--replace-capsule <capsule>] [--extract-bfcfg] [--without-gi <true|false>] [-v|--verbose] [-j|--json]
 
 	action:                 extract, repack or info. The repack action includes extracting and building a new BFB for a specific OPN/PSID
 
@@ -66,6 +66,7 @@ usage() {
 	                        The capsule will be merged with the existing config-image.bfb
 	                        preserving the rest of the components.
 	--extract-bfcfg         Extract bf.cfg text file from config-image.bfb if exists.
+	--without-gi <bool>     Repack without DPU GI and NIC FW GI when set to true.
 	-j|--json               Print version info in JSON format
 	-v|--verbose            Verbose mode
 EOF
@@ -284,6 +285,7 @@ OUTPUT_FORMAT="bundle"
 OUTPUT_BFB=""
 verbose=0
 JSON=0
+WITHOUT_GI=0
 
 if [ -z "$1" ]; then
 	usage
@@ -312,7 +314,7 @@ case "$action" in
 		;;
 esac
 
-options=$(getopt -l "output-dir:,psid:,opn:,bfb:,profile:,output-format:,output-bfb:,replace-fw:,replace-capsule:,extract-bfcfg,all,help,json,verbose" -o "o:p:O:b:p:f:B:r:ahjv" -a -- "$@")
+options=$(getopt -l "output-dir:,psid:,opn:,bfb:,profile:,output-format:,output-bfb:,replace-fw:,replace-capsule:,extract-bfcfg,without-gi:,all,help,json,verbose" -o "o:p:O:b:p:f:B:r:ahjv" -a -- "$@")
 
 eval set -- "$options"
 
@@ -374,6 +376,21 @@ do
 		--extract-bfcfg)
 			EXTRACT_BFCFG=1
 			;;
+		--without-gi)
+			shift
+			case "$1" in
+				true|TRUE|1|yes|YES|on|ON)
+					WITHOUT_GI=1
+					;;
+				false|FALSE|0|no|NO|off|OFF)
+					WITHOUT_GI=0
+					;;
+				*)
+					error "--without-gi expects true or false"
+					exit 1
+					;;
+			esac
+			;;
 		--)
 			shift
 			break;;
@@ -383,6 +400,11 @@ done
 
 BUILD_ALL=${BUILD_ALL:-0}
 EXTRACT_BFCFG=${EXTRACT_BFCFG:-0}
+
+if [ $WITHOUT_GI -eq 1 ] && [ $REPACK -ne 1 ]; then
+	error "--without-gi is only supported with the repack action"
+	exit 1
+fi
 
 unset BSP_CAPSULE
 unset BMC_FW
@@ -976,6 +998,14 @@ handle_opn()
 			NIC_FW_GI="$(/bin/ls -1 ./usr/lib/firmware/mellanox/bmc/fw-BlueField-3-rel-*-${OPN}-*.bfb 2> /dev/null)"
 		fi
 		NIC_FW_GI_VERSION=$(echo $NIC_FW_GI | grep -oP '(?<=BlueField-3-rel-)\d+_\d+_\d+')
+	fi
+
+	if [ $WITHOUT_GI -eq 1 ]; then
+		info "Skipping DPU GI and NIC FW GI packaging"
+		DPU_GI=
+		DPU_GI_VERSION=
+		NIC_FW_GI=
+		NIC_FW_GI_VERSION=
 	fi
 
 	if [ -n "$profile" ]; then
