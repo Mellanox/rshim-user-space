@@ -66,6 +66,15 @@
 #define RSHIM_PCIE_NIC_RESET_WAIT   2
 #define RSHIM_PCIE_NIC_IRQ_RATE     32
 
+/*
+ * Timeout (ms) for waiting on the interrupt eventfd/uio fd. On timeout the
+ * thread polls scratchpad6 directly so the NIC/DPU reset handshake can
+ * complete even when the INTx interrupt is not delivered under VFIO/UIO.
+ * Kept well above the ~30ms that keeps rshim_pcie_intr() under the
+ * RSHIM_PCIE_NIC_IRQ_RATE per-second flood guard.
+ */
+#define RSHIM_PCIE_INTR_POLL_TIMEOUT_MS  100
+
 /* Different modes of memory map. */
 typedef enum {
   RSHIM_PCIE_MMAP_DIRECT,
@@ -200,6 +209,13 @@ typedef struct {
 
   /* State to indicate NIC is resetting. */
   volatile bool nic_reset;
+
+  /*
+   * Last reset state (rst_state) the handler responded to. Used to act only
+   * on FW-driven state transitions when the handshake is driven by polling,
+   * so we don't repeatedly rewrite (and clobber) the FW-owned state field.
+   */
+  int rst_last_state;
 
   /* Last irq time */
   time_t last_intr_time;
@@ -819,8 +835,19 @@ static void rshim_pcie_intr(rshim_pcie_t *dev)
   /* Only handles NIC reset for now. */
   if (info.rst_type != RSHIM_PCIE_RST_TYPE_NIC_RESET &&
       info.rst_type != RSHIM_PCIE_RST_TYPE_DPU_RESET) {
+    dev->rst_last_state = -1;
     goto intr_done;
   }
+
+  /*
+   * This handler can be entered more than once for the same request (e.g. the
+   * INTx stays asserted until the reply is written). Act only on an actual FW
+   * state transition: re-writing the reply on every entry would clobber the
+   * FW-owned (RO) rst_state field and stall the handshake.
+   */
+  if ((int)info.rst_state == dev->rst_last_state)
+    goto intr_done;
+  dev->rst_last_state = info.rst_state;
 
   RSHIM_INFO("rshim%d receive interrupt for %s reset\n", bd->index,
     (info.rst_type == RSHIM_PCIE_RST_TYPE_NIC_RESET) ? "NIC" :
@@ -899,7 +926,9 @@ static void *rshim_pcie_intr_thread(void *arg)
 {
   rshim_pcie_t *dev = arg;
   uint8_t intr_buf[16];
+  struct pollfd pfd = {0};
   int rc, reset_seq;
+  uint16_t reg;
 
   reset_seq = dev->intr_reset_seq;
 
@@ -912,13 +941,37 @@ static void *rshim_pcie_intr_thread(void *arg)
       continue;
     }
 
-    rc = read(dev->intr_fd, intr_buf, dev->intr_len);
+    /*
+     * Wait on the interrupt fd, but with a timeout. On some platforms the
+     * NIC/DPU reset INTx is not delivered to the eventfd (INTx delivery in
+     * VFIO/UIO mode depends on the platform/BIOS), so on timeout check the
+     * device's PCI_STATUS.INTx bit directly and process scratchpad6 only
+     * when an interrupt is actually pending. This matches the architecture
+     * where INTx gates SP6 processing, and it avoids touching scratchpad6
+     * while it is repurposed by other flows (e.g. bfdump), since no INTx is
+     * asserted then.
+     */
+    pfd.fd = dev->intr_fd;
+    pfd.events = POLLIN;
+    rc = poll(&pfd, 1, RSHIM_PCIE_INTR_POLL_TIMEOUT_MS);
     if (rc < 0) {
       if (errno == EINTR)
         continue;
-    } else if (rc == 0) {
       sleep(1);
       continue;
+    }
+
+    if (rc > 0 && (pfd.revents & POLLIN)) {
+      /* Interrupt delivered on the eventfd. */
+      if (read(dev->intr_fd, intr_buf, dev->intr_len) == 0) {
+        sleep(1);
+        continue;
+      }
+    } else {
+      /* Timeout: only proceed if INTx is asserted at the device. */
+      reg = rshim_pci_read_word(dev, PCI_STATUS);
+      if (reg == 0xFFFF || !(reg & PCI_STATUS_INTx))
+        continue;
     }
 
     __sync_synchronize();
@@ -927,7 +980,6 @@ static void *rshim_pcie_intr_thread(void *arg)
       continue;
     }
 
-    /* Interrupt handler. */
     rshim_pcie_intr(dev);
   }
 
@@ -1321,6 +1373,7 @@ static int rshim_pcie_probe(struct pci_dev *pci_dev)
     dev->group_fd = -1;
     dev->container_fd = -1;
     dev->intr_fd = -1;
+    dev->rst_last_state = -1;
     dev->mmap_mode = rshim_pcie_mmap_mode;
 #ifdef __linux__
     dev->pci_path = rshim_sys_pci_path;
