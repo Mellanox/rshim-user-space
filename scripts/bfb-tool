@@ -47,7 +47,7 @@ error() {
 
 usage() {
 	cat << EOF
-	Usage: $(basename $0) <action> --bfb <BFB> --psid <PSID>|--opn <OPN>|--all [-p|--profile <Profile>] [-o|--output-dir <dir>] [-f|--output-format <format>] [-B|--output-bfb] [-r|--replace-fw <path>] [--replace-capsule <capsule>] [--extract-bfcfg] [--without-gi <true|false>] [-v|--verbose] [-j|--json]
+	Usage: $(basename $0) <action> --bfb <BFB> --psid <PSID>|--opn <OPN>|--all [-p|--profile <Profile>] [-o|--output-dir <dir>] [-f|--output-format <format>] [-B|--output-bfb] [-r|--replace-fw <path>] [--replace-capsule <capsule>] [--extract-bfcfg] [--without-gi] [-v|--verbose] [-j|--json]
 
 	action:                 extract, repack or info. The repack action includes extracting and building a new BFB for a specific OPN/PSID
 
@@ -66,7 +66,7 @@ usage() {
 	                        The capsule will be merged with the existing config-image.bfb
 	                        preserving the rest of the components.
 	--extract-bfcfg         Extract bf.cfg text file from config-image.bfb if exists.
-	--without-gi <bool>     Repack without DPU GI and NIC FW GI when set to true.
+	--without-gi            Repack without DPU GI and NIC FW GI.
 	-j|--json               Print version info in JSON format
 	-v|--verbose            Verbose mode
 EOF
@@ -314,7 +314,7 @@ case "$action" in
 		;;
 esac
 
-options=$(getopt -l "output-dir:,psid:,opn:,bfb:,profile:,output-format:,output-bfb:,replace-fw:,replace-capsule:,extract-bfcfg,without-gi:,all,help,json,verbose" -o "o:p:O:b:p:f:B:r:ahjv" -a -- "$@")
+options=$(getopt -l "output-dir:,psid:,opn:,bfb:,profile:,output-format:,output-bfb:,replace-fw:,replace-capsule:,extract-bfcfg,without-gi,all,help,json,verbose" -o "o:p:O:b:p:f:B:r:ahjv" -a -- "$@")
 
 eval set -- "$options"
 
@@ -377,19 +377,7 @@ do
 			EXTRACT_BFCFG=1
 			;;
 		--without-gi)
-			shift
-			case "$1" in
-				true|TRUE|1|yes|YES|on|ON)
-					WITHOUT_GI=1
-					;;
-				false|FALSE|0|no|NO|off|OFF)
-					WITHOUT_GI=0
-					;;
-				*)
-					error "--without-gi expects true or false"
-					exit 1
-					;;
-			esac
+			WITHOUT_GI=1
 			;;
 		--)
 			shift
