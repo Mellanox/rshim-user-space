@@ -1,3 +1,9 @@
+rshim (2.8.3) UNRELEASED; urgency=low
+
+  * Fix PCIe NIC/DPU FW reset handshake stall when INTx is not delivered (#414)
+
+ -- Penghe Geng <pgeng@nvidia.com>  Mon, 03 Aug 2026 14:57:01 -0400
+
 rshim (2.8.2) UNRELEASED; urgency=low
 
   * rshim: retry stalled boot writes
