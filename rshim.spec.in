@@ -46,6 +46,11 @@ Requires: kernel-modules-extra
 %endif
 %endif
 
+# doca-installer < 2.1.1 relies on the /usr/sbin tools this rshim no longer
+# ships (bfb-install up to 2.0.x; the bfb-tool/bf-pldm-ver PATH copies until
+# 2.1.1 provides its own symlinks). The tools moved to doca-installer.
+Conflicts: doca-installer < 2.1.1
+
 %global with_systemd %(if (test -d "%{_unitdir}" > /dev/null); then echo -n '1'; else echo -n '0'; fi)
 %global debug_package %{nil}
 
@@ -200,18 +205,12 @@ fi
   %config(noreplace) %{_sysconfdir}/systemd/network/10-tmfifo-net.link
 %endif
 %{_sbindir}/rshim
-%{_sbindir}/bfb-install
-%{_sbindir}/bfb-tool
 %{_sbindir}/mlx-mkbfb
 %{_sbindir}/bf-reg
-%{_sbindir}/bf-pldm-ver
 %{_sbindir}/fwpkg_unpack.py
 %{_mandir}/man1/mlx-mkbfb.1.gz
 %{_mandir}/man8/rshim.8.gz
-%{_mandir}/man8/bfb-install.8.gz
-%{_mandir}/man8/bfb-tool.8.gz
 %{_mandir}/man8/bf-reg.8.gz
-%{_mandir}/man8/bf-pldm-ver.8.gz
 %{_datadir}/selinux/packages/rshim-fix.te
 
 %changelog
