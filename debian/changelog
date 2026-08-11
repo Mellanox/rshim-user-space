@@ -1,3 +1,10 @@
+rshim (2.8.4) UNRELEASED; urgency=low
+
+  * bfb-tool: bind-mount host device nodes into chroots (#417)
+  * bfb-install: print BFB-Install deprecation notice on every run  (#416)
+
+ -- Penghe Geng <pgeng@nvidia.com>  Tue, 11 Aug 2026 09:52:19 -0400
+
 rshim (2.8.3) UNRELEASED; urgency=low
 
   * Fix PCIe NIC/DPU FW reset handshake stall when INTx is not delivered (#414)

@@ -68,6 +68,10 @@ via the virtual console or network interface.
 %endif
 
 %changelog
+* Tue Aug 11 2026 Penghe Geng <pgeng@nvidia.com> - 2.8.4
+- bfb-tool: bind-mount host device nodes into chroots (#417)
+- bfb-install: print BFB-Install deprecation notice on every run  (#416)
+
 * Mon Aug 03 2026 Penghe Geng <pgeng@nvidia.com> - 2.8.3
 - Fix PCIe NIC/DPU FW reset handshake stall when INTx is not delivered (#414)
 
