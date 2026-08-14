@@ -905,7 +905,7 @@ static int rshim_fuse_misc_write(struct cuse_dev *cdev, int fflags,
 #endif
   buf[size] = 0;
 
-  if (sscanf(buf, "%s", key) != 1)
+  if (sscanf(buf, "%31s", key) != 1)
     goto invalid;
 
   p += strlen(key);
