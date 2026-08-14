@@ -7,7 +7,9 @@
 #include <pthread.h>
 #include <stdarg.h>
 #include <time.h>
+#include <ctype.h>
 #include "rshim.h"
+
 
 /* Log module */
 const char * const rshim_log_mod[] = {
@@ -228,15 +230,52 @@ static int rshim_log_show_crash(rshim_backend_t *bd, uint64_t hdr, char *buf,
   return p - buf;
 }
 
-static int rshim_log_format_msg(char *buf, int len, const char* msg, ...)
+/* Implement a custom protocol version of vsnprintf so that unvalidated % literals are not automatically interpreted or dereferenced */
+static int rshim_log_format_msg(char *buf, int len, const char *msg, uint32_t arg)
 {
-  va_list args;
+  // Scan to find first delimeter and do not accept more only accept a uint32_t type
+  const char *pct = strchr(msg, '%');
+  const char *p;
+  char spec[16];
+  int spec_len = 0;
+  int n;
 
-  va_start(args, msg);
-  len = vsnprintf(buf, len, msg, args);
-  va_end(args);
+  if (!pct) {
+    /* No format specifier in the message - copy it as-is. */
+    return snprintf(buf, len, "%s", msg);
+  }
 
-  return len;
+  /* Copy the literal portion of the message before the specifier. */
+  n = snprintf(buf, len, "%.*s", (int)(pct - msg), msg);
+
+  /* Parse a single '%' [flags] [width] conversion specifier. Length
+   * modifiers (l, ll, h, hh, z, ...) are rejected since only a
+   * uint32_t argument is supported.
+   */
+  p = pct;
+  spec[spec_len++] = *p++;
+  while (*p && strchr("-+ 0#", *p) && spec_len < (int)sizeof(spec) - 2)
+    spec[spec_len++] = *p++;
+  while (*p && isdigit((unsigned char)*p) && spec_len < (int)sizeof(spec) - 2)
+    spec[spec_len++] = *p++;
+
+  if (*p && strchr("diuxXo", *p) && spec_len < (int)sizeof(spec) - 1) {
+    spec[spec_len++] = *p++;
+    spec[spec_len] = '\0';
+    n += snprintf(buf + n, len - n, spec, arg);
+  } else {
+    /* Not a recognized uint32_t conversion - emit the '%' literally
+     * and resume scanning right after it. */
+    n += snprintf(buf + n, len - n, "%%");
+    p = pct + 1;
+  }
+
+  /* Copy the remainder of the message literally. Any further '%'
+   * delimiters it contains are not treated as format specifiers.
+   */
+  n += snprintf(buf + n, len - n, "%s", p);
+
+  return n;
 }
 
 static int rshim_log_show_msg(rshim_backend_t *bd, uint64_t hdr, char *buf,
