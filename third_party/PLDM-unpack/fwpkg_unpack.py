@@ -498,6 +498,11 @@ class PLDMUnpack:
             else:
                 name = name + "_image.bin"
             name = re.sub("_+", "_", name)
+            # Package metadata (ComponentImageSetVersionString,
+            # ComponentVersionString) is attacker-controlled. Strip any
+            # directory components/traversal so the result is always a
+            # bare filename confined to the caller's output directory.
+            name = os.path.basename(name)
         return name
 
     def create_unpacked_files(self, output_dir):
@@ -521,12 +526,21 @@ class PLDMUnpack:
 
                 Util.cli_log(log_msg, False)
                 return False
-            img_name = output_dir + self.get_image_name(index)
+            img_name = self.get_image_name(index)
             img_name = re.sub(r'\s+', '', img_name)
-            if img_name == "":
+            if img_name in ("", ".", ".."):
                 log_msg = "Error: The input firmware package does not conform to \
                 the format created by NVIDIA packaging tool."
 
+                Util.cli_log(log_msg, False)
+                return False
+            # Defense in depth: even though get_image_name() strips
+            # directory components, re-verify the resolved path is still
+            # contained under output_dir before touching the filesystem.
+            real_output_dir = os.path.realpath(output_dir)
+            img_name = os.path.realpath(os.path.join(output_dir, img_name))
+            if os.path.commonpath([img_name, real_output_dir]) != real_output_dir:
+                log_msg = f"Error: Refusing to write outside output directory: {img_name}"
                 Util.cli_log(log_msg, False)
                 return False
             try:
