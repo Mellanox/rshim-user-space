@@ -838,7 +838,10 @@ static int rshim_fuse_misc_read(struct cuse_dev *cdev, int fflags,
   rm->len = p - rm->buffer;
 
 #ifdef __linux__
-  if (size > (int)(rm->len - off))
+  if(off < 0 || off >= rm->len){
+    size = 0;
+  }
+  else if (size > (int)(rm->len - off))
     size = rm->len - off;
   pthread_mutex_unlock(&bd->mutex);
   fuse_reply_buf(req, rm->buffer + off, size);
