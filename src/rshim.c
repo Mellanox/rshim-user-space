@@ -2977,8 +2977,10 @@ static void rshim_main(int argc, char *argv[])
 #ifdef HAVE_RSHIM_FUSE
 #ifdef __linux__
   rc = system("modprobe cuse");
-  if (rc == -1)
-    RSHIM_DBG("Failed the load cuse\n");
+  if (rc != 0)
+    RSHIM_WARN("Failed to load the cuse kernel module. Install the package "
+               "providing cuse.ko for the running kernel, run "
+               "\"modprobe cuse\", and restart rshim.\n");
 #endif
 
 #ifdef __FreeBSD__
@@ -3509,7 +3511,8 @@ int main(int argc, char *argv[])
       perror("setsid failed: %m\n");
       return -1;
     }
-    signal(SIGCHLD, SIG_IGN);
+    /* system() is used throughout the daemon and must be able to wait. */
+    signal(SIGCHLD, SIG_DFL);
     if (chdir("/") == -1)
       perror("chdir failed: %m\n");
     close(STDIN_FILENO);
