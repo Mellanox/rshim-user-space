@@ -215,6 +215,9 @@ fi
 %{_datadir}/selinux/packages/rshim-fix.te
 
 %changelog
+* Sun Aug 16 2026 Penghe Geng <pgeng@nvidia.com> - 2.8.5
+- bfb-install: print BFB-Install deprecation notice to stdout on every run
+
 * Tue Aug 11 2026 Penghe Geng <pgeng@nvidia.com> - 2.8.4
 - bfb-tool: bind-mount host device nodes into chroots (#417)
 - bfb-install: print BFB-Install deprecation notice on every run  (#416)
