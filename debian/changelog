@@ -1,3 +1,9 @@
+rshim (2.8.5) UNRELEASED; urgency=low
+
+  * bfb-install: print BFB-Install deprecation notice to stdout on every run
+
+ -- Penghe Geng <pgeng@nvidia.com>  Sun, 16 Aug 2026 10:16:08 -0400
+
 rshim (2.8.4) UNRELEASED; urgency=low
 
   * bfb-tool: bind-mount host device nodes into chroots (#417)
