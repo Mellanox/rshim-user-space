@@ -45,6 +45,17 @@ typedef struct {
   struct libusb_transfer *write_urb;
   int write_retries;
 
+  /*
+   * Set by rshim_usb_disconnect() while a cancelled read/write transfer
+   * is still outstanding.  libusb_cancel_transfer() only requests
+   * cancellation - the completion callback (which dereferences
+   * intr_buf/handle via urb->user_data) still runs later, asynchronously.
+   * When set, the read/write completion callbacks finish tearing the
+   * device down once neither transfer is outstanding any more, instead
+   * of rshim_usb_disconnect() freeing those resources immediately.
+   */
+  bool detaching;
+
   /* The address of the boot FIFO endpoint. */
   uint8_t boot_fifo_ep;
   /* The address of the tile-monitor FIFO interrupt endpoint. */
@@ -336,6 +347,57 @@ static ssize_t rshim_usb_boot_write(rshim_backend_t *bd, const char *buf,
 
 /* FIFO routines */
 
+/*
+ * Finish tearing down a USB device after a disconnect.  Only safe to call
+ * once neither the read/interrupt nor the write transfer is outstanding
+ * any more.  Called either directly from rshim_usb_disconnect() (nothing
+ * was in flight to begin with) or from the tail of the read/write
+ * completion callbacks (whichever cancelled transfer completes last).
+ */
+static void rshim_usb_finish_disconnect(rshim_usb_t *dev)
+{
+  rshim_backend_t *bd = &dev->bd;
+
+  dev->detaching = false;
+
+  dev->read_or_intr_urb = NULL;
+  dev->write_urb = NULL;
+
+  free(dev->intr_buf);
+  dev->intr_buf = NULL;
+
+  if (dev->handle) {
+    libusb_close(dev->handle);
+    dev->handle = NULL;
+  }
+
+  rshim_deref(bd);
+}
+
+/*
+ * Called at the tail of the read/write completion callbacks, after
+ * bd->ringlock has been released (rshim_usb_finish_disconnect() may drop
+ * the last backend reference and free bd/dev, including bd->ringlock, so
+ * this must not run while that lock is held).  If a disconnect is in
+ * progress and neither transfer is outstanding any more, complete the
+ * teardown that rshim_usb_disconnect() deferred.
+ */
+static void rshim_usb_disconnect_check(rshim_usb_t *dev)
+{
+  rshim_backend_t *bd = &dev->bd;
+  bool finish;
+
+  if (!dev->detaching)
+    return;
+
+  pthread_mutex_lock(&bd->ringlock);
+  finish = !(bd->spin_flags & (RSH_SFLG_READING | RSH_SFLG_WRITING));
+  pthread_mutex_unlock(&bd->ringlock);
+
+  if (finish)
+    rshim_usb_finish_disconnect(dev);
+}
+
 static void rshim_usb_fifo_read_callback(struct libusb_transfer *urb)
 {
   rshim_usb_t *dev = urb->user_data;
@@ -437,6 +499,15 @@ static void rshim_usb_fifo_read_callback(struct libusb_transfer *urb)
 
   if (lock)
     pthread_mutex_unlock(&bd->ringlock);
+
+  /*
+   * Take the global lock here (unlike rshim_usb_disconnect(), which is
+   * always called with it already held) since this callback runs
+   * directly from the USB polling loop.
+   */
+  rshim_lock();
+  rshim_usb_disconnect_check(dev);
+  rshim_unlock();
 }
 
 static void rshim_usb_fifo_read(rshim_usb_t *dev, char *buffer, size_t count)
@@ -593,6 +664,15 @@ static void rshim_usb_fifo_write_callback(struct libusb_transfer *urb)
   }
 
   pthread_mutex_unlock(&bd->ringlock);
+
+  /*
+   * Take the global lock here (unlike rshim_usb_disconnect(), which is
+   * always called with it already held) since this callback runs
+   * directly from the USB polling loop.
+   */
+  rshim_lock();
+  rshim_usb_disconnect_check(dev);
+  rshim_unlock();
 }
 
 static int rshim_usb_fifo_write(rshim_usb_t *dev, const char *buffer,
@@ -1023,17 +1103,28 @@ static void rshim_usb_disconnect(struct libusb_device *usb_dev)
    */
   bd->has_cons_work = 0;
 
+  /*
+   * Transfer user data and buffers (dev, dev->intr_buf, dev->handle) must
+   * stay alive until libusb actually reports each transfer's completion
+   * or cancellation - libusb_cancel_transfer() only *requests*
+   * cancellation; the completion callback still runs later,
+   * asynchronously, and dereferences them via urb->user_data.  Mark the
+   * device as disconnecting and cancel both transfers; do NOT drive the
+   * libusb event loop from here to wait for them - this function runs on
+   * the same thread that dispatches libusb events (it's a hotplug
+   * callback), and the read/write completion callbacks re-take
+   * rshim_mutex (held here), so a nested libusb_handle_events() call
+   * that completed one of them synchronously would self-deadlock this
+   * thread.  Instead just check below for the case where nothing was
+   * outstanding to begin with; if a transfer was in fact cancelled,
+   * rshim_usb_poll() will observe its completion on a later, unlocked
+   * iteration of the main loop, and the tail of that completion callback
+   * will call rshim_usb_disconnect_check() to finish the teardown.
+   */
+  dev->detaching = true;
+
   libusb_cancel_transfer(dev->read_or_intr_urb);
-  dev->read_or_intr_urb = NULL;
   libusb_cancel_transfer(dev->write_urb);
-  dev->write_urb = NULL;
-
-  pthread_mutex_lock(&bd->ringlock);
-  bd->spin_flags &= ~RSH_SFLG_READING;
-  pthread_mutex_unlock(&bd->ringlock);
-
-  free(dev->intr_buf);
-  dev->intr_buf = NULL;
 
   if (!bd->has_rshim && !bd->has_tm)
     RSHIM_INFO("USB disconnected\n");
@@ -1042,12 +1133,14 @@ static void rshim_usb_disconnect(struct libusb_device *usb_dev)
 
   pthread_mutex_unlock(&bd->mutex);
 
-  if (dev->handle) {
-    libusb_close(dev->handle);
-    dev->handle = NULL;
-  }
+  /*
+   * Finish the teardown now if neither transfer was actually outstanding
+   * to begin with (e.g. this device never got past probing).  Otherwise
+   * this is a no-op and the completion callback for whichever transfer
+   * finishes last will finish it instead.
+   */
+  rshim_usb_disconnect_check(dev);
 
-  rshim_deref(bd);
   rshim_unlock();
 }
 
