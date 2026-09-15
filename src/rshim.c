@@ -189,6 +189,7 @@ const char *magic_to_str(uint64_t magic)
 /* Number of words to send as sync-data (calculated by packet MTU). */
 #define TMFIFO_MAX_SYNC_WORDS            (1536 / 8)
 
+#ifdef __FreeBSD__
 /* Terminal characteristics for newly created consoles. */
 #define INIT_C_CC "\003\034\177\025\004\0\1\0\021\023\032\0\022\017\027\026\0"
 static struct termios init_console_termios = {
@@ -198,6 +199,7 @@ static struct termios init_console_termios = {
   .c_lflag = ISIG | ICANON | ECHOE | ECHOK | ECHOCTL | ECHOKE | IEXTEN,
   .c_cc = INIT_C_CC,
 };
+#endif
 
 /* RShim global mutex. */
 static pthread_mutex_t rshim_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -2718,8 +2720,12 @@ int rshim_register(rshim_backend_t *bd)
   pthread_cond_init(&bd->boot_complete_cond, NULL);
   pthread_cond_init(&bd->boot_write_complete_cond, NULL);
   pthread_cond_init(&bd->ctrl_wait_cond, NULL);
+#ifdef __linux__
+  rshim_termios_init(&bd->cons_termios);
+#else
   memcpy(&bd->cons_termios, &init_console_termios,
          sizeof(init_console_termios));
+#endif
 
   bd->index = index;
   if (rshim_dev_names[index])
