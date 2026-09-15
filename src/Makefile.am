@@ -26,3 +26,7 @@ rshim_SOURCES += rshim_fuse.c
 rshim_CPPFLAGS += $(fuse_CFLAGS) -DHAVE_RSHIM_FUSE
 LIBS += $(fuse_LIBS)
 endif
+
+if !OS_FREEBSD
+rshim_SOURCES += rshim_termios.c rshim_termios.h
+endif

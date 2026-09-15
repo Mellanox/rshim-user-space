@@ -9,6 +9,7 @@
 
 #ifdef __linux__
 #include <endian.h>
+#include "rshim_termios.h"
 #else
 #include <sys/endian.h>
 #endif
@@ -408,7 +409,11 @@ struct rshim_backend {
   pthread_cond_t ctrl_wait_cond;
 
   /* Current termios settings for the console. */
+#ifdef __linux__
+  struct rshim_termios cons_termios;
+#else
   struct termios cons_termios;
+#endif
 
   /* Pending boot & fifo request for the worker. */
   uint8_t *boot_work_buf;

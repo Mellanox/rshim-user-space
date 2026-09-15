@@ -26,27 +26,7 @@
 #include <fuse/cuse_lowlevel.h>
 #include <fuse/fuse_opt.h>
 #endif
-#include <features.h>
 #include <unistd.h>
-/*
- * glibc 2.42+ no longer pulls in struct termio; provide a minimal definition so
- * we can keep using the legacy layout expected by existing userspace tools.
- */
-#if !__GLIBC_PREREQ(2, 42)   // if glibc is before 2.42
-#include <termio.h>
-#else
-#ifndef NCC
-#define NCC 8
-#endif
-struct termio {
-  unsigned short c_iflag;
-  unsigned short c_oflag;
-  unsigned short c_cflag;
-  unsigned short c_lflag;
-  unsigned char c_line;
-  unsigned char c_cc[NCC];
-};
-#endif
 #elif defined(__FreeBSD__)
 #include <termios.h>
 #include <sys/stat.h>
@@ -405,44 +385,67 @@ static void rshim_fuse_console_ioctl(fuse_req_t req, int cmd, void *arg,
                                      size_t in_bufsz, size_t out_bufsz)
 {
   rshim_backend_t *bd = fuse_req_userdata(req);
+  bool get;
+  unsigned char out[sizeof(struct rshim_termios)];
+  size_t size;
 
   if (!bd) {
     fuse_reply_err(req, ENODEV);
     return;
   }
 
-  pthread_mutex_lock(&bd->mutex);
-
-  switch (cmd) {
-  case TCGETS:
-    if (!out_bufsz) {
-      struct iovec iov = { arg, sizeof(struct termio) };
-
-      fuse_reply_ioctl_retry(req, NULL, 0, &iov, 1);
-    } else {
-      fuse_reply_ioctl(req, 0, &bd->cons_termios, sizeof(struct termio));
-    }
-    break;
-
-  case TCSETS:
-  case TCSETSW:
-  case TCSETSF:
-    if (!in_bufsz) {
-      struct iovec iov = {arg, sizeof(bd->cons_termios)};
-
-      fuse_reply_ioctl_retry(req, &iov, 1, NULL, 0);
-    } else {
-      memcpy(&bd->cons_termios, in_buf, sizeof(bd->cons_termios));
-      fuse_reply_ioctl(req, 0, NULL, 0);
-    }
-    break;
-
-  default:
+  size = rshim_termios_size((unsigned int)cmd, &get);
+  if (!size) {
     fuse_reply_err(req, ENOSYS);
-    break;
+    return;
   }
 
+  /* These UAPI layouts contain no pointers or longs, including compat32. */
+  if (get) {
+    if (in_bufsz) {
+      fuse_reply_err(req, EINVAL);
+      return;
+    }
+    if (!out_bufsz && !(flags & FUSE_IOCTL_RETRY)) {
+      struct iovec iov = { arg, size };
+
+      fuse_reply_ioctl_retry(req, NULL, 0, &iov, 1);
+      return;
+    }
+    if (out_bufsz < size) {
+      fuse_reply_err(req, EINVAL);
+      return;
+    }
+    pthread_mutex_lock(&bd->mutex);
+    rshim_termios_get(&bd->cons_termios, cmd, out);
+    pthread_mutex_unlock(&bd->mutex);
+    fuse_reply_ioctl(req, 0, out, size);
+    return;
+  }
+
+  if (out_bufsz) {
+    fuse_reply_err(req, EINVAL);
+    return;
+  }
+  if (!in_bufsz && !(flags & FUSE_IOCTL_RETRY)) {
+    struct iovec iov = { arg, size };
+
+    fuse_reply_ioctl_retry(req, &iov, 1, NULL, 0);
+    return;
+  }
+  if (!in_buf || in_bufsz != size) {
+    fuse_reply_err(req, EINVAL);
+    return;
+  }
+
+  /*
+   * Preserve the existing raw-console behavior: all setter variants only
+   * store client settings. W/F do not drain output or discard input.
+   */
+  pthread_mutex_lock(&bd->mutex);
+  rshim_termios_set(&bd->cons_termios, cmd, in_buf);
   pthread_mutex_unlock(&bd->mutex);
+  fuse_reply_ioctl(req, 0, NULL, 0);
 }
 #elif defined(__FreeBSD__)
 static int rshim_fuse_console_ioctl(struct cuse_dev *cdev, int fflags,
