@@ -19,6 +19,10 @@ BuildRequires: systemd-rpm-macros
 
 Requires: kmod(cuse.ko)
 Suggests: kernel-modules-extra
+# doca-installer < 2.1.1 relies on the /usr/sbin tools this rshim no longer
+# ships (bfb-install up to 2.0.x; the bfb-tool/bf-pldm-ver PATH copies until
+# 2.1.1 provides its own symlinks). The tools moved to doca-installer.
+Conflicts: doca-installer < 2.1.1
 
 %description
 This is the user-space driver to access the BlueField SoC via the rshim
@@ -52,17 +56,11 @@ via the virtual console or network interface.
 %{_sbindir}/rshim
 %{_sbindir}/mlx-mkbfb
 %{_sbindir}/fwpkg_unpack.py
-%{_sbindir}/bfb-install
-%{_sbindir}/bfb-tool
 %{_sbindir}/bf-reg
-%{_sbindir}/bf-pldm-ver
 %{_mandir}/man1/mlx-mkbfb.1.gz
 %{_unitdir}/rshim.service
 %{_mandir}/man8/rshim.8.gz
-%{_mandir}/man8/bfb-install.8.gz
-%{_mandir}/man8/bfb-tool.8.gz
 %{_mandir}/man8/bf-reg.8.gz
-%{_mandir}/man8/bf-pldm-ver.8.gz
 %if "%{with_systemd}" == "1"
   %config(noreplace) %{_sysconfdir}/systemd/network/10-tmfifo-net.link
 %endif

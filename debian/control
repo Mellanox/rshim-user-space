@@ -7,6 +7,7 @@ Standards-Version: 4.1.4
 
 Package: rshim
 Depends: ${shlibs:Depends}, ${misc:Depends}
+Breaks: doca-installer (<< 2.1.1)
 Architecture: any
 Homepage: https://github.com/Mellanox/rshim-user-space
 Description: driver for Mellanox BlueField SoC
