@@ -1,3 +1,19 @@
+rshim (2.9.1) UNRELEASED; urgency=low
+
+  * console: Support Linux termios2 ioctls with UAPI conversion
+  * selinux: Allow rshim to load kernel modules
+  * Remove bfb-install, bfb-tool and bf-pldm-ver (moved to doca-installer) (#419)
+  * Firmware package unpack path traversal (#429)
+  * Misc read offset permits out-of-bounds read (#428)
+  * Stack buffer overflow in misc write parser (#427)
+  * debian: derive runtime deps from ${shlibs:Depends}
+  * bfb-tool: bind-mount host device nodes into chroots
+  * Fix PCIe NIC/DPU FW reset handshake stall when INTx is not delivered (#409)
+  * bfb-install: print BFB-Install deprecation notice on every run (#403)
+  * bfb-tool: Add --without-gi option for repacking without FW and SW Golden Image
+
+ -- Daniel Belaish <dbelaish@nvidia.com>  Thu, 17 Sep 2026 21:26:58 +0300
+
 rshim (2.8.2) UNRELEASED; urgency=low
 
   * rshim: retry stalled boot writes
