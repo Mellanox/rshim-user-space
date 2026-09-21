@@ -954,6 +954,11 @@ static int rshim_fuse_misc_write(struct cuse_dev *cdev, int fflags,
       goto invalid;
 
     if (value) {
+      if (bd->drop_mode) {
+        RSHIM_ERR("rshim%d reset fail (drop mode)\n", bd->index);
+        goto invalid;
+      }
+
       if (!bd->has_reprobe) {
         /* Detach, which shouldn't hold bd->mutex. */
         rshim_notify(bd, RSH_EVENT_DETACH, 0);
