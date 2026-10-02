@@ -154,6 +154,14 @@ fi
 %{_datadir}/selinux/packages/rshim-fix.te
 
 %changelog
+* Fri Oct 02 2026 Penghe Geng <pgeng@nvidia.com> - 2.5.12
+- Bug fix: Allow ownership transfer request from rshim_pcie_lf DROP_MODE (#400) (#444)
+- [AIVO][rshim 2.9.0] Misc read offset permits out-of-bounds read (#428) (#432)
+- [AIVO][rshim 2.9.0] Firmware package unpack path traversal (#429) (#433)
+- [AIVO][rshim 2.9.0] Stack buffer overflow in misc write parser (#427) (#431)
+- fix mft not working in chroot env
+- bfb-tool: preserve original filename in repack for --all/--opn modes (#374)
+
 * Wed Apr 15 2026 Penghe Geng <pgeng@nvidia.com> - 2.5.11
 - Update rshim.c to fix high contention of rshim_fd_mutex + SIGINT not being handle
 
