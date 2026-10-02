@@ -1,3 +1,14 @@
+rshim (2.5.12) UNRELEASED; urgency=low
+
+  * Bug fix: Allow ownership transfer request from rshim_pcie_lf DROP_MODE (#400) (#444)
+  * [AIVO][rshim 2.9.0] Misc read offset permits out-of-bounds read (#428) (#432)
+  * [AIVO][rshim 2.9.0] Firmware package unpack path traversal (#429) (#433)
+  * [AIVO][rshim 2.9.0] Stack buffer overflow in misc write parser (#427) (#431)
+  * fix mft not working in chroot env
+  * bfb-tool: preserve original filename in repack for --all/--opn modes (#374)
+
+ -- Penghe Geng <pgeng@nvidia.com>  Fri, 02 Oct 2026 13:57:19 -0400
+
 rshim (2.5.11) UNRELEASED; urgency=low
 
   * Update rshim.c to fix high contention of rshim_fd_mutex + SIGINT not being handle
