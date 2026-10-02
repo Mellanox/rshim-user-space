@@ -1,3 +1,13 @@
+rshim (2.1.22) UNRELEASED; urgency=low
+
+  * Bug fix: Allow ownership transfer request from rshim_pcie_lf DROP_MODE (#400) (#444)
+  * [AIVO][rshim 2.9.0] Misc read offset permits out-of-bounds read (#428) (#432)
+  * [AIVO][rshim 2.9.0] Firmware package unpack path traversal (#429) (#433)
+  * [AIVO][rshim 2.9.0] Stack buffer overflow in misc write parser (#427) (#431)
+  * fix mft not working in chroot env
+
+ -- Penghe Geng <pgeng@nvidia.com>  Fri, 02 Oct 2026 13:57:19 -0400
+
 rshim (2.1.21) UNRELEASED; urgency=low
 
   * Add 10-tmfifo.link to disable udev assigning MAC to tmfifo_netN
