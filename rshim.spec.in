@@ -147,9 +147,9 @@ fi
 %{_sbindir}/mlx-mkbfb
 %{_sbindir}/bf-reg
 %{_sbindir}/fwpkg_unpack.py
-%{_mandir}/man1/mlx-mkbfb.1.gz
-%{_mandir}/man8/rshim.8.gz
-%{_mandir}/man8/bf-reg.8.gz
+%{_mandir}/man1/mlx-mkbfb.1*
+%{_mandir}/man8/rshim.8*
+%{_mandir}/man8/bf-reg.8*
 %{_datadir}/selinux/packages/rshim-fix.te
 
 %changelog
