@@ -185,7 +185,7 @@ if [ "$1" = "0" ]; then
       systemctl stop rshim
   fi
 %else
-  killall -9 rshim
+  killall -9 rshim || true
 %endif
 fi
 
