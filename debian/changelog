@@ -1,3 +1,12 @@
+rshim (2.6.7) UNRELEASED; urgency=low
+
+  * Fix rpm build when man pages are compressed with zstd (#447)
+  * Remove bfb-install, bfb-tool and bf-pldm-ver (moved to doca-installer) (#419)
+  * debian: derive runtime deps from ${shlibs:Depends}
+  * fix mft not working in chroot env
+
+ -- Penghe Geng <pgeng@nvidia.com>  Thu, 08 Oct 2026 15:54:45 -0400
+
 rshim (2.6.6) UNRELEASED; urgency=low
 
   * Revert 268fcc8d1d87

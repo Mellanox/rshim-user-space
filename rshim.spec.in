@@ -153,6 +153,12 @@ fi
 %{_datadir}/selinux/packages/rshim-fix.te
 
 %changelog
+* Thu Oct 08 2026 Penghe Geng <pgeng@nvidia.com> - 2.6.7
+- Fix rpm build when man pages are compressed with zstd (#447)
+- Remove bfb-install, bfb-tool and bf-pldm-ver (moved to doca-installer) (#419)
+- debian: derive runtime deps from ${shlibs:Depends}
+- fix mft not working in chroot env
+
 * Wed Feb 04 2026 Liming Sun <limings@nvidia.com> - 2.6.6
 - Revert 268fcc8d1d87
 
