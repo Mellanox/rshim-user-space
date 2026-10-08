@@ -1,3 +1,11 @@
+rshim (2.9.2) UNRELEASED; urgency=low
+
+  * rpm: do not fail %preun if rshim is not running (#448)
+  * Fix rpm build when man pages are compressed with zstd (#447)
+  * rshim: Honor drop mode for software reset
+
+ -- Penghe Geng <pgeng@nvidia.com>  Thu, 08 Oct 2026 16:01:19 -0400
+
 rshim (2.9.1) UNRELEASED; urgency=low
 
   * console: Support Linux termios2 ioctls with UAPI conversion

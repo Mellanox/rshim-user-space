@@ -214,6 +214,11 @@ fi
 %{_datadir}/selinux/packages/rshim-fix.te
 
 %changelog
+* Thu Oct 08 2026 Penghe Geng <pgeng@nvidia.com> - 2.9.2
+- rpm: do not fail %%preun if rshim is not running (#448)
+- Fix rpm build when man pages are compressed with zstd (#447)
+- rshim: Honor drop mode for software reset
+
 * Thu Sep 17 2026 Daniel Belaish <dbelaish@nvidia.com> - 2.9.1
 - console: Support Linux termios2 ioctls with UAPI conversion
 - selinux: Allow rshim to load kernel modules
