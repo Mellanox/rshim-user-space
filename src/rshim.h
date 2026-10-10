@@ -29,6 +29,7 @@
 #include <sys/mount.h>
 #include <termios.h>
 #include <unistd.h>
+#include <pthread.h>
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
