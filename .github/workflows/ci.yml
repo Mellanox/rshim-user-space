@@ -193,10 +193,12 @@ jobs:
             /bin/bash -c "
             set -euo pipefail
               yum -y install gcc make rpm-build git autoconf automake \
-                libtool pkgconfig pciutils-devel libusb1-devel fuse-devel && \
+                libtool pkgconfig pciutils-devel libusb1-devel fuse-devel \
+                systemd-rpm-macros && \
               git config --global --add safe.directory /workspace && \
               ARCH=x86_64 CFLAGS="-fno-lto" LDFLAGS="-fno-lto" \
                 ./scripts/build-rpm && \
+              rpm -qp -l /workspace/rpmbuild/RPMS/x86_64/*.rpm | grep -q '/rshim.service' && \
               yum localinstall -y /workspace/rpmbuild/RPMS/x86_64/*.rpm && \
               echo 'Running rshim --version:' && \
               rshim --version && \
@@ -231,10 +233,12 @@ jobs:
               /bin/bash -c "
                 set -euo pipefail
                 yum -y install gcc make rpm-build git autoconf automake \
-                  libtool pkgconfig pciutils-devel libusb1-devel fuse-devel && \
+                  libtool pkgconfig pciutils-devel libusb1-devel fuse-devel \
+                  systemd-rpm-macros && \
                 git config --global --add safe.directory /workspace && \
                 ARCH=aarch64 CFLAGS=\"-fno-lto\" LDFLAGS=\"-fno-lto\" \
                   ./scripts/build-rpm && \
+                rpm -qp -l /workspace/rpmbuild/RPMS/aarch64/*.rpm | grep -q '/rshim.service' && \
                 yum localinstall -y /workspace/rpmbuild/RPMS/aarch64/*.rpm && \
                 echo 'Running rshim --version:' && \
                 rshim --version && \
