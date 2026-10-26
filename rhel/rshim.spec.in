@@ -34,7 +34,7 @@ via the virtual console or network interface.
 
 %build
 ./bootstrap.sh
-%configure --docdir=%{_datadir}/doc/%{name}
+%configure --docdir=%{_datadir}/doc/%{name} --with-systemdsystemunitdir=%{_unitdir}
 %make_build
 
 %install
@@ -61,9 +61,7 @@ via the virtual console or network interface.
 %{_unitdir}/rshim.service
 %{_mandir}/man8/rshim.8*
 %{_mandir}/man8/bf-reg.8*
-%if "%{with_systemd}" == "1"
-  %config(noreplace) %{_sysconfdir}/systemd/network/10-tmfifo-net.link
-%endif
+%config(noreplace) %{_sysconfdir}/systemd/network/10-tmfifo-net.link
 
 %changelog
 * Thu Oct 08 2026 Penghe Geng <pgeng@nvidia.com> - 2.9.2
