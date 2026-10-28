@@ -51,7 +51,14 @@ Requires: kernel-modules-extra
 # 2.1.1 provides its own symlinks). The tools moved to doca-installer.
 Conflicts: doca-installer < 2.1.1
 
-%global with_systemd %(if (test -d "%{_unitdir}" > /dev/null); then echo -n '1'; else echo -n '0'; fi)
+# Always ship the systemd unit. systemd-rpm-macros provides %{_unitdir};
+# the directory itself belongs to the systemd package and is often absent
+# from the build root. Probing that directory used to omit rshim.service
+# from the RPM (RM #5353509).
+BuildRequires: systemd-rpm-macros
+Requires(pre): systemd
+%{?systemd_requires}
+
 %global debug_package %{nil}
 
 %description
@@ -67,7 +74,7 @@ tar -axf %{SOURCE0} -C %{name}-%{version} --strip-components 1
 
 %build
 ./bootstrap.sh
-%configure --docdir=%{_datadir}/doc/%{name}
+%configure --docdir=%{_datadir}/doc/%{name} --with-systemdsystemunitdir=%{_unitdir}
 %if %{?make_build:1}%{!?make_build:0}
 %make_build
 %else
@@ -81,11 +88,11 @@ make
 %{__install} -m 0644 scripts/rshim-fix.te %{buildroot}%{_datadir}/selinux/packages/rshim-fix.te
 
 %pre
-%if "%{with_systemd}" == "1"
-  if systemctl is-active --quiet rshim ; then
-      systemctl stop rshim
-  fi
-%endif
+if systemctl is-active --quiet rshim ; then
+    # SIGTERM can be blocked. -k sends SIGKILL so this returns and killall runs.
+    timeout -k 2s 15s systemctl stop rshim || :
+    killall -9 rshim || :
+fi
 
 %post
 apply_selinux_fix=0
@@ -171,25 +178,29 @@ else
     echo "Skipping SELinux rshim policy fix on non-supported distribution."
 fi
 
-%if "%{with_systemd}" == "1"
-  echo "Installation complete. To enable and start the rshim service, run:"
-  echo "  systemctl daemon-reload"
-  echo "  systemctl enable rshim"
-  echo "  systemctl start rshim"
-%endif
+# Reload so the new unit is visible. Do not preset or enable: host rshim
+# must stay disabled so BMC rshim remains the one that is running.
+systemctl daemon-reload >/dev/null 2>&1 || :
+echo "Installation complete. To enable and start the rshim service, run:"
+echo "  systemctl daemon-reload"
+echo "  systemctl enable rshim"
+echo "  systemctl start rshim"
 
 %preun
 if [ "$1" = "0" ]; then
-%if "%{with_systemd}" == "1"
-  if systemctl is-active --quiet rshim ; then
-      systemctl stop rshim
-  fi
-%else
-  killall -9 rshim || true
-%endif
+    if systemctl is-active --quiet rshim ; then
+        timeout -k 2s 15s systemctl stop rshim || :
+    fi
+    # External termination path if systemctl stop does not finish.
+    # killall exits 1 when rshim is already gone; do not fail the transaction.
+    killall -9 rshim || :
+    systemctl disable rshim >/dev/null 2>&1 || :
 fi
 
 %postun
+if [ "$1" = "0" ]; then
+    systemctl daemon-reload >/dev/null 2>&1 || :
+fi
 if [ $1 -eq 0 ] && [ -x /usr/sbin/semodule ] && semodule -l | grep -q '^rshim-fix\b'; then
   semodule -r rshim-fix >/dev/null 2>&1 || true
 fi
@@ -200,10 +211,8 @@ fi
 %defattr(-,root,root,-)
 %doc %{_datadir}/doc/%{name}/README.md
 %config(noreplace) %{_sysconfdir}/rshim.conf
-%if "%{with_systemd}" == "1"
-  %{_unitdir}/rshim.service
-  %config(noreplace) %{_sysconfdir}/systemd/network/10-tmfifo-net.link
-%endif
+%{_unitdir}/rshim.service
+%config(noreplace) %{_sysconfdir}/systemd/network/10-tmfifo-net.link
 %{_sbindir}/rshim
 %{_sbindir}/mlx-mkbfb
 %{_sbindir}/bf-reg
