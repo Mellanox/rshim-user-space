@@ -980,8 +980,19 @@ void rshim_boot_release(rshim_backend_t *bd)
   if (bd->boot_rem_cnt) {
     memset((uint8_t *)&bd->boot_rem_data + bd->boot_rem_cnt, 0,
            sizeof(uint64_t) - bd->boot_rem_cnt);
-    bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->boot_fifo_data,
-           bd->boot_rem_data, RSHIM_REG_SIZE_8B);
+    if (bd->type == RSH_BACKEND_USB && bd->ver_id == RSHIM_BLUEFIELD_3) {
+      /*
+       * The BF3 USB bulk path can fill the boot FIFO. Use its flow
+       * control for the final word as well.
+       */
+      rc = bd->write(bd, RSH_DEV_TYPE_BOOT,
+                     (const char *)&bd->boot_rem_data, sizeof(uint64_t));
+      if (rc != sizeof(uint64_t))
+        RSHIM_ERR("rshim%d failed to flush boot data(%d)\n", bd->index, rc);
+    } else {
+      bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->boot_fifo_data,
+             bd->boot_rem_data, RSHIM_REG_SIZE_8B);
+    }
   }
   bd->is_boot_open = 0;
   bd->boot_rem_cnt = 0;
