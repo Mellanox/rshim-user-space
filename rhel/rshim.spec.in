@@ -64,6 +64,9 @@ via the virtual console or network interface.
 %config(noreplace) %{_sysconfdir}/systemd/network/10-tmfifo-net.link
 
 %changelog
+* Wed Oct 28 2026 Daniel Belaish <dbelaish@nvidia.com> - 2.9.3
+- rpm: always package rshim.service (#454) (#458)
+
 * Thu Oct 08 2026 Penghe Geng <pgeng@nvidia.com> - 2.9.2
 - rpm: do not fail %%preun if rshim is not running (#448)
 - Fix rpm build when man pages are compressed with zstd (#447)

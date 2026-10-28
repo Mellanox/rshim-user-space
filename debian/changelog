@@ -1,3 +1,9 @@
+rshim (2.9.3) UNRELEASED; urgency=low
+
+  * rpm: always package rshim.service (#454) (#458)
+
+ -- Daniel Belaish <dbelaish@nvidia.com>  Wed, 28 Oct 2026 11:07:01 +0200
+
 rshim (2.9.2) UNRELEASED; urgency=low
 
   * rpm: do not fail %preun if rshim is not running (#448)
