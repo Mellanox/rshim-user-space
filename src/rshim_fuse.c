@@ -144,19 +144,20 @@ static int rshim_fuse_boot_write(struct cuse_dev *cdev, int fflags,
 static void rshim_fuse_boot_release(fuse_req_t req, struct fuse_file_info *fi)
 {
   rshim_backend_t *bd = fuse_req_userdata(req);
+  int rc = 0;
 
-  if (bd) 
-    rshim_boot_release(bd);
+  if (bd)
+    rc = rshim_boot_release(bd);
 
-  fuse_reply_err(req, 0);
+  fuse_reply_err(req, rc < 0 ? -rc : 0);
 }
 #elif defined(__FreeBSD__)
 static int rshim_fuse_boot_release(struct cuse_dev *cdev, int fflags)
 {
   rshim_backend_t *bd = cuse_dev_get_priv0(cdev);
+  int rc = rshim_boot_release(bd);
 
-  rshim_boot_release(bd);
-  return CUSE_ERR_NONE;
+  return rc ? CUSE_ERR_OTHER : CUSE_ERR_NONE;
 }
 #endif
 

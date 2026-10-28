@@ -250,6 +250,23 @@ static int rshim_usb_write_rshim(rshim_backend_t *bd, uint32_t chan,
   return rc >= 0 ? (rc > size ? -EINVAL : -ENXIO) : rc;
 }
 
+/*
+ * Free bytes the paced BF3 boot writer may use. RSHIM_FIFO_SPACE_RESERV
+ * words stay empty for the close-time tail. Returns 0 when the writer
+ * must wait.
+ */
+static ssize_t rshim_usb_bf3_boot_space(rshim_backend_t *bd, uint64_t reg)
+{
+  int avail_words;
+
+  avail_words = rshim_boot_fifo_capacity(bd) - rshim_boot_fifo_level(bd, reg) -
+                RSHIM_FIFO_SPACE_RESERV;
+  if (avail_words < 0)
+    avail_words = 0;
+
+  return (ssize_t)avail_words * (ssize_t)sizeof(uint64_t);
+}
+
 static ssize_t rshim_usb_bf3_boot_write(rshim_backend_t *bd, const char *buf,
 				     size_t count)
 {
@@ -267,9 +284,11 @@ static ssize_t rshim_usb_bf3_boot_write(rshim_backend_t *bd, const char *buf,
   temp_count = count;
 
   while (temp_count) {
-    /* Check whether the BOOT FIFO is full. If it is, poll, until
-     * there is free space. The BOOT FIFO has a max size of
-     * is 0x400 (lines) * 8 = 8192 (bytes).
+    /*
+     * The BOOT FIFO holds 1024 words (8192 bytes). Stop
+     * RSHIM_FIFO_SPACE_RESERV words early. Filling all 1024 drops the
+     * padded tail at close: the register write completes, and the
+     * hardware discards the word.
      */
     time(&t0);
     do {
@@ -277,10 +296,14 @@ static ssize_t rshim_usb_bf3_boot_write(rshim_backend_t *bd, const char *buf,
                           RSHIM_REG_SIZE_8B);
       if (rc < 0) {
         RSHIM_ERR("rshim%d read_rshim error %d\n", bd->index, rc);
-        return rc;
+        /*
+         * Bytes already queued must not be retried from the start of
+         * this buffer, or the stream is duplicated.
+         */
+        return transferred > 0 ? transferred : rc;
       }
 
-      avail_fifo_bytes = BF3_MAX_BOOT_FIFO_SIZE - (reg * 8);
+      avail_fifo_bytes = rshim_usb_bf3_boot_space(bd, reg);
       if (avail_fifo_bytes > 0)
         break;
 
@@ -288,7 +311,7 @@ static ssize_t rshim_usb_bf3_boot_write(rshim_backend_t *bd, const char *buf,
       time(&t1);
     } while(difftime(t1, t0) < bd->boot_timeout);
 
-    if (avail_fifo_bytes) {
+    if (avail_fifo_bytes > 0) {
       if (temp_count < avail_fifo_bytes)
         avail_fifo_bytes = temp_count;
 
@@ -300,7 +323,7 @@ static ssize_t rshim_usb_bf3_boot_write(rshim_backend_t *bd, const char *buf,
       if (rc && (rc != LIBUSB_ERROR_TIMEOUT)) {
         RSHIM_ERR("rshim%d Boot fifo bulk transfer failed(%d)\n",
                   bd->index, rc);
-        return rc;
+        return transferred > 0 ? transferred : rc;
       }
 
       i += tmp_tsfr;
@@ -309,7 +332,7 @@ static ssize_t rshim_usb_bf3_boot_write(rshim_backend_t *bd, const char *buf,
 
     } else {
       RSHIM_ERR("rshim%d boot write timeout\n", bd->index);
-      return -ETIMEDOUT;
+      return transferred > 0 ? transferred : -ETIMEDOUT;
     }
   }
 

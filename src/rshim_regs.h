@@ -175,7 +175,11 @@
 #define BF3_RSH_BASE_ADDR 0x13000000
 #define BF3_RSH_BOOT_FIFO_DATA 0x2000
 #define BF3_RSH_BOOT_FIFO_COUNT 0x1000
-#define BF3_RSH_BOOT_FIFO_COUNT__BOOT_FIFO_COUNT_MASK  0x3ff
+/*
+ * Word count. A full FIFO reads as 0x400 (1024 words). The BF1/BF2 10-bit
+ * mask (0x3ff) turns that value into 0, which looks empty.
+ */
+#define BF3_RSH_BOOT_FIFO_COUNT__BOOT_FIFO_COUNT_MASK  0x7ff
 #define BF3_RSH_BOOT_CONTROL 0x528
 #define BF3_RSH_RESET_CONTROL 0x500
 #define BF3_RSH_SCRATCHPAD1 0xc40

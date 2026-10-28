@@ -109,6 +109,13 @@ extern int rshim_static_index;
 #define BF3_MAX_BOOT_FIFO_SIZE 8192 /* bytes */
 
 /*
+ * Words left unused by paced boot writers. That gap is what the one-word
+ * tail flushed from rshim_boot_release writes into. The tail store must
+ * not apply this reserve itself, or the gap can never be used.
+ */
+#define RSHIM_FIFO_SPACE_RESERV  3
+
+/*
  * Possible error code during resetting, which can be used to check against
  * registers with known values.
  */
@@ -614,7 +621,9 @@ int rshim_boot_open(rshim_backend_t *bd);
 int rshim_boot_write(rshim_backend_t *bd, const char *user_buffer, size_t count,
                      int (*copy_in)(void *dest, const void *src, int count),
                      int (*interrupted)(void *arg), void *interrupted_arg);
-void rshim_boot_release(rshim_backend_t *bd);
+int rshim_boot_fifo_capacity(rshim_backend_t *bd);
+int rshim_boot_fifo_level(rshim_backend_t *bd, uint64_t reg);
+int rshim_boot_release(rshim_backend_t *bd);
 int rshim_console_open(rshim_backend_t *bd);
 int rshim_console_release(rshim_backend_t *bd,
                 void (*poll_handle_destroy)(rshim_backend_t *bd, int chan));

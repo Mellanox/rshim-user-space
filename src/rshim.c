@@ -51,9 +51,6 @@
 #define RSHIM_CONSOLE_POLL_MS 100
 #define RSHIM_CONSOLE_POLL_TICKS (RSHIM_CONSOLE_POLL_MS / RSHIM_TIMER_INTERVAL)
 
-/* Reserve some space to indicate full. */
-#define RSHIM_FIFO_SPACE_RESERV  3
-
 /* Keepalive period in milliseconds. */
 #define RSHIM_KEEPALIVE_PERIOD 300
 static int rshim_keepalive_ticks = RSHIM_KEEPALIVE_PERIOD / RSHIM_TIMER_INTERVAL;
@@ -962,9 +959,83 @@ int rshim_boot_write(rshim_backend_t *bd, const char *user_buffer, size_t count,
     return rc;
 }
 
-void rshim_boot_release(rshim_backend_t *bd)
+int rshim_boot_fifo_capacity(rshim_backend_t *bd)
 {
-  int rc;
+  if (bd->ver_id == RSHIM_BLUEFIELD_3)
+    return BF3_MAX_BOOT_FIFO_SIZE / (int)sizeof(uint64_t);
+
+  return RSH_BOOT_FIFO_SIZE;
+}
+
+int rshim_boot_fifo_level(rshim_backend_t *bd, uint64_t reg)
+{
+  return (int)(reg & bd->regs->boot_fifo_count_mask);
+}
+
+/*
+ * Queue the final padded boot word. Called with bd->mutex held.
+ *
+ * Paced writers stop RSHIM_FIFO_SPACE_RESERV words early so this store has
+ * room. It waits only until the hardware FIFO itself has a free word, and
+ * it does not apply that reserve. A register write into a full FIFO still
+ * returns success; the hardware drops the word.
+ */
+static int rshim_boot_write_tail(rshim_backend_t *bd, uint64_t word)
+{
+  int rc, level, capacity;
+  bool saw_full = false;
+  time_t t0, t1;
+  uint64_t reg;
+
+  capacity = rshim_boot_fifo_capacity(bd);
+  time(&t0);
+
+  for (;;) {
+    reg = 0;
+    rc = bd->read_rshim(bd, RSHIM_CHANNEL, bd->regs->boot_fifo_count, &reg,
+                        RSHIM_REG_SIZE_8B);
+    if (rc >= 0 && !RSHIM_BAD_CTRL_REG(reg)) {
+      level = rshim_boot_fifo_level(bd, reg);
+      if (level < capacity)
+        break;
+      saw_full = true;
+    } else {
+      RSHIM_ERR("rshim%d boot tail read_rshim error addr=0x%x, reg=0x%lx, "
+                "rc=%d\n",
+                bd->index, bd->regs->boot_fifo_count,
+                (unsigned long)reg, rc);
+      /*
+       * A failed count read is not evidence the FIFO is full. Store the
+       * word as before unless a previous read showed it full.
+       */
+      if (!saw_full)
+        break;
+    }
+
+    time(&t1);
+    if (difftime(t1, t0) > bd->boot_timeout) {
+      RSHIM_ERR("rshim%d boot tail timeout, fifo count 0x%lx\n",
+                bd->index, (unsigned long)reg);
+      return -ETIMEDOUT;
+    }
+
+    /* Don't block console and misc handling while the DPU drains. */
+    pthread_mutex_unlock(&bd->mutex);
+    usleep(50000);
+    pthread_mutex_lock(&bd->mutex);
+  }
+
+  rc = bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->boot_fifo_data, word,
+                       RSHIM_REG_SIZE_8B);
+  if (rc)
+    RSHIM_ERR("rshim%d boot tail write_rshim error %d\n", bd->index, rc);
+
+  return rc;
+}
+
+int rshim_boot_release(rshim_backend_t *bd)
+{
+  int rc, tail_rc = 0;
 
   pthread_mutex_lock(&bd->mutex);
 
@@ -976,12 +1047,15 @@ void rshim_boot_release(rshim_backend_t *bd)
   if (rc)
     RSHIM_ERR("rshim%d failed to write boot control(%d)\n", bd->index, rc);
 
-  /* Flush the leftover data with zeros padded. */
+  /*
+   * Flush the leftover 1-7 bytes as one zero-padded word. Flow-controlled,
+   * but allowed to use the RSHIM_FIFO_SPACE_RESERV gap the paced writers
+   * keep free.
+   */
   if (bd->boot_rem_cnt) {
     memset((uint8_t *)&bd->boot_rem_data + bd->boot_rem_cnt, 0,
            sizeof(uint64_t) - bd->boot_rem_cnt);
-    bd->write_rshim(bd, RSHIM_CHANNEL, bd->regs->boot_fifo_data,
-           bd->boot_rem_data, RSHIM_REG_SIZE_8B);
+    tail_rc = rshim_boot_write_tail(bd, bd->boot_rem_data);
   }
   bd->is_boot_open = 0;
   bd->boot_rem_cnt = 0;
@@ -990,6 +1064,7 @@ void rshim_boot_release(rshim_backend_t *bd)
 
   RSHIM_INFO("rshim%d boot close\n", bd->index);
   rshim_deref(bd);
+  return tail_rc;
 }
 
 /* FIFO common routines */
