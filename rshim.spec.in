@@ -55,7 +55,11 @@ Conflicts: doca-installer < 2.1.1
 # the directory itself belongs to the systemd package and is often absent
 # from the build root. Probing that directory used to omit rshim.service
 # from the RPM (RM #5353509).
+# EL7 has no systemd-rpm-macros package; the macros ship in systemd there.
+%if 0%{?rhel} >= 8 || 0%{?fedora} || 0%{?suse_version}
 BuildRequires: systemd-rpm-macros
+%endif
+%{!?_unitdir: %global _unitdir %{_prefix}/lib/systemd/system}
 Requires(pre): systemd
 %{?systemd_requires}
 
