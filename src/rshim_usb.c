@@ -170,6 +170,11 @@ static int rshim_usb_read_rshim(rshim_backend_t *bd, uint32_t chan,
   if (!bd->has_rshim)
     return -ENODEV;
 
+  if (bd->drop_mode && !bd->requesting_rshim) {
+    *result = 0;
+    return 0;
+  }
+
   if ((bd->ver_id == RSHIM_BLUEFIELD_3) && (size <= RSHIM_REG_SIZE_4B))
     size = RSHIM_REG_SIZE_4B;
   else
@@ -213,6 +218,9 @@ static int rshim_usb_write_rshim(rshim_backend_t *bd, uint32_t chan,
 
   if (!bd->has_rshim)
     return -ENODEV;
+
+  if (bd->drop_mode && !bd->requesting_rshim)
+    return 0;
 
   if ((bd->ver_id == RSHIM_BLUEFIELD_3) && (size <= RSHIM_REG_SIZE_4B))
     size = RSHIM_REG_SIZE_4B;
