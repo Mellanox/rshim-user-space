@@ -1275,10 +1275,12 @@ static int rshim_fuse_rshim_ioctl(struct cuse_dev *cdev, int fflags,
                            (msg.addr >> 16) & 0xF, /* channel # */
                            msg.addr & 0xFFFF, /* addr */
                            &data, RSHIM_REG_SIZE_8B);
-      if (!rc)
+      if (!rc) {
+        msg.data = data;
         rc = cuse_copy_out(&msg, peer_data, sizeof(msg));
-      else
+      } else {
         rc = CUSE_ERR_INVALID;
+      }
     }
     break;
 
@@ -1301,10 +1303,12 @@ static int rshim_fuse_rshim_ioctl(struct cuse_dev *cdev, int fflags,
                            msg2.addr >> 16, /* channel # */
                            msg2.addr & 0xFFFF, /* addr */
                            &data, msg2.data_size);
-      if (!rc)
+      if (!rc) {
+        msg2.data = data;
         rc = cuse_copy_out(&msg2, peer_data, sizeof(msg2));
-      else
+      } else {
         rc = CUSE_ERR_INVALID;
+      }
     }
     break;
 
