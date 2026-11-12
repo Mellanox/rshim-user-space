@@ -419,7 +419,7 @@ int rshim_cmdmode_run(int argc, char *argv[])
   /* Parse arguments. */
   optind = 1;
   opterr = 1;
-  while ((c = getopt_long(argc, argv, short_options, long_options, &optind))
+  while ((c = getopt_long(argc, argv, short_options, long_options, NULL))
          != -1) {
     switch (c) {
     case 'g':
